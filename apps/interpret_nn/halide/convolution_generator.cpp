@@ -138,12 +138,14 @@ public:
         // We can then separate this into several reductions. First, the terms that
         // depend only on c.
         Func offset_c("offset_c");
-        Expr r_size = filter_width * filter_height * filter_depth;
+        // TODO(zalman): Move guid tag from memoize_tag to schedule's memoize call.
+        Expr r_size = memoize_tag(filter_width * filter_height * filter_depth, guid_);
         // We need the negative of this reduction, so compute the sum first, and then
         // subtract it after.
-        offset_c(c) += i32(filter_rdxyc) * i32(input_offset_);
+        // TODO(zalman): Move guid tag from memoize_tag to schedule's memoize call.
+        offset_c(c) += memoize_tag(i32(filter_rdxyc) * i32(input_offset_), guid_);
         offset_c(c) =
-            bias_(c) + i32(filter_offset_) * i32(input_offset_) * r_size - offset_c(c);
+            memoize_tag(bias_(c) + i32(filter_offset_) * i32(input_offset_) * r_size - offset_c(c), guid_);
 
         // The sum of the input is used to compute the filter_offset * input term.
         // TODO: This is separable, but a bit messy to optimize this way.
@@ -225,9 +227,9 @@ public:
             .vectorize(rci)
             .unroll(x);
 
-        // Precompute the channel offset at root.
-        // TODO: This gets recomputed often when the op is split up into small
-        // pieces.
+        // Precompute the channel offset at root. This is memoized so it
+        // can be shared across pipeline invocations.
+        // TODO(zalman): Why can't we memoize this?
         offset_c.compute_root();
         offset_c.update(0)
             .specialize(input_offset_ != 0)
@@ -256,8 +258,8 @@ public:
             .vectorize(c, vector_size, TailStrategy::GuardWithIf);
 
         // Pretranspose the filter, so we don't need to do it in the inner loop.
-        // TODO: This gets recomputed often when the op is split up into small
-        // pieces.
+        // This is memoized so it can be shared across pipeline invocations.
+        // TODO(zalman): Move guid tag from memoize_tag to schedule's memoize call.
         filter_tiled.compute_root().memoize()
             .reorder_storage(ci, c, co, x, y)
             .reorder(ci, c, x, y, co)
