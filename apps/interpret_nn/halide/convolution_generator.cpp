@@ -113,7 +113,7 @@ public:
         // Align the filter depth, which requires padding the input.
         filter_depth =
             ((filter_depth + vector_reduction - 1) / vector_reduction) * vector_reduction;
-        RDom r(0, filter_width, 0, filter_height, 0, filter_depth);
+        RDom r(0, memoize_tag(filter_width, guid_), 0, memoize_tag(filter_height, guid_), 0, memoize_tag(filter_depth, guid_));
         Expr filter_rdxyc =
             filter_tiled(r.z % vector_reduction, r.z / vector_reduction, r.x, r.y, c);
         Expr input_rdxyc =
@@ -230,7 +230,7 @@ public:
         // Precompute the channel offset at root. This is memoized so it
         // can be shared across pipeline invocations.
         // TODO(zalman): Why can't we memoize this?
-        offset_c.compute_root();
+        offset_c.compute_root().memoize();
         offset_c.update(0)
             .specialize(input_offset_ != 0)
             .split(r.z, rco, rci, vector_reduction)

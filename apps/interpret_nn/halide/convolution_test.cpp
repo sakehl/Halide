@@ -138,7 +138,7 @@ void run_benchmark(ConvolutionArgs &a) {
                                                      a.input_offset, a.filter_offset, a.stride_x,
                                                      a.stride_y, a.dilation_x, a.dilation_y,
                                                      a.output_multiplier, a.output_shift, a.output_offset,
-                                                     a.output_min, a.output_max, a.output_tensor);
+                                                     a.output_min, a.output_max, 0, a.output_tensor);
         if (result != 0) {
             fprintf(stderr, "pipeline failed! %d\n", result);
         }
