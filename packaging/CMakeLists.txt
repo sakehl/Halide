@@ -123,16 +123,18 @@ install(FILES ${Halide_SOURCE_DIR}/src/autoschedulers/adams2019/autotune_loop.sh
 # Tutorial
 ##
 
-install(DIRECTORY ${Halide_SOURCE_DIR}/tutorial
-        TYPE DATA
-        FILES_MATCHING
-        PATTERN "*.cpp"
-        PATTERN "*.h"
-        PATTERN "lesson_*.sh"
-        PATTERN "*.gif"
-        PATTERN "*.jpg"
-        PATTERN "*.mp4"
-        PATTERN "*.png")
+if (WITH_TUTORIALS)
+    install(DIRECTORY ${Halide_SOURCE_DIR}/tutorial
+            TYPE DATA
+            FILES_MATCHING
+            PATTERN "*.cpp"
+            PATTERN "*.h"
+            PATTERN "lesson_*.sh"
+            PATTERN "*.gif"
+            PATTERN "*.jpg"
+            PATTERN "*.mp4"
+            PATTERN "*.png")
+endif ()
 
 ##
 # CMake scripts
@@ -203,26 +205,41 @@ if (WITH_DOCS)
 endif ()
 
 ##
-# Actual packaging
+# General packaging variables. Enough for ZIP/TGZ formats.
 ##
 
 set(CPACK_PACKAGE_NAME Halide)
 set(CPACK_PACKAGE_VENDOR Halide)
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Halide compiler and libraries")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY ${CPACK_PACKAGE_NAME})
 set(CPACK_PACKAGE_VERSION_MAJOR ${Halide_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${Halide_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${Halide_VERSION_PATCH})
 set(CPACK_VERBATIM_VARIABLES YES)
-# set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_LIST_DIR}/Description.txt")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_CURRENT_LIST_DIR}/Description.txt")
 # set(CPACK_RESOURCE_FILE_WELCOME "${CMAKE_CURRENT_LIST_DIR}/Welcome.txt")
 set(CPACK_RESOURCE_FILE_LICENSE "${Halide_SOURCE_DIR}/LICENSE.txt")
 set(CPACK_RESOURCE_FILE_README "${Halide_SOURCE_DIR}/README.md")
 
-set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${Halide_VERSION}-${Halide_CMAKE_TARGET}")
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${Halide_VERSION}-${Halide_HOST_TARGET}")
+
+##
+# NuGet-specific variables. Docs: https://cmake.org/cmake/help/latest/cpack_gen/nuget.html
+##
+
+set(CPACK_NUGET_COMPONENT_INSTALL OFF)
+set(CPACK_NUGET_PACKAGE_AUTHORS "Andrew Adams, Jonathan Ragan-Kelley, Steven Johnson, Tzu-Mao Li, alexreinking, Volodymyr Kysenko, Benoit Steiner, Dillon Sharlet, Shoaib Kamil, Zalman Stern")
+set(CPACK_NUGET_PACKAGE_TITLE "Halide Compiler and Libraries")
+set(CPACK_NUGET_PACKAGE_OWNERS "alexreinking")
+set(CPACK_NUGET_PACKAGE_LICENSEURL "https://github.com/halide/Halide/blob/master/LICENSE.txt")
+# set(CPACK_NUGET_PACKAGE_ICONURL TODO)
+# set(CPACK_NUGET_PACKAGE_RELEASE_NOTES TODO)
+file(STRINGS "${CPACK_RESOURCE_FILE_LICENSE}" CPACK_NUGET_PACKAGE_COPYRIGHT LIMIT_COUNT 1)
+set(CPACK_NUGET_PACKAGE_TAGS "Halide C++ CUDA OpenCL GPU Performance DSL native")
+set(CPACK_NUGET_PACKAGE_DEPENDENCIES "")
+set(CPACK_NUGET_PACKAGE_DEBUG OFF)
 
 if (WIN32)
-    set(CPACK_GENERATOR ZIP)
+    set(CPACK_GENERATOR ZIP NuGet)
 else ()
     set(CPACK_GENERATOR TGZ)
 endif ()

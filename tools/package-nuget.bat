@@ -42,13 +42,14 @@ cmake -G "Visual Studio 16 2019" -Thost=x64 -A "%halide_arch%" ^
       -DBUILD_SHARED_LIBS=YES ^
       -DWITH_TESTS=NO ^
       -DWITH_TUTORIALS=NO ^
-      -DWITH_DOCS=YES ^
+      -DWITH_DOCS=NO ^
       -DWITH_UTILS=NO ^
       -DWITH_PYTHON_BINDINGS=NO ^
-      "-DCMAKE_INSTALL_BINDIR=bin/$<CONFIG>" ^
-      "-DCMAKE_INSTALL_LIBDIR=lib/$<CONFIG>" ^
+      "-DCMAKE_INSTALL_BINDIR=native/bin" ^
+      "-DCMAKE_INSTALL_LIBDIR=native/lib" ^
+      "-DCMAKE_INSTALL_INCLUDEDIR=native/include" ^
       "-DCMAKE_INSTALL_DATADIR=share/Halide" ^
-      "-DHALIDE_INSTALL_CMAKEDIR=lib/cmake/Halide" ^
+      "-DHALIDE_INSTALL_CMAKEDIR=share/Halide" ^
       -S "%halide_source%" ^
       -B "%halide_build_root%"
 if ERRORLEVEL 1 goto error
@@ -59,7 +60,7 @@ cmake --build "%halide_build_root%" --config Release
 if ERRORLEVEL 1 goto error
 
 pushd "%halide_build_root%"
-cpack -G ZIP -C "Release"
+cpack -G NuGet -C "Release"
 if ERRORLEVEL 1 (
     popd
     goto error
