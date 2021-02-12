@@ -123,7 +123,6 @@ py::object generate_impl(GeneratorFactory factory,
     std::vector<std::vector<StubInput>> inputs;
     inputs.resize(input_names.size());
 
-    GeneratorParamsMap generator_params1 = generator->gen_get_constants();
     GeneratorParamsMap generator_params;
 
     // Process the kwargs first.
@@ -168,29 +167,28 @@ py::object generate_impl(GeneratorFactory factory,
     }
 
     generator->gen_set_constants(generator_params);
-    generator->stubgen_set_inputs(inputs);
+    generator->rebind_all_inputs(inputs);
     generator->gen_build_pipeline();
 
-    std::vector<std::vector<Func>> outputs;
-    for (const auto &output_name : output_names) {
-        outputs.push_back(generator->gen_get_funcs_for_output(output_name));
-    }
+    const size_t outputs_size = output_names.size();
+    py::tuple py_outputs(outputs_size);
+    for (size_t i = 0; i < outputs_size; i++) {
+        std::vector<Func> outputs = generator->gen_get_funcs_for_output(output_names[i]);
 
-    py::tuple py_outputs(outputs.size());
-    for (size_t i = 0; i < outputs.size(); i++) {
         py::object o;
-        if (outputs[i].size() == 1) {
-            // convert list-of-1 into single element
-            o = py::cast(outputs[i][0]);
-        } else {
-            o = py::cast(outputs[i]);
-        }
         if (outputs.size() == 1) {
-            // bail early, return the single object rather than a dict
+            // convert list-of-1 into single element
+            o = py::cast(outputs[0]);
+        } else {
+            o = py::cast(outputs);
+        }
+        if (outputs_size == 1) {
+            // bail early, returning the single object rather than a dict
             return o;
         }
         py_outputs[i] = o;
     }
+
     // An explicit "std::move" is needed here because there's
     // an implicit tuple->object conversion that inhibits it otherwise.
     return std::move(py_outputs);

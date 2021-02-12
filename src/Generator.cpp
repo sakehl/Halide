@@ -578,7 +578,7 @@ void StubEmitter::emit() {
     indent_level++;
     stream << get_indent() << "std::shared_ptr<Halide::Internal::IGenerator> generator = halide_register_generator::" << generator_registered_name << "_ns::factory(context);\n";
     stream << get_indent() << "generator->gen_set_constants(generator_params.to_generator_params_map());\n";
-    stream << get_indent() << "generator->stubgen_set_inputs(\n";
+    stream << get_indent() << "generator->rebind_all_inputs(\n";
     indent_level++;
     stream << get_indent() << "{\n";
     indent_level++;
@@ -1726,10 +1726,10 @@ Pipeline GeneratorBase::gen_build_pipeline() {
     return build_pipeline();
 }
 
-void GeneratorBase::stubgen_set_inputs(const std::vector<std::vector<StubInput>> &inputs) {
+void GeneratorBase::rebind_all_inputs(const std::vector<std::vector<StubInput>> &inputs) {
     ensure_configure_has_been_called();
     advance_phase(InputsSet);
-    internal_assert(!inputs_set) << "stubgen_set_inputs() must be called at most once per Generator instance.\n";
+    internal_assert(!inputs_set) << "rebind_all_inputs() must be called at most once per Generator instance.\n";
     GeneratorParamInfo &pi = param_info();
     user_assert(inputs.size() == pi.inputs().size())
         << "Expected exactly " << pi.inputs().size()
@@ -2150,10 +2150,10 @@ void generator_test() {
         // Verify that calling GeneratorParam::set() works.
         tester.gp0.set(1);
 
-        tester.stubgen_set_inputs({{StubInput(42)}});
+        tester.rebind_all_inputs({{StubInput(42)}});
         internal_assert(tester.phase == GeneratorBase::InputsSet);
 
-        // tester.stubgen_set_inputs({{StubInput(43)}});  // This will assert-fail.
+        // tester.rebind_all_inputs({{StubInput(43)}});  // This will assert-fail.
 
         // Also ok to call in this phase.
         tester.gp1.set(2.f);
@@ -2161,13 +2161,13 @@ void generator_test() {
         tester.call_generate();
         internal_assert(tester.phase == GeneratorBase::GenerateCalled);
 
-        // tester.stubgen_set_inputs({{StubInput(44)}});  // This will assert-fail.
+        // tester.rebind_all_inputs({{StubInput(44)}});  // This will assert-fail.
         // tester.gp2.set(2);  // This will assert-fail.
 
         tester.call_schedule();
         internal_assert(tester.phase == GeneratorBase::ScheduleCalled);
 
-        // tester.stubgen_set_inputs({{StubInput(45)}});  // This will assert-fail.
+        // tester.rebind_all_inputs({{StubInput(45)}});  // This will assert-fail.
         // tester.gp2.set(2);  // This will assert-fail.
         // tester.sp2.set(202);  // This will assert-fail.
     }
@@ -2213,12 +2213,12 @@ void generator_test() {
         // Verify that calling GeneratorParam::set() works.
         tester.gp0.set(1);
 
-        // stubgen_set_inputs() can't be called on an old-style Generator;
+        // rebind_all_inputs() can't be called on an old-style Generator;
         // that's OK, since we can skip from Created -> GenerateCalled anyway
-        // tester.stubgen_set_inputs({{StubInput(42)}});
+        // tester.rebind_all_inputs({{StubInput(42)}});
         // internal_assert(tester.phase == GeneratorBase::InputsSet);
 
-        // tester.stubgen_set_inputs({{StubInput(43)}});  // This will assert-fail.
+        // tester.rebind_all_inputs({{StubInput(43)}});  // This will assert-fail.
 
         // Also ok to call in this phase.
         tester.gp1.set(2.f);
@@ -2234,7 +2234,7 @@ void generator_test() {
         tester.build_pipeline();
         internal_assert(tester.phase == GeneratorBase::ScheduleCalled);
 
-        // tester.stubgen_set_inputs({{StubInput(45)}});  // This will assert-fail.
+        // tester.rebind_all_inputs({{StubInput(45)}});  // This will assert-fail.
         // tester.gp2.set(2);  // This will assert-fail.
         // tester.sp2.set(202);  // This will assert-fail.
     }
@@ -2346,7 +2346,7 @@ void generator_test() {
     gp_tester.init_from_context(context);
     // Accessing the GeneratorParam will assert-fail if we
     // don't do some minimal setup here.
-    gp_tester.stubgen_set_inputs({});
+    gp_tester.rebind_all_inputs({});
     gp_tester.call_generate();
     gp_tester.call_schedule();
     auto &gp = gp_tester.gp;

@@ -3020,6 +3020,9 @@ public:
     // regardless of what other methods have been called. All IGenerator instances
     // are expected to be created with immutable values for these, which can't be
     // changed for a given instance.
+    //
+    // CALL-AFTER: any
+    // CALL-BEFORE: any
     struct TargetInfo {
         Target target;
         bool auto_schedule;
@@ -3032,6 +3035,9 @@ public:
     // If this is called after add_input(), the added inputs will be returned.
     // Always legal to call on any IGenerator instance, regardless of what other methods
     // have been called.
+    //
+    // CALL-AFTER: any
+    // CALL-BEFORE: any
     virtual std::vector<std::string> gen_get_input_names() = 0;
 
     // Return a list of the names for outputs, in the correct order.
@@ -3039,6 +3045,9 @@ public:
     // If this is called after add_output(), the added outputs will be returned.
     // Always legal to call on any IGenerator instance, regardless of what other methods
     // have been called.
+    //
+    // CALL-AFTER: any
+    // CALL-BEFORE: any
     virtual std::vector<std::string> gen_get_output_names() = 0;
 
     // Return the current name & current values for all known GeneratorParams in this Generator.
@@ -3046,6 +3055,9 @@ public:
     // Always legal to call on any IGenerator instance, regardless of what other methods
     // have been called. Calling this after a call to gen_set_constants() will reflect the
     // updated values, not the default values.
+    //
+    // CALL-AFTER: any
+    // CALL-BEFORE: any
     virtual GeneratorParamsMap gen_get_constants() = 0;
 
     // Set the GeneratorParams for an IGenerator instance.
@@ -3053,6 +3065,9 @@ public:
     // GP names that are present but not settable should trigger an assert-fail.
     // This should be called at once most per IGenerator instance. Calling multiple
     // times is UB.  TODO: UB? Really?
+    //
+    // CALL-AFTER: TODO???
+    // CALL-BEFORE: TODO???
     virtual void gen_set_constants(const GeneratorParamsMap &params) = 0;
 
     // Given the name of an input, return the Parameter(s) for that input.
@@ -3060,9 +3075,13 @@ public:
     // will have multiple.)
     virtual std::vector<Parameter> gen_get_parameters_for_input(const std::string &name) = 0;
 
-    // Given the name of an input, return the Func(s) for that input.
+    // Given the name of an output, return the Func(s) for that output.
     // (Most outputs will have exactly one, but G1 outputs that are declared as arrays
-    // will have multiple.)
+    // will have multiple.) Must be called after gen_build_pipeline(), since the output Funcs
+    // will be undefined prior to that.
+    //
+    // CALL-AFTER: gen_build_pipeline()
+    // CALL-BEFORE: none
     virtual std::vector<Func> gen_get_funcs_for_output(const std::string &name) = 0;
 
     virtual Pipeline gen_build_pipeline() = 0;
@@ -3072,19 +3091,33 @@ public:
     // CALL-BEFORE: n/a
     virtual GeneratorContext::ExternsMap gen_get_externs_map() = 0;
 
-    // Set the StubInputs.
-    virtual void stubgen_set_inputs(const std::vector<std::vector<StubInput>> &inputs) = 0;
+    // Rebind all the inputs in a single call. The vector of StubInputs is assumed to have
+    // the same size and ordering as the list of inputs. Basic type-checking is done to ensure
+    // that inputs are still sane (e.g. types, dimensions, etc must match expectations).
+    //
+    // This call is infrequently used, and is only useful in JIT or Stub situations;
+    // this allows you to bind the inputs to be Funcs, Buffers, etc from another Halide code
+    // fragment, allowing inlining of multiple fragments together.
+    //
+    // Note that there is no way to rebind individual inputs. (This could be added but
+    // is unlikely to be useful, as all existing usage is all-or-none.)
+    //
+    // CALL-AFTER: n/a
+    // CALL-BEFORE: gen_build_pipeline
+    //
+    // TODO: Consider renaming "StubInput" to something like "InputBinding"?
+    virtual void rebind_all_inputs(const std::vector<std::vector<StubInput>> &inputs) = 0;
 
     // Emit a Generator Stub (.stub.h) file to the given path. Not all Generators support this
     // (typically, only G1, not G2.)
     //
+    // If you call this method, you should not call any other IGenerator methods
+    // on this instance, before or after this call.
+    //
     // If the Generator is not capable of emitting a Stub, return false.
-    // (TODO: definitely a nop for G2)
     //
     // CALL-AFTER: none
     // CALL-BEFORE: none
-    // CALL-NOTES: do not call any other IGenerator methods on this instance,
-    //             before or after this call.
     virtual bool stubgen_emit_cpp_stub(const std::string &stub_file_path) = 0;
 };
 
@@ -3143,7 +3176,7 @@ public:
     }
 
     /**
-     * set_inputs is a variadic wrapper around stubgen_set_inputs, which makes usage much simpler
+     * set_inputs is a variadic wrapper around rebind_all_inputs, which makes usage much simpler
      * in many cases, as it constructs the relevant entries for the vector for you, which
      * is often a bit unintuitive at present. The arguments are passed in Input<>-declaration-order,
      * and the types must be compatible. Array inputs are passed as std::vector<> of the relevant type.
@@ -3154,12 +3187,12 @@ public:
      */
     template<typename... Args>
     void set_inputs(const Args &... args) {
-        // stubgen_set_inputs() checks this too, but checking it here allows build_inputs() to avoid out-of-range checks.
+        // rebind_all_inputs() checks this too, but checking it here allows build_inputs() to avoid out-of-range checks.
         GeneratorParamInfo &pi = this->param_info();
         user_assert(sizeof...(args) == pi.inputs().size())
             << "Expected exactly " << pi.inputs().size()
             << " inputs but got " << sizeof...(args) << "\n";
-        stubgen_set_inputs(build_inputs(std::forward_as_tuple<const Args &...>(args...), make_index_sequence<sizeof...(Args)>{}));
+        rebind_all_inputs(build_inputs(std::forward_as_tuple<const Args &...>(args...), make_index_sequence<sizeof...(Args)>{}));
     }
 
     Realization realize(std::vector<int32_t> sizes) {
@@ -3504,7 +3537,7 @@ public:
     ExternsMap gen_get_externs_map() override;
     Pipeline gen_build_pipeline() override;
 
-    void stubgen_set_inputs(const std::vector<std::vector<StubInput>> &inputs) override;
+    void rebind_all_inputs(const std::vector<std::vector<StubInput>> &inputs) override;
     bool stubgen_emit_cpp_stub(const std::string &stub_file_path) override;
 
 public:
