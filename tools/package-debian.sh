@@ -16,7 +16,7 @@ cmake --build "$halide_build_root/shared-Release"
 cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
-cat <<EOM >release.cmake
+cat <<EOM >debian.cmake
 include("shared-Release/CPackConfig.cmake")
 
 set(CPACK_COMPONENTS_HALIDE_RUNTIME Halide_Runtime)
@@ -29,7 +29,7 @@ set(CPACK_INSTALL_CMAKE_PROJECTS
     # shared-Debug Halide ALL /
     static-Release Halide ALL /
     shared-Release Halide ALL /
-    )
+)
 EOM
 
-cpack --config release.cmake
+cpack -G DEB --config debian.cmake
