@@ -24,7 +24,7 @@ class SimplifyCorrelatedDifferences : public IRMutator {
 
     string loop_var;
 
-    Scope<Interval> monotonic;
+    Scope<Monotonic> monotonic;
 
     struct OuterLet {
         string name;
@@ -38,11 +38,11 @@ class SimplifyCorrelatedDifferences : public IRMutator {
         // Visit an entire chain of lets in a single method to conserve stack space.
         struct Frame {
             const LetStmtOrLet *op;
-            ScopedBinding<Interval> binding;
+            ScopedBinding<Monotonic> binding;
             Expr new_value;
-            Frame(const LetStmtOrLet *op, const string &loop_var, Scope<Interval> &scope)
+            Frame(const LetStmtOrLet *op, const string &loop_var, Scope<Monotonic> &scope)
                 : op(op),
-                  binding(scope, op->name, derivative_bounds(op->value, loop_var, scope)) {
+                  binding(scope, op->name, is_monotonic(op->value, loop_var, scope)) {
             }
             Frame(const LetStmtOrLet *op)
                 : op(op) {
@@ -52,14 +52,14 @@ class SimplifyCorrelatedDifferences : public IRMutator {
         StmtOrExpr result;
 
         // Note that we must add *everything* that depends on the loop
-        // var to the Interval scope and the list of lets, even
+        // var to the monotonic scope and the list of lets, even
         // things which we can never substitute in (e.g. impure
         // things). This is for two reasons. First this pass could be
         // used at a time when we still have nested lets under the
         // same name. If we decide not to add an inner let, but do add
         // the outer one, then later references to it will be
         // incorrect. Second, if we don't add something that happens
-        // to be non-Interval, then derivative_bounds finds a variable
+        // to be non-monotonic, then is_monotonic finds a variable
         // that references it in a later let, it will think it's a
         // constant, not an unknown.
         do {
@@ -118,7 +118,7 @@ class SimplifyCorrelatedDifferences : public IRMutator {
             tmp_lets.swap(lets);
             loop_var = op->name;
             {
-                ScopedBinding<Interval> bind(monotonic, loop_var, Interval(1, 1));
+                ScopedBinding<Monotonic> bind(monotonic, loop_var, Monotonic::Increasing);
                 s = IRMutator::visit(op);
             }
             loop_var.clear();

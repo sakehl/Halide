@@ -408,8 +408,7 @@ void CameraPipe::generate() {
     // shift by 16, 12. We also convert it to be signed, so we can deal
     // with values that fall below 0 during processing.
     Func shifted;
-    // TODO: Should be y + 12.
-    shifted(x, y) = cast<int16_t>(input(x + 16, y + 16));
+    shifted(x, y) = cast<int16_t>(input(x + 16, y + 12));
 
     Func denoised = hot_pixel_suppression(shifted);
 
@@ -531,7 +530,7 @@ void CameraPipe::generate() {
             .compute_at(processed, yi)
             .store_at(processed, yo)
             .prefetch(input, y, 2)
-            .fold_storage(y, 4)
+            .fold_storage(y, 16)
             .tile(x, y, x, y, xi, yi, 2 * vec, 2)
             .vectorize(xi)
             .unroll(yi);
@@ -539,7 +538,7 @@ void CameraPipe::generate() {
         deinterleaved
             .compute_at(processed, yi)
             .store_at(processed, yo)
-            .fold_storage(y, 4)
+            .fold_storage(y, 8)
             .reorder(c, x, y)
             .vectorize(x, 2 * vec, TailStrategy::RoundUp)
             .unroll(c);

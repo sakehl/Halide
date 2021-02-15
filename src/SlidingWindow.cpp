@@ -64,7 +64,7 @@ class ExpandExpr : public IRMutator {
     Expr visit(const Variable *var) override {
         if (scope.contains(var->name)) {
             Expr expr = scope.get(var->name);
-            debug(3) << "Fully expanded " << var->name << " -> " << expr << "\n";
+            debug(4) << "Fully expanded " << var->name << " -> " << expr << "\n";
             return expr;
         } else {
             return var;
@@ -81,7 +81,7 @@ public:
 Expr expand_expr(const Expr &e, const Scope<Expr> &scope) {
     ExpandExpr ee(scope);
     Expr result = ee.mutate(e);
-    debug(3) << "Expanded " << e << " into " << result << "\n";
+    debug(4) << "Expanded " << e << " into " << result << "\n";
     return result;
 }
 
@@ -220,8 +220,8 @@ class SlidingWindowOnFunctionAndLoop : public IRMutator {
             bool can_slide_up = false;
             bool can_slide_down = false;
 
-            Monotonic monotonic_min = is_monotonic_strong(min_required, loop_var);
-            Monotonic monotonic_max = is_monotonic_strong(max_required, loop_var);
+            Monotonic monotonic_min = is_monotonic(min_required, loop_var);
+            Monotonic monotonic_max = is_monotonic(max_required, loop_var);
 
             if (monotonic_min == Monotonic::Increasing ||
                 monotonic_min == Monotonic::Constant) {
@@ -289,25 +289,33 @@ class SlidingWindowOnFunctionAndLoop : public IRMutator {
             new_loop_min_eq = lower_safe_promises(new_loop_min_eq);
             Interval solve_result = solve_for_inner_interval(new_loop_min_eq, new_loop_min_name);
             Expr new_min, new_max;
-            if (!solve_result.has_upper_bound()) {
-                debug(3) << "Not sliding " << func.name()
-                         << " over dimension " << dim
-                         << " along loop variable " << loop_var
-                         << " because the bounds required of the producer do not appear to depend on the loop variable\n"
-                         << "Min is " << min_required << "\n"
-                         << "Max is " << max_required << "\n"
-                         << "Equation is " << new_loop_min_eq << "\n";
-                return stmt;
-            }
-
-            internal_assert(!new_loop_min.defined());
-            new_loop_min = solve_result.max;
-            if (can_slide_up) {
-                new_min = prev_max_plus_one;
-                new_max = max_required;
+            if (solve_result.has_upper_bound() && equal(solve_result.min, solve_result.max)) {
+                // There is exactly one solution for where we should start
+                // this loop.
+                internal_assert(!new_loop_min.defined());
+                new_loop_min = simplify(solve_result.max);
+                if (equal(new_loop_min, loop_min)) {
+                    new_loop_min = Expr();
+                }
+                if (can_slide_up) {
+                    new_min = prev_max_plus_one;
+                    new_max = max_required;
+                } else {
+                    new_min = min_required;
+                    new_max = prev_min_minus_one;
+                }
             } else {
-                new_min = min_required;
-                new_max = prev_min_minus_one;
+                // TODO: This is the "old" way of handling sliding window.
+                // It handles sliding windows involving upsamples better
+                // than the "new" way above. It would be best to fix this,
+                // and use the above codepath even when min != max.
+                if (can_slide_up) {
+                    new_min = select(loop_var_expr <= loop_min, min_required, likely_if_innermost(prev_max_plus_one));
+                    new_max = max_required;
+                } else {
+                    new_min = min_required;
+                    new_max = select(loop_var_expr <= loop_min, max_required, likely_if_innermost(prev_min_minus_one));
+                }
             }
 
             Expr early_stages_min_required = new_min;
@@ -316,7 +324,8 @@ class SlidingWindowOnFunctionAndLoop : public IRMutator {
             debug(3) << "Sliding " << func.name() << ", " << dim << "\n"
                      << "Pushing min up from " << min_required << " to " << new_min << "\n"
                      << "Shrinking max from " << max_required << " to " << new_max << "\n"
-                     << "Adjusting loop_min from " << loop_min << " to " << new_loop_min << "\n";
+                     << "Adjusting loop_min from " << loop_min << " to " << new_loop_min << "\n"
+                     << "Equation " << simplify(new_loop_min_eq) << "\n";
 
             // Now redefine the appropriate regions required
             if (can_slide_up) {
@@ -350,7 +359,7 @@ class SlidingWindowOnFunctionAndLoop : public IRMutator {
                 }
             }
             return stmt;
-        } else if (!find_produce(op, func.name())) {
+        } else if (!find_produce(op, func.name()) && new_loop_min.defined()) {
             // The producer might have expanded the loop before the min to warm
             // up the window. This consumer doesn't contain a producer that might
             // be part of the warmup, so guard it with an if to only run it on
@@ -383,8 +392,8 @@ class SlidingWindowOnFunctionAndLoop : public IRMutator {
             const LetStmt *l = s.as<LetStmt>();
             internal_assert(l);
             return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, l->body);
-        } else if (is_monotonic_strong(min, loop_var) != Monotonic::Constant ||
-                   is_monotonic_strong(extent, loop_var) != Monotonic::Constant) {
+        } else if (is_monotonic(min, loop_var) != Monotonic::Constant ||
+                   is_monotonic(extent, loop_var) != Monotonic::Constant) {
             debug(3) << "Not entering loop over " << op->name
                      << " because the bounds depend on the var we're sliding over: "
                      << min << ", " << extent << "\n";
