@@ -14,12 +14,13 @@ cmake --build "$halide_build_root/shared-Release"
 cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
-cat <<EOM >ubuntu.cmake
+cat <<'EOM' >ubuntu.cmake
 include("shared-Release/CPackConfig.cmake")
 
 ## General setup
 
-set(CPACK_PACKAGE_CONTACT "alex_reinking@berkeley.edu")
+set(CPACK_PACKAGE_CONTACT "Alex Reinking <alex_reinking@berkeley.edu>")
+set(CPACK_STRIP_FILES TRUE)
 
 ## Components configuration
 
@@ -43,9 +44,9 @@ set(CPACK_INSTALL_CMAKE_PROJECTS
 
 set(CPACK_DEB_COMPONENT_INSTALL YES)
 
-set(CPACK_DEBIAN_HALIDE_RUNTIME_PACKAGE_NAME libhalide)
-set(CPACK_DEBIAN_HALIDE_DEVELOPMENT_PACKAGE_NAME libhalide-dev)
-set(CPACK_DEBIAN_HALIDE_DOCUMENTATION_PACKAGE_NAME libhalide-doc)
+set(CPACK_DEBIAN_HALIDE_RUNTIME_PACKAGE_NAME libHalide${CPACK_PACKAGE_VERSION_MAJOR})
+set(CPACK_DEBIAN_HALIDE_DEVELOPMENT_PACKAGE_NAME libHalide${CPACK_PACKAGE_VERSION_MAJOR}-dev)
+set(CPACK_DEBIAN_HALIDE_DOCUMENTATION_PACKAGE_NAME libHalide${CPACK_PACKAGE_VERSION_MAJOR}-doc)
 
 set(CPACK_DEBIAN_HALIDE_RUNTIME_FILE_NAME DEB-DEFAULT)
 set(CPACK_DEBIAN_HALIDE_DEVELOPMENT_FILE_NAME DEB-DEFAULT)
@@ -72,9 +73,9 @@ unset(CPACK_DEBIAN_HALIDE_RUNTIME_DESCRIPTION)
 unset(CPACK_DEBIAN_HALIDE_DEVELOPMENT_DESCRIPTION)
 unset(CPACK_DEBIAN_HALIDE_DOCUMENTATION_DESCRIPTION)
 
-set(CPACK_DEBIAN_HALIDE_RUNTIME_PACKAGE_SECTION universe/devel)
-set(CPACK_DEBIAN_HALIDE_DEVELOPMENT_PACKAGE_SECTION universe/devel)
-set(CPACK_DEBIAN_HALIDE_DOCUMENTATION_PACKAGE_SECTION universe/doc)
+set(CPACK_DEBIAN_HALIDE_RUNTIME_PACKAGE_SECTION devel)
+set(CPACK_DEBIAN_HALIDE_DEVELOPMENT_PACKAGE_SECTION devel)
+set(CPACK_DEBIAN_HALIDE_DOCUMENTATION_PACKAGE_SECTION doc)
 
 unset(CPACK_DEBIAN_ARCHIVE_TYPE)  # Deprecated: do not use
 
@@ -105,5 +106,11 @@ unset(CPACK_DEBIAN_PACKAGE_SOURCE)
 
 unset(CPACK_DEBIAN_DEBUGINFO_PACKAGE)
 EOM
+
+rm -f ./*.deb
+rm -rf ./_CPack_Packages
+
+# ensure correct umask is set for creating packages
+umask 0022
 
 cpack -G DEB --config ubuntu.cmake
