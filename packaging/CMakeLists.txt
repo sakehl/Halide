@@ -218,7 +218,7 @@ if (WITH_DOCS)
 endif ()
 
 ##
-# General packaging variables. Enough for ZIP/TGZ formats.
+# General packaging variables.
 ##
 
 set(CPACK_PACKAGE_NAME Halide)
@@ -234,22 +234,6 @@ set(CPACK_RESOURCE_FILE_LICENSE "${Halide_SOURCE_DIR}/LICENSE.txt")
 set(CPACK_RESOURCE_FILE_README "${Halide_SOURCE_DIR}/README.md")
 
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${Halide_VERSION}-${Halide_HOST_TARGET}")
-
-##
-# NuGet-specific variables. Docs: https://cmake.org/cmake/help/latest/cpack_gen/nuget.html
-##
-
-set(CPACK_NUGET_COMPONENT_INSTALL OFF)
-set(CPACK_NUGET_PACKAGE_AUTHORS "Andrew Adams, Jonathan Ragan-Kelley, Steven Johnson, Tzu-Mao Li, alexreinking, Volodymyr Kysenko, Benoit Steiner, Dillon Sharlet, Shoaib Kamil, Zalman Stern")
-set(CPACK_NUGET_PACKAGE_TITLE "Halide Compiler and Libraries")
-set(CPACK_NUGET_PACKAGE_OWNERS "alexreinking")
-set(CPACK_NUGET_PACKAGE_LICENSEURL "https://github.com/halide/Halide/blob/master/LICENSE.txt")
-# set(CPACK_NUGET_PACKAGE_ICONURL TODO)
-# set(CPACK_NUGET_PACKAGE_RELEASE_NOTES TODO)
-file(STRINGS "${CPACK_RESOURCE_FILE_LICENSE}" CPACK_NUGET_PACKAGE_COPYRIGHT LIMIT_COUNT 1)
-set(CPACK_NUGET_PACKAGE_TAGS "Halide C++ CUDA OpenCL GPU Performance DSL native")
-set(CPACK_NUGET_PACKAGE_DEPENDENCIES "")
-set(CPACK_NUGET_PACKAGE_DEBUG OFF)
 
 include(CPack)
 

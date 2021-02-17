@@ -50,6 +50,15 @@ cmake -G "Visual Studio 16 2019" -Thost=x64 -A "%halide_arch%" ^
       "-DCMAKE_INSTALL_INCLUDEDIR=native/include" ^
       "-DCMAKE_INSTALL_DATADIR=share/Halide" ^
       "-DHALIDE_INSTALL_CMAKEDIR=share/Halide" ^
+      "-DCPACK_NUGET_COMPONENT_INSTALL=OFF" ^
+      "-DCPACK_NUGET_PACKAGE_AUTHORS=Andrew Adams, Jonathan Ragan-Kelley, Steven Johnson, Tzu-Mao Li, alexreinking, Volodymyr Kysenko, Benoit Steiner, Dillon Sharlet, Shoaib Kamil, Zalman Stern" ^
+      "-DCPACK_NUGET_PACKAGE_TITLE=Halide Compiler and Libraries" ^
+      "-DCPACK_NUGET_PACKAGE_OWNERS=alexreinking" ^
+      "-DCPACK_NUGET_PACKAGE_LICENSEURL=https://github.com/halide/Halide/blob/master/LICENSE.txt" ^
+      "-DCPACK_NUGET_PACKAGE_COPYRIGHT=Copyright (c) 2012-2020 MIT CSAIL, Google, Facebook, Adobe, NVIDIA CORPORATION, and other contributors." ^
+      "-DCPACK_NUGET_PACKAGE_TAGS=Halide C++ CUDA OpenCL GPU Performance DSL native" ^
+      "-DCPACK_NUGET_PACKAGE_DEPENDENCIES=" ^
+      "-DCPACK_NUGET_PACKAGE_DEBUG=OFF" ^
       -S "%halide_source%" ^
       -B "%halide_build_root%"
 if ERRORLEVEL 1 goto error
