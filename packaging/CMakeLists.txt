@@ -160,7 +160,14 @@ if (Halide_SHARED_LLVM OR (NOT BUILD_SHARED_LIBS AND NOT Halide_BUNDLE_LLVM))
     file(WRITE "${depFile}" "find_dependency(LLVM ${LLVM_PACKAGE_VERSION} CONFIG)\n")
 
     if (TARGET_WEBASSEMBLY)
-        file(APPEND "${depFile}" "find_dependency(LLD CONFIG HINTS \"\${LLVM_DIR}/../lld\")\n")
+        file(APPEND "${depFile}" [[
+find_dependency(
+  LLD CONFIG
+  HINTS
+    "${LLVM_DIR}/../lld"
+    "${LLVM_DIR}/../lib/cmake/lld"
+)
+]])
     endif ()
 
     install(FILES "${depFile}"

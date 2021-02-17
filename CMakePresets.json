@@ -126,7 +126,8 @@
       "description": "Package static Halide for Ubuntu, using system packages.",
       "binaryDir": "static-release",
       "cacheVariables": {
-        "BUILD_SHARED_LIBS": "NO"
+        "BUILD_SHARED_LIBS": "NO",
+        "WITH_DOCS": "NO"
       }
     }
   ]
