@@ -245,3 +245,20 @@ set(CPACK_NUGET_PACKAGE_DEPENDENCIES "")
 set(CPACK_NUGET_PACKAGE_DEBUG OFF)
 
 include(CPack)
+
+##
+# Configure components
+##
+
+cpack_add_component(Halide_Runtime
+                    DISPLAY_NAME "Halide"
+                    DESCRIPTION "Runtime files for libHalide and autoschedulers")
+
+cpack_add_component(Halide_Development
+                    DISPLAY_NAME "Halide development"
+                    DESCRIPTION "Static Halide libraries and CMake development files"
+                    DEPENDS Halide_Runtime)
+
+cpack_add_component(Halide_Documentation
+                    DISPLAY_NAME "Halide documentation"
+                    DESCRIPTION "Documentation for Halide")
