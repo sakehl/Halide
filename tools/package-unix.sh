@@ -16,11 +16,14 @@ cmake --build "$halide_build_root/shared-Release"
 cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
-cat <<EOM >release.cmake
+cat <<'EOM' >release.cmake
 include("shared-Release/CPackConfig.cmake")
 
 set(CPACK_COMPONENTS_HALIDE_RUNTIME Halide_Runtime)
 set(CPACK_COMPONENTS_HALIDE_DEVELOPMENT Halide_Development)
+set(CPACK_COMPONENTS_HALIDE_DOCUMENTATION Halide_Documentation)
+
+set(CPACK_COMPONENTS_ALL Halide_Runtime Halide_Development Halide_Documentation)
 
 set(CPACK_INSTALL_CMAKE_PROJECTS
     # We don't package debug binaries on Unix systems. Our developers
