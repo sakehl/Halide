@@ -4,23 +4,23 @@ set -e
 halide_source="$1"
 halide_build_root="$2"
 
-[ -z "$LLVM_DIR" ] && echo "Must set specific LLVM_DIR for packaging" && exit
-[ -z "$Clang_DIR" ] && echo "Must set specific Clang_DIR for packaging" && exit
 [ -z "$halide_source" ] && echo "Usage: $0 <source-dir> <build-dir>" && exit
 [ -z "$halide_build_root" ] && echo "Usage: $0 <source-dir> <build-dir>" && exit
 
-cmake --preset=package-unix-shared -S "$halide_source" -B "$halide_build_root/shared-Release"
-cmake --preset=package-unix-static -S "$halide_source" -B "$halide_build_root/static-Release"
+cmake --preset=package-ubuntu-shared -S "$halide_source" -B "$halide_build_root/shared-Release"
+cmake --preset=package-ubuntu-static -S "$halide_source" -B "$halide_build_root/static-Release"
 
 cmake --build "$halide_build_root/shared-Release"
 cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
-cat <<EOM >debian.cmake
+cat <<EOM >ubuntu.cmake
 include("shared-Release/CPackConfig.cmake")
 
 set(CPACK_COMPONENTS_HALIDE_RUNTIME Halide_Runtime)
 set(CPACK_COMPONENTS_HALIDE_DEVELOPMENT Halide_Development)
+
+set(CPACK_PACKAGE_CONTACT "alex_reinking@berkeley.edu")
 
 set(CPACK_INSTALL_CMAKE_PROJECTS
     # We don't package debug binaries on Unix systems. Our developers
@@ -32,4 +32,4 @@ set(CPACK_INSTALL_CMAKE_PROJECTS
 )
 EOM
 
-cpack -G DEB --config debian.cmake
+cpack -G DEB --config ubuntu.cmake

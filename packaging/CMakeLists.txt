@@ -238,10 +238,4 @@ set(CPACK_NUGET_PACKAGE_TAGS "Halide C++ CUDA OpenCL GPU Performance DSL native"
 set(CPACK_NUGET_PACKAGE_DEPENDENCIES "")
 set(CPACK_NUGET_PACKAGE_DEBUG OFF)
 
-if (WIN32)
-    set(CPACK_GENERATOR ZIP NuGet)
-else ()
-    set(CPACK_GENERATOR TGZ)
-endif ()
-
 include(CPack)
