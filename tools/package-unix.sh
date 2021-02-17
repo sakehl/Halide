@@ -35,4 +35,4 @@ set(CPACK_INSTALL_CMAKE_PROJECTS
     )
 EOM
 
-cpack --config release.cmake
+cpack -G TGZ --config release.cmake
