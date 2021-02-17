@@ -5,33 +5,17 @@ include(CMakePackageConfigHelpers)
 # Custom locations
 ##
 
-set(HALIDE_INSTALL_CMAKEDIR
-    "${CMAKE_INSTALL_LIBDIR}/cmake/Halide"
+set(HALIDE_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/Halide"
     CACHE STRING "Path to Halide cmake files")
 
-##
-# Optional dependencies
-##
-
-set(optional_dependencies "")
-foreach (target IN ITEMS wabt-obj)
-    if (TARGET ${target})
-        list(APPEND optional_dependencies ${target})
-    endif ()
-endforeach ()
+set(HALIDE_INSTALL_PLUGINDIR "${CMAKE_INSTALL_LIBDIR}"
+    CACHE STRING "Path to Halide plugins folder")
 
 ##
 # Main library exports
 ##
 
-set(optional_targets "")
-foreach (target IN ITEMS Halide_Adams2019 Halide_Li2018 Halide_Mullapudi2016)
-    if (TARGET ${target})
-        list(APPEND optional_targets ${target})
-    endif ()
-endforeach ()
-
-install(TARGETS Halide Halide_Generator Halide_RunGenMain ${optional_targets}
+install(TARGETS Halide Halide_Generator Halide_RunGenMain
         EXPORT Halide_Targets
 
         RUNTIME
@@ -49,8 +33,21 @@ install(TARGETS Halide Halide_Generator Halide_RunGenMain ${optional_targets}
 
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-install(TARGETS Halide_LLVM ${optional_dependencies}
-        EXPORT Halide_Targets)
+if (TARGET Halide_Adams2019)
+    install(TARGETS Halide_Adams2019 Halide_Li2018 Halide_Mullapudi2016
+            EXPORT Halide_Targets
+
+            LIBRARY
+            DESTINATION ${HALIDE_INSTALL_PLUGINDIR}
+            COMPONENT Halide_Runtime
+            NAMELINK_COMPONENT Halide_Development)
+endif ()
+
+foreach (dep IN ITEMS Halide_LLVM wabt-obj)
+    if (TARGET ${dep})
+        install(TARGETS ${dep} EXPORT Halide_Targets)
+    endif ()
+endforeach ()
 
 install(TARGETS Halide_Tools Halide_ImageIO Halide_LanguageOptions
         EXPORT Halide_Interfaces
@@ -60,12 +57,15 @@ install(TARGETS Halide_Runtime
         EXPORT Halide_Interfaces
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
-set(exes "")
-foreach (exe IN ITEMS retrain_cost_model featurization_to_sample get_host_target weightsdir_to_weightsfile)
-    if (TARGET ${exe})
-        list(APPEND exes ${exe})
-    endif ()
-endforeach ()
+# Captures both the runtime and Halide.h
+install(DIRECTORY ${Halide_BINARY_DIR}/include/
+        TYPE INCLUDE
+        COMPONENT Halide_Development
+        FILES_MATCHING PATTERN "include/*.h")
+
+##
+# Patch RPATH for executable targets
+##
 
 file(RELATIVE_PATH lib_dir
      ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}
@@ -77,17 +77,13 @@ else ()
     set(rbase $ORIGIN)
 endif ()
 
-set_target_properties(${exes} PROPERTIES INSTALL_RPATH "${rbase};${rbase}/${lib_dir}")
-
-install(TARGETS ${exes}
-        EXPORT Halide_Interfaces
-        COMPONENT Halide_Development)
-
-# Captures both the runtime and Halide.h
-install(DIRECTORY ${Halide_BINARY_DIR}/include/
-        TYPE INCLUDE
-        COMPONENT Halide_Development
-        FILES_MATCHING PATTERN "include/*.h")
+if (TARGET Halide_Adams2019)
+    set(autoscheduler_utils retrain_cost_model featurization_to_sample get_host_target weightsdir_to_weightsfile)
+    set_target_properties(${autoscheduler_utils} PROPERTIES INSTALL_RPATH "${rbase};${rbase}/${lib_dir}")
+    install(TARGETS ${autoscheduler_utils}
+            EXPORT Halide_Interfaces
+            COMPONENT Halide_Development)
+endif ()
 
 ##
 # READMEs and other top-level documentation
