@@ -21,6 +21,7 @@ set(CPACK_COMPONENTS_HALIDE_RUNTIME Halide_Runtime)
 set(CPACK_COMPONENTS_HALIDE_DEVELOPMENT Halide_Development)
 
 set(CPACK_PACKAGE_CONTACT "alex_reinking@berkeley.edu")
+set(CPACK_DEB_COMPONENT_INSTALL YES)
 
 set(CPACK_INSTALL_CMAKE_PROJECTS
     # We don't package debug binaries on Unix systems. Our developers

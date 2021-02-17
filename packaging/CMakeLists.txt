@@ -80,10 +80,14 @@ endif ()
 set_target_properties(${exes} PROPERTIES INSTALL_RPATH "${rbase};${rbase}/${lib_dir}")
 
 install(TARGETS ${exes}
-        EXPORT Halide_Interfaces)
+        EXPORT Halide_Interfaces
+        COMPONENT Halide_Development)
 
 # Captures both the runtime and Halide.h
-install(DIRECTORY ${Halide_BINARY_DIR}/include/ TYPE INCLUDE FILES_MATCHING PATTERN "include/*.h")
+install(DIRECTORY ${Halide_BINARY_DIR}/include/
+        TYPE INCLUDE
+        COMPONENT Halide_Development
+        FILES_MATCHING PATTERN "include/*.h")
 
 ##
 # READMEs and other top-level documentation
@@ -94,6 +98,7 @@ install(FILES
         ${Halide_SOURCE_DIR}/README.md
         ${Halide_SOURCE_DIR}/README_rungen.md
         ${Halide_SOURCE_DIR}/README_webassembly.md
+        COMPONENT Halide_Documentation
         TYPE DATA)
 
 ##
