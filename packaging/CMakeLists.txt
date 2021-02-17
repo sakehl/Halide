@@ -131,6 +131,7 @@ install(FILES ${Halide_SOURCE_DIR}/src/autoschedulers/adams2019/autotune_loop.sh
 if (WITH_TUTORIALS)
     install(DIRECTORY ${Halide_SOURCE_DIR}/tutorial
             TYPE DATA
+            COMPONENT Halide_Documentation
             FILES_MATCHING
             PATTERN "*.cpp"
             PATTERN "*.h"
@@ -156,7 +157,7 @@ endif ()
 # the relevant system libraries installed.
 if (Halide_SHARED_LLVM OR (NOT BUILD_SHARED_LIBS AND NOT Halide_BUNDLE_LLVM))
     set(depFile "${CMAKE_CURRENT_BINARY_DIR}/Halide-Deps-${LIB_TYPE}.cmake")
-    file(WRITE "${depFile}" "find_dependency(LLVM CONFIG)\n")
+    file(WRITE "${depFile}" "find_dependency(LLVM ${LLVM_PACKAGE_VERSION} CONFIG)\n")
 
     if (TARGET_WEBASSEMBLY)
         file(APPEND "${depFile}" "find_dependency(LLD CONFIG HINTS \"\${LLVM_DIR}/../lld\")\n")

@@ -19,6 +19,9 @@ include("shared-Release/CPackConfig.cmake")
 
 set(CPACK_COMPONENTS_HALIDE_RUNTIME Halide_Runtime)
 set(CPACK_COMPONENTS_HALIDE_DEVELOPMENT Halide_Development)
+set(CPACK_COMPONENTS_HALIDE_DOCUMENTATION Halide_Documentation)
+
+set(CPACK_COMPONENTS_ALL Halide_Runtime Halide_Development Halide_Documentation)
 
 set(CPACK_PACKAGE_CONTACT "alex_reinking@berkeley.edu")
 set(CPACK_DEB_COMPONENT_INSTALL YES)
