@@ -23,7 +23,7 @@ set(copyright_content [[
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: @CPACK_PACKAGE_NAME@
 Upstream-Contact: @CPACK_PACKAGE_CONTACT@
-Source: @CPACK_DEBIAN_PACKAGE_HOMEPAGE@
+Source: @CPACK_PACKAGE_HOMEPAGE_URL@
 
 Files: *
 Copyright: @COPYRIGHT_LINE@
