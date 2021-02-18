@@ -24,6 +24,16 @@ $real_file "\$*" | awk '/ELF.*interpreter/ { sub("shared object","",\$0); print 
 EOM
 chmod +x "$halide_build_root/_shims/file"
 
+# Write script to copy over LICENSE.txt as "copyright" in the /usr/share/doc/<pkg>/ directory.
+cat <<'EOM' >"$halide_build_root/install_copyright.cmake"
+foreach(comp IN LISTS CPACK_COMPONENTS_ALL)
+  string(TOUPPER "CPACK_DEBIAN_${comp}_PACKAGE_NAME" package_name_var)
+  string(TOLOWER "${${package_name_var}}" package_name)
+  set(copyright_dir "${CPACK_TEMPORARY_DIRECTORY}/${comp}/usr/share/doc/${package_name}")
+  configure_file("${CPACK_RESOURCE_FILE_LICENSE}" "${copyright_dir}/copyright" COPYONLY)
+endforeach()
+EOM
+
 # Write Ubuntu-specific config and merge the shared/static build directories.
 cat <<'EOM' >ubuntu.cmake
 include("shared-Release/CPackConfig.cmake")
@@ -32,6 +42,7 @@ include("shared-Release/CPackConfig.cmake")
 
 set(CPACK_PACKAGE_CONTACT "Alex Reinking <alex_reinking@berkeley.edu>")
 set(CPACK_STRIP_FILES TRUE)
+set(CPACK_PRE_BUILD_SCRIPTS "${CMAKE_CURRENT_LIST_DIR}/install_copyright.cmake")
 
 ## Components configuration
 
