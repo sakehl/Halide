@@ -15,8 +15,8 @@ cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
 
-# Write script to place MIT license in the /usr/share/doc/<pkg>/ directory.
-cat <<'EOM' >"$halide_build_root/install_copyright.cmake"
+# Write script to place MIT license in /usr/share/doc/<pkg>/copyright.
+cat <<'EOM' >"install_copyright.cmake"
 cmake_minimum_required(VERSION 3.19)
 
 set(copyright_content [[
@@ -50,12 +50,24 @@ License: MIT
 
 file(STRINGS "${CPACK_RESOURCE_FILE_LICENSE}" COPYRIGHT_LINE LIMIT_COUNT 1)
 
+find_program(GZIP gzip)
+if (NOT GZIP)
+    message(FATAL_ERROR "Could not find gzip")
+endif ()
+
 foreach (comp IN LISTS CPACK_COMPONENTS_ALL)
     string(TOUPPER "CPACK_DEBIAN_${comp}_PACKAGE_NAME" package_name_var)
     string(TOLOWER "${${package_name_var}}" package_name)
+
+    # Write copyright information to the package.
     file(CONFIGURE OUTPUT "${CPACK_TEMPORARY_DIRECTORY}/${comp}/usr/share/doc/${package_name}/copyright"
          CONTENT "${copyright_content}"
          @ONLY NEWLINE_STYLE UNIX)
+
+    # Create an empty changelog to appease lintian.
+    set(changelog "${CPACK_TEMPORARY_DIRECTORY}/${comp}/usr/share/doc/${package_name}/changelog")
+    file(TOUCH "${changelog}")
+    execute_process(COMMAND "${GZIP}" -n9 "${changelog}" COMMAND_ERROR_IS_FATAL ANY)
 endforeach ()
 EOM
 
@@ -158,8 +170,7 @@ unset(CPACK_DEBIAN_DEBUGINFO_PACKAGE)
 set(CPACK_DEBIAN_PACKAGE_DEBUG NO)
 EOM
 
-rm -f ./*.deb
-rm -rf ./_CPack_Packages
+rm -rf ./_CPack_Packages ./*.deb
 
 # ensure correct umask is set for creating packages
 umask 0022
@@ -170,4 +181,4 @@ echo "Running STRICT lintian checks..."
 lintian -F ./*.deb
 
 echo "Running ALL lintian checks..."
-lintian ./*.deb
+lintian --no-tag-display-limit ./*.deb
