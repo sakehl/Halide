@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-halide_source="$1"
-halide_build_root="$2"
+halide_source=$(readlink -f "$1")
+halide_build_root=$(readlink -f "$2")
 
 [ -z "$halide_source" ] && echo "Usage: $0 <source-dir> <build-dir>" && exit
 [ -z "$halide_build_root" ] && echo "Usage: $0 <source-dir> <build-dir>" && exit
@@ -14,6 +14,17 @@ cmake --build "$halide_build_root/shared-Release"
 cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
+
+# This is a horrible, ugly, hack to patch around CPack breaking on PIE executables.
+real_file=$(which file)
+mkdir -p "$halide_build_root/_shims"
+cat <<EOM >"$halide_build_root/_shims/file"
+#!/bin/bash
+$real_file "\$*" | awk '/ELF.*interpreter/ { sub("shared object","",\$0); print } { print }'
+EOM
+chmod +x "$halide_build_root/_shims/file"
+
+# Write Ubuntu-specific config and merge the shared/static build directories.
 cat <<'EOM' >ubuntu.cmake
 include("shared-Release/CPackConfig.cmake")
 
@@ -97,7 +108,7 @@ unset(CPACK_DEBIAN_PACKAGE_REPLACES)
 unset(CPACK_DEBIAN_PACKAGE_RECOMMENDS)
 unset(CPACK_DEBIAN_PACKAGE_SUGGESTS)
 
-set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS OFF)
+set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS YES)
 set(CPACK_DEBIAN_PACKAGE_GENERATE_SHLIBS_POLICY "=")
 
 unset(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA)
@@ -106,6 +117,8 @@ unset(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION)
 unset(CPACK_DEBIAN_PACKAGE_SOURCE)
 
 unset(CPACK_DEBIAN_DEBUGINFO_PACKAGE)
+
+unset(CPACK_DEBIAN_PACKAGE_DEBUG)
 EOM
 
 rm -f ./*.deb
@@ -114,5 +127,13 @@ rm -rf ./_CPack_Packages
 # ensure correct umask is set for creating packages
 umask 0022
 
-cpack -G DEB --config ubuntu.cmake
+(
+  export PATH="$halide_build_root/_shims:$PATH"
+  cpack -G DEB --config ubuntu.cmake
+)
+
+echo "Running STRICT lintian checks..."
+lintian -F ./*.deb
+
+echo "Running ALL lintian checks..."
 lintian ./*.deb
