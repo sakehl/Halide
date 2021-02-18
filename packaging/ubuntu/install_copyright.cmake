@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
 file(STRINGS "${CPACK_RESOURCE_FILE_LICENSE}" COPYRIGHT_LINE LIMIT_COUNT 1)
+string(TIMESTAMP timestamp "%a, %d %b %Y %H:%M:%S" UTC)
 
 find_program(GZIP gzip)
 if (NOT GZIP)
