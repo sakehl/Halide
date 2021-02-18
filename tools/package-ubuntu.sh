@@ -37,6 +37,8 @@ foreach(comp IN LISTS CPACK_COMPONENTS_ALL)
   string(TOLOWER "${${package_name_var}}" package_name)
   set(copyright_dir "${CPACK_TEMPORARY_DIRECTORY}/${comp}/usr/share/doc/${package_name}")
   configure_file("${CPACK_RESOURCE_FILE_LICENSE}" "${copyright_dir}/copyright" COPYONLY)
+  file(CHMOD "${copyright_dir}/copyright"
+       PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
 endforeach()
 EOM
 
@@ -137,7 +139,7 @@ unset(CPACK_DEBIAN_PACKAGE_SOURCE)
 
 unset(CPACK_DEBIAN_DEBUGINFO_PACKAGE)
 
-set(CPACK_DEBIAN_PACKAGE_DEBUG YES)
+set(CPACK_DEBIAN_PACKAGE_DEBUG NO)
 EOM
 
 rm -f ./*.deb
