@@ -19,13 +19,19 @@ cd "$halide_build_root"
 real_file=$(which file)
 mkdir -p "$halide_build_root/_shims"
 cat <<EOM >"$halide_build_root/_shims/file"
-#!/bin/bash
-$real_file "\$*" | awk '/ELF.*interpreter/ { sub("shared object","",\$0); print } { print }'
+#!/bin/bash -e
+$real_file "\$*" | awk -f <(cat - <<'AWK'
+  /ELF.*interpreter/ { sub("shared object","",\$0) }
+  { print }
+AWK
+)
 EOM
 chmod +x "$halide_build_root/_shims/file"
 
 # Write script to copy over LICENSE.txt as "copyright" in the /usr/share/doc/<pkg>/ directory.
 cat <<'EOM' >"$halide_build_root/install_copyright.cmake"
+cmake_minimum_required(VERSION 3.19)
+
 foreach(comp IN LISTS CPACK_COMPONENTS_ALL)
   string(TOUPPER "CPACK_DEBIAN_${comp}_PACKAGE_NAME" package_name_var)
   string(TOLOWER "${${package_name_var}}" package_name)
@@ -36,6 +42,8 @@ EOM
 
 # Write Ubuntu-specific config and merge the shared/static build directories.
 cat <<'EOM' >ubuntu.cmake
+cmake_minimum_required(VERSION 3.19)
+
 include("shared-Release/CPackConfig.cmake")
 
 ## General setup
@@ -83,8 +91,8 @@ unset(CPACK_DEBIAN_PACKAGE_RELEASE)
 unset(CPACK_DEBIAN_PACKAGE_ARCHITECTURE)  # TODO: support packaging 32-bit builds
 set(CPACK_DEBIAN_HALIDE_DOCUMENTATION_PACKAGE_ARCHITECTURE all)
 
-set(CPACK_DEBIAN_HALIDE_RUNTIME_PACKAGE_DEPENDS "llvm-11")
-set(CPACK_DEBIAN_HALIDE_DEVELOPMENT_PACKAGE_DEPENDS "llvm-11-dev, liblld-11-dev")
+set(CPACK_DEBIAN_HALIDE_RUNTIME_PACKAGE_DEPENDS "llvm-11 (= 11.0.0)")
+set(CPACK_DEBIAN_HALIDE_DEVELOPMENT_PACKAGE_DEPENDS "llvm-11-dev (= 11.0.0), liblld-11-dev (= 11.0.0)")
 set(CPACK_DEBIAN_HALIDE_DOCUMENTATION_PACKAGE_DEPENDS "")
 
 set(CPACK_DEBIAN_ENABLE_COMPONENT_DEPENDS ON)
@@ -108,7 +116,7 @@ set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "${CMAKE_PROJECT_HOMEPAGE_URL}")
 
-set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 
 unset(CPACK_DEBIAN_PACKAGE_PREDEPENDS)
 unset(CPACK_DEBIAN_PACKAGE_ENHANCES)
@@ -129,7 +137,7 @@ unset(CPACK_DEBIAN_PACKAGE_SOURCE)
 
 unset(CPACK_DEBIAN_DEBUGINFO_PACKAGE)
 
-unset(CPACK_DEBIAN_PACKAGE_DEBUG)
+set(CPACK_DEBIAN_PACKAGE_DEBUG YES)
 EOM
 
 rm -f ./*.deb
