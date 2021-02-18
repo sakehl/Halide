@@ -15,19 +15,6 @@ cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
 
-# This is a horrible, ugly, hack to patch around CPack breaking on PIE executables.
-real_file=$(which file)
-mkdir -p "$halide_build_root/_shims"
-cat <<EOM >"$halide_build_root/_shims/file"
-#!/bin/bash -e
-$real_file "\$*" | awk -f <(cat - <<'AWK'
-  /ELF.*interpreter/ { sub("shared object","",\$0) }
-  { print }
-AWK
-)
-EOM
-chmod +x "$halide_build_root/_shims/file"
-
 # Write script to copy over LICENSE.txt as "copyright" in the /usr/share/doc/<pkg>/ directory.
 cat <<'EOM' >"$halide_build_root/install_copyright.cmake"
 cmake_minimum_required(VERSION 3.19)
@@ -36,9 +23,7 @@ foreach(comp IN LISTS CPACK_COMPONENTS_ALL)
   string(TOUPPER "CPACK_DEBIAN_${comp}_PACKAGE_NAME" package_name_var)
   string(TOLOWER "${${package_name_var}}" package_name)
   set(copyright_dir "${CPACK_TEMPORARY_DIRECTORY}/${comp}/usr/share/doc/${package_name}")
-  configure_file("${CPACK_RESOURCE_FILE_LICENSE}" "${copyright_dir}/copyright" COPYONLY)
-  file(CHMOD "${copyright_dir}/copyright"
-       PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
+  configure_file("${CPACK_RESOURCE_FILE_LICENSE}" "${copyright_dir}/copyright" @ONLY NO_SOURCE_PERMISSIONS)
 endforeach()
 EOM
 
@@ -148,10 +133,7 @@ rm -rf ./_CPack_Packages
 # ensure correct umask is set for creating packages
 umask 0022
 
-(
-  export PATH="$halide_build_root/_shims:$PATH"
-  cpack -G DEB --config ubuntu.cmake
-)
+cpack -G DEB -C Release --config ubuntu.cmake
 
 echo "Running STRICT lintian checks..."
 lintian -F ./*.deb
