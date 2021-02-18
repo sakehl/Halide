@@ -15,16 +15,48 @@ cmake --build "$halide_build_root/static-Release"
 
 cd "$halide_build_root"
 
-# Write script to copy over LICENSE.txt as "copyright" in the /usr/share/doc/<pkg>/ directory.
+# Write script to place MIT license in the /usr/share/doc/<pkg>/ directory.
 cat <<'EOM' >"$halide_build_root/install_copyright.cmake"
 cmake_minimum_required(VERSION 3.19)
 
-foreach(comp IN LISTS CPACK_COMPONENTS_ALL)
-  string(TOUPPER "CPACK_DEBIAN_${comp}_PACKAGE_NAME" package_name_var)
-  string(TOLOWER "${${package_name_var}}" package_name)
-  set(copyright_dir "${CPACK_TEMPORARY_DIRECTORY}/${comp}/usr/share/doc/${package_name}")
-  configure_file("${CPACK_RESOURCE_FILE_LICENSE}" "${copyright_dir}/copyright" @ONLY NO_SOURCE_PERMISSIONS)
-endforeach()
+set(copyright_content [[
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: @CPACK_PACKAGE_NAME@
+Upstream-Contact: @CPACK_PACKAGE_CONTACT@
+Source: @CPACK_DEBIAN_PACKAGE_HOMEPAGE@
+
+Files: *
+Copyright: @COPYRIGHT_LINE@
+License: MIT
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject
+  to the following conditions:
+  .
+  The above copyright notice and this permission notice shall be included
+  in all copies or substantial portions of the Software.
+  .
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+  CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+]])
+
+file(STRINGS "${CPACK_RESOURCE_FILE_LICENSE}" COPYRIGHT_LINE LIMIT_COUNT 1)
+
+foreach (comp IN LISTS CPACK_COMPONENTS_ALL)
+    string(TOUPPER "CPACK_DEBIAN_${comp}_PACKAGE_NAME" package_name_var)
+    string(TOLOWER "${${package_name_var}}" package_name)
+    file(CONFIGURE OUTPUT "${CPACK_TEMPORARY_DIRECTORY}/${comp}/usr/share/doc/${package_name}/copyright"
+         CONTENT "${copyright_content}"
+         @ONLY NEWLINE_STYLE UNIX)
+endforeach ()
 EOM
 
 # Write Ubuntu-specific config and merge the shared/static build directories.
@@ -52,8 +84,7 @@ set(CPACK_COMPONENTS_ALL Halide_Runtime Halide_Development Halide_Documentation)
 
 set(CPACK_INSTALL_CMAKE_PROJECTS
     static-Release Halide ALL /
-    shared-Release Halide ALL /
-)
+    shared-Release Halide ALL /)
 
 ## Ubuntu-specific configuration
 # We set every variable documented here: https://cmake.org/cmake/help/latest/cpack_gen/deb.html
