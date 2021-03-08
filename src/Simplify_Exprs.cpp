@@ -33,6 +33,10 @@ Expr Simplify::visit(const StringImm *op, ExprInfo *bounds) {
     return op;
 }
 
+Expr Simplify::visit(const ReadPerm *op, ExprInfo *bounds) {
+    return op;
+}
+
 Expr Simplify::visit(const Broadcast *op, ExprInfo *bounds) {
     Expr value = mutate(op->value, bounds);
 

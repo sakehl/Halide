@@ -232,5 +232,9 @@ Expr Simplify::visit(const Div *op, ExprInfo *bounds) {
     }
 }
 
+Expr Simplify::visit(const Frac *op, ExprInfo *bounds) {
+    return op;
+}
+
 }  // namespace Internal
 }  // namespace Halide

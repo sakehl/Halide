@@ -2664,6 +2664,55 @@ Func::operator Stage() const {
     return Stage(func, func.definition(), 0);
 }
 
+Func &Func::require(const Expr &condition) {
+    invalidate_cache();
+    func.add_annotation(AnnotationType::Require,condition);
+    return *this;
+}
+
+Func &Func::ensure(const Expr &condition) {
+    invalidate_cache();
+    func.add_annotation(AnnotationType::Ensure,condition);
+    return *this;
+}
+
+Func &Func::context(const Expr &condition) {
+    invalidate_cache();
+    func.add_annotation(AnnotationType::Context,condition);
+    return *this;
+}
+
+Func &Func::context_everywhere(const Expr &condition) {
+    invalidate_cache();
+    func.add_annotation(AnnotationType::ContextEverywhere,condition);
+    return *this;
+}
+
+Func &Func::require_perm(const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::Require,variable, perm);
+    return *this;
+}
+
+Func &Func::ensure_perm(const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::Ensure,variable, perm);
+    return *this;
+}
+
+Func &Func::context_perm(const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::Context,variable, perm);
+    return *this;
+}
+
+Func &Func::context_everywhere_perm(const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::ContextEverywhere,variable, perm);
+    return *this;
+}
+
+
 namespace {
 class CountImplicitVars : public Internal::IRGraphVisitor {
 public:

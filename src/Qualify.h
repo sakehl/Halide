@@ -14,6 +14,7 @@ namespace Internal {
 
 /** Prefix all variable names in the given expression with the prefix string. */
 Expr qualify(const std::string &prefix, const Expr &value);
+std::vector<Annotation> qualify(const std::string &prefix, const std::vector<Annotation> &anns);
 
 }  // namespace Internal
 }  // namespace Halide

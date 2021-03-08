@@ -210,7 +210,7 @@ private:
 
         Stmt stmt;
         if (!body.same_as(op->body)) {
-            stmt = For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body);
+            stmt = For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body, op->annotations);
         } else {
             stmt = op;
         }

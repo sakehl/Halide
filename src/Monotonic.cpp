@@ -52,6 +52,10 @@ class MonotonicVisitor : public IRVisitor {
         result = Monotonic::Constant;
     }
 
+    void visit(const ReadPerm *) override {
+        result = Monotonic::Constant;
+    }
+
     void visit(const Cast *op) override {
         op->value.accept(this);
 
@@ -165,6 +169,10 @@ class MonotonicVisitor : public IRVisitor {
         } else {
             result = Monotonic::Unknown;
         }
+    }
+
+    void visit(const Frac *op) override {
+        internal_error << "Monotonic of a fraction\n";
     }
 
     void visit(const Mod *op) override {
@@ -453,6 +461,14 @@ class MonotonicVisitor : public IRVisitor {
 
     void visit(const Atomic *op) override {
         internal_error << "Monotonic of statement\n";
+    }
+
+    void visit(const AnnExpr *op) override {
+        internal_error << "Monotonic of annotation\n";
+    }
+
+    void visit(const Permission *op) override {
+        internal_error << "Monotonic of annotation\n";
     }
 
 public:

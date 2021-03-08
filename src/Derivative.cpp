@@ -54,12 +54,14 @@ protected:
     void visit(const UIntImm *) override;
     void visit(const FloatImm *) override;
     void visit(const StringImm *) override;
+    void visit(const ReadPerm *) override;
     void visit(const Cast *op) override;
     void visit(const Variable *op) override;
     void visit(const Add *op) override;
     void visit(const Sub *op) override;
     void visit(const Mul *op) override;
     void visit(const Div *op) override;
+    void visit(const Frac *op) override;
     void visit(const Mod *op) override;
     void visit(const Min *op) override;
     void visit(const Max *op) override;
@@ -137,6 +139,12 @@ protected:
     }
     void visit(const Atomic *op) override {
         internal_error << "Encounter unexpected statement \"Atomic\" when differentiating.";
+    }
+    void visit(const AnnExpr *op) override {
+        internal_error << "Encounter unexpected annotation \"AnnExpr\" when differentiating.";
+    }
+    void visit(const Permission *op) override {
+        internal_error << "Encounter unexpected annotation \"Permission\" when differentiating.";
     }
 
 private:
@@ -828,6 +836,10 @@ void ReverseAccumulationVisitor::visit(const StringImm *op) {
     // Nothing to propagate to
 }
 
+void ReverseAccumulationVisitor::visit(const ReadPerm *op) {
+    // Nothing to propagate to
+}
+
 void ReverseAccumulationVisitor::visit(const Cast *op) {
     internal_assert(expr_adjoints.find(op) != expr_adjoints.end());
     Expr adjoint = expr_adjoints[op];
@@ -920,6 +932,8 @@ void ReverseAccumulationVisitor::visit(const Div *op) {
     // d/db a / b = - a / b^2
     accumulate(op->b, -adjoint * op->a / (op->b * op->b));
 }
+
+void ReverseAccumulationVisitor::visit(const Frac *op){ }
 
 void ReverseAccumulationVisitor::visit(const Mod *op) {
     internal_assert(expr_adjoints.find(op) != expr_adjoints.end());

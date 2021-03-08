@@ -175,6 +175,8 @@ public:
     /** Get a const reference to this function's update definitions. */
     const std::vector<Definition> &updates() const;
 
+    const std::vector<Annotation> &annotations() const;
+
     /** Does this function have an update definition? */
     bool has_update_definition() const;
 
@@ -292,6 +294,12 @@ public:
 
     /** Return true iff the name matches one of the Function's pure args. */
     bool is_pure_arg(const std::string &name) const;
+
+    /** Add the condition to annotations of the function. */
+    void add_annotation(AnnotationType type, const Expr &condition);
+
+    /** Add the permission to the annotations of the function. */
+    void add_permission(AnnotationType type, const Expr &variable, const Expr &permission);
 };
 
 /** Deep copy an entire Function DAG. */

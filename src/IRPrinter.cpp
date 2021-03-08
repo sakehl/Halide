@@ -274,6 +274,27 @@ ostream &operator<<(ostream &out, const ForType &type) {
     return out;
 }
 
+ostream &operator<<(ostream &out, const AnnotationType &type) {
+    switch (type) {
+    case AnnotationType::Require:
+        out << "requires";
+        break;
+    case AnnotationType::Ensure:
+        out << "ensures";
+        break;
+    case AnnotationType::Context:
+        out << "context";
+        break;
+    case AnnotationType::ContextEverywhere:
+        out << "context_everywhere";
+        break;
+    case AnnotationType::LoopInvariant:
+        out << "loop_invariant";
+        break;
+    }
+    return out;
+}
+
 ostream &operator<<(ostream &out, const VectorReduce::Operator &op) {
     switch (op) {
     case VectorReduce::Add:
@@ -316,6 +337,16 @@ ostream &operator<<(ostream &out, const NameMangling &m) {
 ostream &operator<<(ostream &stream, const Stmt &ir) {
     if (!ir.defined()) {
         stream << "(undefined)\n";
+    } else {
+        Internal::IRPrinter p(stream);
+        p.print(ir);
+    }
+    return stream;
+}
+
+ostream &operator<<(ostream &stream, const Annotation &ir) {
+    if (!ir.defined()) {
+        stream << "(undefined)";
     } else {
         Internal::IRPrinter p(stream);
         p.print(ir);
@@ -393,6 +424,10 @@ void IRPrinter::print(const Stmt &ir) {
     ir.accept(this);
 }
 
+void IRPrinter::print(const Annotation &ir) {
+    ir.accept(this);
+}
+
 void IRPrinter::print_list(const std::vector<Expr> &exprs) {
     for (size_t i = 0; i < exprs.size(); i++) {
         print_no_parens(exprs[i]);
@@ -463,6 +498,10 @@ void IRPrinter::visit(const StringImm *op) {
     stream << "\"";
 }
 
+void IRPrinter::visit(const ReadPerm *op) {
+    stream << "read";
+}
+
 void IRPrinter::visit(const Cast *op) {
     stream << op->type << "(";
     print(op->value);
@@ -522,6 +561,14 @@ void IRPrinter::visit(const Div *op) {
     open();
     print(op->a);
     stream << "/";
+    print(op->b);
+    close();
+}
+
+void IRPrinter::visit(const Frac *op) {
+    open();
+    print(op->a);
+    stream << "\\";
     print(op->b);
     close();
 }
@@ -722,6 +769,10 @@ void IRPrinter::visit(const ProducerConsumer *op) {
 
 void IRPrinter::visit(const For *op) {
     ScopedBinding<> bind(known_type, op->name);
+    for(const Annotation &a : op->annotations){
+        print(a);
+        stream << "\n";
+    }
     stream << get_indent() << op->for_type << op->device_api << " (" << op->name << ", ";
     print_no_parens(op->min);
     stream << ", ";
@@ -799,6 +850,10 @@ void IRPrinter::visit(const Store *op) {
 }
 
 void IRPrinter::visit(const Provide *op) {
+    for(const Annotation &a : op->annotations){
+        print(a);
+        stream << "\n";
+    }
     stream << get_indent() << op->name << "(";
     print_list(op->args);
     stream << ") = ";
@@ -1027,6 +1082,21 @@ void IRPrinter::visit(const Atomic *op) {
     print(op->body);
     indent -= 2;
     stream << get_indent() << "}\n";
+}
+
+void IRPrinter::visit(const AnnExpr *op) {
+    stream << get_indent() << op->ann_type << "(";
+    print_no_parens(op->condition);
+    stream << ")";
+}
+
+
+void IRPrinter::visit(const Permission *op) {
+    stream << get_indent() << op->ann_type << "( Perm(";
+    print_no_parens(op->variable);
+    stream << ", ";
+    print_no_parens(op->permission);
+    stream << ")";
 }
 
 }  // namespace Internal

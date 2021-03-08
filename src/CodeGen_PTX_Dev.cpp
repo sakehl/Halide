@@ -48,7 +48,8 @@ public:
 
     void add_kernel(Stmt stmt,
                     const std::string &name,
-                    const std::vector<DeviceArgument> &args) override;
+                    const std::vector<DeviceArgument> &args,
+                    const std::vector<Annotation> &annotations = {}) override;
 
     static void test();
 
@@ -138,7 +139,8 @@ Type CodeGen_PTX_Dev::upgrade_type_for_storage(const Type &t) const {
 
 void CodeGen_PTX_Dev::add_kernel(Stmt stmt,
                                  const std::string &name,
-                                 const std::vector<DeviceArgument> &args) {
+                                 const std::vector<DeviceArgument> &args,
+                                 const std::vector<Annotation> &annotations) {
     internal_assert(module != nullptr);
 
     debug(2) << "In CodeGen_PTX_Dev::add_kernel\n";

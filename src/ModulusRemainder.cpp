@@ -34,12 +34,14 @@ public:
     void visit(const UIntImm *) override;
     void visit(const FloatImm *) override;
     void visit(const StringImm *) override;
+    void visit(const ReadPerm *) override;
     void visit(const Cast *) override;
     void visit(const Variable *) override;
     void visit(const Add *) override;
     void visit(const Sub *) override;
     void visit(const Mul *) override;
     void visit(const Div *) override;
+    void visit(const Frac *) override;
     void visit(const Mod *) override;
     void visit(const Min *) override;
     void visit(const Max *) override;
@@ -76,6 +78,8 @@ public:
     void visit(const VectorReduce *) override;
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
+    void visit(const AnnExpr *) override;
+    void visit(const Permission *) override;
 };
 
 void ComputeModulusRemainder::visit(const IntImm *op) {
@@ -94,6 +98,10 @@ void ComputeModulusRemainder::visit(const FloatImm *) {
 }
 
 void ComputeModulusRemainder::visit(const StringImm *) {
+    internal_error << "modulus_remainder of string\n";
+}
+
+void ComputeModulusRemainder::visit(const ReadPerm *) {
     internal_error << "modulus_remainder of string\n";
 }
 
@@ -125,6 +133,10 @@ void ComputeModulusRemainder::visit(const Mul *op) {
 
 void ComputeModulusRemainder::visit(const Div *op) {
     result = analyze(op->a) / analyze(op->b);
+}
+
+void ComputeModulusRemainder::visit(const Frac *op) {
+    internal_error << "Modulus remainder of frac\n";
 }
 
 void ComputeModulusRemainder::visit(const Min *op) {
@@ -275,6 +287,14 @@ void ComputeModulusRemainder::visit(const Prefetch *) {
 
 void ComputeModulusRemainder::visit(const Atomic *) {
     internal_error << "modulus_remainder of statement\n";
+}
+
+void ComputeModulusRemainder::visit(const AnnExpr *) {
+    internal_error << "modulus_remainder of annotation\n";
+}
+
+void ComputeModulusRemainder::visit(const Permission *) {
+    internal_error << "modulus_remainder of annotation\n";
 }
 
 }  // namespace

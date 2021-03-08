@@ -324,7 +324,7 @@ private:
             body.same_as(op->body)) {
             return op;
         } else {
-            return For::make(op->name, min, extent, op->for_type, op->device_api, body);
+            return For::make(op->name, min, extent, op->for_type, op->device_api, body, op->annotations);
         }
     }
 
@@ -416,13 +416,13 @@ private:
         }
 
         if (predicate.defined()) {
-            Stmt stmt = IfThenElse::make(predicate, Provide::make(op->name, new_values, new_args));
+            Stmt stmt = IfThenElse::make(predicate, Provide::make(op->name, new_values, new_args, op->annotations));
             predicate = Expr();
             return stmt;
         } else if (!changed) {
             return op;
         } else {
-            return Provide::make(op->name, new_values, new_args);
+            return Provide::make(op->name, new_values, new_args, op->annotations);
         }
     }
 

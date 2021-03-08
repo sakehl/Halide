@@ -175,6 +175,10 @@ public:
         }
     }
 
+    Annotation mutate(const Annotation &a) override {
+        return a;
+    }
+
     map<Expr, string, IRDeepCompare> lifted;
 };
 
@@ -323,7 +327,7 @@ class LICM : public IRMutator {
             internal_assert(loop);
 
             new_stmt = For::make(loop->name, loop->min, loop->extent,
-                                 loop->for_type, loop->device_api, mutate(loop->body));
+                                 loop->for_type, loop->device_api, mutate(loop->body), loop->annotations);
 
             // Wrap lets for the lifted invariants
             for (size_t i = 0; i < exprs.size(); i++) {
@@ -564,12 +568,12 @@ class HoistIfStatements : public IRMutator {
                 is_pure(i->condition) &&
                 !expr_uses_var(i->condition, op->name)) {
                 Stmt s = For::make(op->name, op->min, op->extent,
-                                   op->for_type, op->device_api, i->then_case);
+                                   op->for_type, op->device_api, i->then_case, op->annotations);
                 return IfThenElse::make(i->condition, s);
             }
         }
         return For::make(op->name, op->min, op->extent,
-                         op->for_type, op->device_api, body);
+                         op->for_type, op->device_api, body, op->annotations);
     }
 
     Stmt visit(const ProducerConsumer *op) override {

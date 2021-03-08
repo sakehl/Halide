@@ -33,6 +33,13 @@ class ExprUsesVars : public IRGraphVisitor {
         IRGraphVisitor::include(s);
     }
 
+    void include(const Annotation &a) override {
+        if (result) {
+            return;
+        }
+        IRGraphVisitor::include(a);
+    }
+
     void visit_name(const std::string &name) {
         if (vars.contains(name)) {
             result = true;

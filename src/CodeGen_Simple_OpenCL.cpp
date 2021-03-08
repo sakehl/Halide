@@ -103,7 +103,26 @@ void CodeGen_Simple_OpenCL::visit(const For *loop) {
         user_assert(gpu_codegen != nullptr)
             << "The device API: " << loop->device_api
             << " is not yet initialize\n";
-        gpu_codegen->add_kernel(loop, kernel_name, closure_args);
+        debug(2) << "Precondition are \"" << (loop->annotations.empty() ? "empty" : "FULL") << "\"\n";
+        
+        //Find the annotations of the lowest thread for-loop
+        class ThreadAnnotations : public IRVisitor {
+            using IRVisitor::visit;
+            void visit(const For *op) override {
+                if(ends_with(op->name, ".__thread_id_x")) {
+                       annotations = std::move(op->annotations);
+                       return;
+                }
+                op->body.accept(this);
+            }
+
+        public:
+            vector<Annotation> annotations;
+        } find_annotations;
+
+        loop->accept(&find_annotations);
+
+        gpu_codegen->add_kernel(loop, kernel_name, closure_args, find_annotations.annotations);  
 
         // // get the actual name of the generated kernel for this loop
         kernel_name = gpu_codegen->get_current_kernel_name();

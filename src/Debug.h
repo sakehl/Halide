@@ -27,7 +27,9 @@ std::ostream &operator<<(std::ostream &stream, const Target &);
 namespace Internal {
 
 struct Stmt;
+struct Annotation;
 std::ostream &operator<<(std::ostream &stream, const Stmt &);
+std::ostream &operator<<(std::ostream &stream, const Annotation &);
 
 struct LoweredFunc;
 std::ostream &operator<<(std::ostream &, const LoweredFunc &);

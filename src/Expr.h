@@ -31,6 +31,7 @@ enum class IRNodeType {
     UIntImm,
     FloatImm,
     StringImm,
+    ReadPerm,
     Broadcast,
     Cast,
     Variable,
@@ -39,6 +40,7 @@ enum class IRNodeType {
     Mod,
     Mul,
     Div,
+    Frac,
     Min,
     Max,
     EQ,
@@ -73,7 +75,11 @@ enum class IRNodeType {
     IfThenElse,
     Evaluate,
     Prefetch,
-    Atomic
+    Atomic,
+    //Annotations
+    AnnExpr,
+    // Forall
+    Permission
 };
 
 constexpr IRNodeType StrongestExprNodeType = IRNodeType::VectorReduce;
@@ -121,6 +127,18 @@ inline void destroy<IRNode>(const IRNode *t) {
     delete t;
 }
 
+/** An enum describing a type of annotation. Used for verification purposes.
+ * Require is a precondition. Ensure is a postcondition. Context is both a
+ * preconditon and a postcondition. ContextEverywhere is a Context, that is
+ * added to every contract, for instance function, loop and barrier contracts. */
+enum class AnnotationType {
+    Require,
+    Ensure,
+    Context,
+    ContextEverywhere,
+    LoopInvariant
+};
+
 /** IR nodes are split into expressions and statements. These are
    similar to expressions and statements in C - expressions
    represent some value and have some type (e.g. x + 3), and
@@ -134,6 +152,15 @@ struct BaseStmtNode : public IRNode {
         : IRNode(t) {
     }
     virtual Stmt mutate_stmt(IRMutator *v) const = 0;
+};
+
+/** A base class for annotation nodes. They only have an annotation type. */
+struct BaseAnnNode : public IRNode {
+    BaseAnnNode(IRNodeType t)
+        : IRNode(t) {
+    }
+    virtual Annotation mutate_ann(IRMutator *v) const = 0;
+    AnnotationType ann_type;
 };
 
 /** A base class for expression nodes. They all contain their types
@@ -170,6 +197,16 @@ struct StmtNode : public BaseStmtNode {
         : BaseStmtNode(T::_node_type) {
     }
     ~StmtNode() override = default;
+};
+
+template<typename T>
+struct AnnNode : public BaseAnnNode {
+    void accept(IRVisitor *v) const override;
+    Annotation mutate_ann(IRMutator *v) const override;
+    AnnNode()
+        : BaseAnnNode(T::_node_type) {
+    }
+    ~AnnNode() override = default;
 };
 
 /** IR nodes are passed around opaque handles to them. This is a
@@ -246,6 +283,15 @@ struct StringImm : public ExprNode<StringImm> {
     static const StringImm *make(const std::string &val);
 
     static const IRNodeType _node_type = IRNodeType::StringImm;
+};
+
+/** Read permission */
+struct ReadPerm : public ExprNode<ReadPerm> {
+    std::string value;
+
+    static const ReadPerm *make();
+
+    static const IRNodeType _node_type = IRNodeType::ReadPerm;
 };
 
 }  // namespace Internal
@@ -429,6 +475,36 @@ struct Stmt : public IRHandle {
             return a.ptr < b.ptr;
         }
     };
+};
+
+
+
+/** A reference-counted handle to an annotation node. */
+struct Annotation : public IRHandle {
+    Annotation() = default;
+    Annotation(const BaseAnnNode *n)
+        : IRHandle(n) {
+    }
+
+    /** Override get() to return a BaseAnnNode * instead of an IRNode * */
+    HALIDE_ALWAYS_INLINE
+    const BaseAnnNode *get() const {
+        return (const Internal::BaseAnnNode *)ptr;
+    }
+
+    /** This lets you use a Annotation as a key in a map of the form
+     * map<Annotation, Foo, Annotation::Compare> */
+    struct Compare {
+        bool operator()(const Annotation &a, const Annotation &b) const {
+            return a.ptr < b.ptr;
+        }
+    };
+
+    /** Get the annotation type of this node */
+    HALIDE_ALWAYS_INLINE
+    AnnotationType type() const {
+        return get()->ann_type;
+    }
 };
 
 }  // namespace Internal

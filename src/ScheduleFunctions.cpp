@@ -274,11 +274,14 @@ Stmt build_loop_nest(
         }
     }
 
+    vector<Annotation> curr_ann = qualify(prefix, func.annotations());
+
     // Rewrap the statement in the containing lets and fors.
     for (int i = (int)nest.size() - 1; i >= 0; i--) {
         if (nest[i].type == Container::Let) {
             internal_assert(nest[i].value.defined());
             stmt = LetStmt::make(nest[i].name, nest[i].value, stmt);
+            curr_ann = substitute(nest[i].name, nest[i].value, curr_ann);
         } else if ((nest[i].type == Container::If) || (nest[i].type == Container::IfInner)) {
             internal_assert(nest[i].value.defined());
             stmt = IfThenElse::make(nest[i].value, stmt, Stmt());
@@ -287,7 +290,7 @@ Stmt build_loop_nest(
             const Dim &dim = stage_s.dims()[nest[i].dim_idx];
             Expr min = Variable::make(Int(32), nest[i].name + ".loop_min");
             Expr extent = Variable::make(Int(32), nest[i].name + ".loop_extent");
-            stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt);
+            stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, curr_ann);
         }
     }
 
@@ -365,8 +368,10 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
         debug(3) << "Site " << i << " = " << s << "\n";
     }
 
+    vector<Annotation> q_annotations = qualify(prefix, func.annotations());
+
     // Make the (multi-dimensional multi-valued) store node.
-    Stmt body = Provide::make(func.name(), values, site);
+    Stmt body = Provide::make(func.name(), values, site, q_annotations);
     if (def.schedule().atomic()) {  // Add atomic node.
         bool any_unordered_parallel = false;
         for (const auto &d : def.schedule().dims()) {
@@ -843,7 +848,8 @@ private:
                              for_loop->extent,
                              for_loop->for_type,
                              for_loop->device_api,
-                             body);
+                             body,
+                             for_loop->annotations);
         }
     }
 };
@@ -982,7 +988,7 @@ class ShiftLoopNest : public IRMutator {
             internal_assert(op);
             Expr adjusted = Variable::make(Int(32), op->name) + iter->second;
             Stmt body = substitute(op->name, adjusted, op->body);
-            stmt = For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body);
+            stmt = For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body, op->annotations);
         }
         return stmt;
     }
@@ -1147,7 +1153,8 @@ protected:
                              for_loop->extent,
                              for_loop->for_type,
                              for_loop->device_api,
-                             body);
+                             body,
+                             for_loop->annotations);
         }
     }
 

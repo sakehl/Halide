@@ -328,7 +328,7 @@ class SerializeLoops : public IRMutator {
     Stmt visit(const For *op) override {
         if (op->for_type == ForType::Vectorized) {
             return For::make(op->name, op->min, op->extent,
-                             ForType::Serial, op->device_api, mutate(op->body));
+                             ForType::Serial, op->device_api, mutate(op->body), op->annotations);
         }
 
         return IRMutator::visit(op);
@@ -901,11 +901,20 @@ class VectorSubs : public IRMutator {
 
         Stmt body = op->body;
 
+        bool same = true;
+        vector<Annotation> annotations;
+        for(const Annotation &a : op->annotations){
+            Annotation new_a = mutate(a);
+            same = same && new_a.same_as(a);
+            annotations.emplace_back(std::move(new_a));
+        }
+
         if (min.type().is_vector()) {
             // Rebase the loop to zero and try again
             Expr var = Variable::make(Int(32), op->name);
             Stmt body = substitute(op->name, var + op->min, op->body);
-            Stmt transformed = For::make(op->name, 0, op->extent, for_type, op->device_api, body);
+            vector<Annotation> annotations = substitute(op->name, var + op->min, op->annotations);
+            Stmt transformed = For::make(op->name, 0, op->extent, for_type, op->device_api, body, annotations);
             return mutate(transformed);
         }
 
@@ -961,10 +970,11 @@ class VectorSubs : public IRMutator {
             if (min.same_as(op->min) &&
                 extent.same_as(op->extent) &&
                 body.same_as(op->body) &&
-                for_type == op->for_type) {
+                for_type == op->for_type && 
+                same) {
                 return op;
             } else {
-                return For::make(op->name, min, extent, for_type, op->device_api, body);
+                return For::make(op->name, min, extent, for_type, op->device_api, body, annotations);
             }
         }
     }

@@ -2455,6 +2455,30 @@ public:
     const Internal::StageSchedule &get_schedule() const {
         return Stage(*this).get_schedule();
     }
+
+    /** Add the condition to the pre-conditions of the function. */
+    Func &require(const Expr &condition);
+
+    /** Add the condition to the post-conditions of the function. */
+    Func &ensure(const Expr &condition);
+
+    /** Add the condition to the pre- and post-conditions of the function. */
+    Func &context(const Expr &condition);
+
+    /** Add the condition to the pre and post-conditions everywhere in the program. */
+    Func &context_everywhere(const Expr &condition);
+
+    /** Require a `permission` to a specific variable. */
+    Func &require_perm(const Expr &variable, const Expr &permission);
+
+    /** Ensure a `permission` to a specific variable. */
+    Func &ensure_perm(const Expr &variable, const Expr &permission);
+
+    /** Require and ensure a `permission` to a specific variable. */
+    Func &context_perm(const Expr &variable, const Expr &permission);
+
+    /** Require and ensure a `permission` to a specific variable in the whole program. */
+    Func &context_everywhere_perm(const Expr &variable, const Expr &permission);
 };
 
 namespace Internal {

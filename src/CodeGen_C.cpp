@@ -1907,6 +1907,10 @@ void CodeGen_C::visit(const StringImm *op) {
     id = oss.str();
 }
 
+void CodeGen_C::visit(const ReadPerm *op) {
+    id = "read";
+}
+
 // NaN is the only float/double for which this is true... and
 // surprisingly, there doesn't seem to be a portable isnan function
 // (dsharlet).
@@ -2789,6 +2793,10 @@ void CodeGen_C::visit(const Shuffle *op) {
     }
     print_assignment(op->type, rhs.str());
 }
+
+void CodeGen_C::visit(const AnnExpr *op) { }
+
+void CodeGen_C::visit(const Permission *op) { }
 
 void CodeGen_C::test() {
     LoweredArgument buffer_arg("buf", Argument::OutputBuffer, Int(32), 3, ArgumentEstimates{});

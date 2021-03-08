@@ -308,7 +308,7 @@ class SlidingWindowOnFunctionAndLoop : public IRMutator {
             // Unpack it back into the for
             const LetStmt *l = s.as<LetStmt>();
             internal_assert(l);
-            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, l->body);
+            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, l->body, op->annotations);
         } else if (is_monotonic(min, loop_var) != Monotonic::Constant ||
                    is_monotonic(extent, loop_var) != Monotonic::Constant) {
             debug(3) << "Not entering loop over " << op->name
@@ -366,7 +366,7 @@ class SlidingWindowOnFunction : public IRMutator {
         if (new_body.same_as(op->body)) {
             return op;
         } else {
-            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, new_body);
+            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, new_body, op->annotations);
         }
     }
 

@@ -70,6 +70,15 @@ struct Div : public ExprNode<Div> {
     static const IRNodeType _node_type = IRNodeType::Div;
 };
 
+/** The exact ratio of two expressions, used for permissions */
+struct Frac : public ExprNode<Frac> {
+    Expr a, b;
+
+    static Expr make(Expr a, Expr b);
+
+    static const IRNodeType _node_type = IRNodeType::Frac;
+};
+
 /** The remainder of a / b. Mostly equivalent to '%' in C, except that
  * the result here is always positive. For floats, this is equivalent
  * to calling fmod. */
@@ -337,8 +346,10 @@ struct Provide : public StmtNode<Provide> {
     std::string name;
     std::vector<Expr> values;
     std::vector<Expr> args;
+    std::vector<Annotation> annotations;
 
-    static Stmt make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args);
+    static Stmt make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args,
+        const std::vector<Annotation> &annotations = {});
 
     static const IRNodeType _node_type = IRNodeType::Provide;
 };
@@ -726,8 +737,10 @@ struct For : public StmtNode<For> {
     ForType for_type;
     DeviceAPI device_api;
     Stmt body;
+    std::vector<Annotation> annotations;
 
-    static Stmt make(const std::string &name, Expr min, Expr extent, ForType for_type, DeviceAPI device_api, Stmt body);
+    static Stmt make(const std::string &name, Expr min, Expr extent, ForType for_type, DeviceAPI device_api, Stmt body,
+      std::vector<Annotation> annotations = {});
 
     bool is_unordered_parallel() const {
         return Halide::Internal::is_unordered_parallel(for_type);
@@ -853,6 +866,26 @@ struct Atomic : public StmtNode<Atomic> {
                      Stmt body);
 
     static const IRNodeType _node_type = IRNodeType::Atomic;
+};
+
+struct AnnExpr : public AnnNode<AnnExpr> {
+    Expr condition;
+
+    static Annotation make(AnnotationType ann_type,
+                     Expr condition);
+
+    static const IRNodeType _node_type = IRNodeType::AnnExpr;
+};
+
+struct Permission : public AnnNode<Permission> {
+    Expr variable;
+    Expr permission;
+
+    static Annotation make(AnnotationType ann_type,
+                     Expr variable,
+                     Expr permission);
+
+    static const IRNodeType _node_type = IRNodeType::Permission;
 };
 
 /** Horizontally reduce a vector to a scalar or narrower vector using

@@ -22,23 +22,28 @@ public:
     virtual ~IRVisitor() = default;
 
 protected:
-    // ExprNode<> and StmtNode<> are allowed to call visit (to implement accept())
+    // ExprNode<>, StmtNode<> and AnnNode are allowed to call visit (to implement accept())
     template<typename T>
     friend struct ExprNode;
 
     template<typename T>
     friend struct StmtNode;
 
+    template<typename T>
+    friend struct AnnNode;
+
     virtual void visit(const IntImm *);
     virtual void visit(const UIntImm *);
     virtual void visit(const FloatImm *);
     virtual void visit(const StringImm *);
+    virtual void visit(const ReadPerm *);
     virtual void visit(const Cast *);
     virtual void visit(const Variable *);
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);
     virtual void visit(const Div *);
+    virtual void visit(const Frac *);
     virtual void visit(const Mod *);
     virtual void visit(const Min *);
     virtual void visit(const Max *);
@@ -75,6 +80,8 @@ protected:
     virtual void visit(const Fork *);
     virtual void visit(const Acquire *);
     virtual void visit(const Atomic *);
+    virtual void visit(const AnnExpr *);
+    virtual void visit(const Permission *);
 };
 
 /** A base class for algorithms that walk recursively over the IR
@@ -89,6 +96,7 @@ protected:
     // @{
     virtual void include(const Expr &);
     virtual void include(const Stmt &);
+    virtual void include(const Annotation &);
     // @}
 
 private:
@@ -103,12 +111,14 @@ protected:
     void visit(const UIntImm *) override;
     void visit(const FloatImm *) override;
     void visit(const StringImm *) override;
+    void visit(const ReadPerm *) override;
     void visit(const Cast *) override;
     void visit(const Variable *) override;
     void visit(const Add *) override;
     void visit(const Sub *) override;
     void visit(const Mul *) override;
     void visit(const Div *) override;
+    void visit(const Frac *) override;
     void visit(const Mod *) override;
     void visit(const Min *) override;
     void visit(const Max *) override;
@@ -145,6 +155,8 @@ protected:
     void visit(const Acquire *) override;
     void visit(const Fork *) override;
     void visit(const Atomic *) override;
+    void visit(const AnnExpr *) override;
+    void visit(const Permission *) override;
     // @}
 };
 
@@ -153,7 +165,7 @@ protected:
  * Expr visitors must have the same signature, and all Stmt visitors
  * must have the same signature. Does not have default implementations
  * of the visit methods. */
-template<typename T, typename ExprRet, typename StmtRet>
+template<typename T, typename ExprRet, typename StmtRet, typename AnnRet>
 class VariadicVisitor {
 private:
     template<typename... Args>
@@ -170,6 +182,8 @@ private:
             return ((T *)this)->visit((const FloatImm *)node, std::forward<Args>(args)...);
         case IRNodeType::StringImm:
             return ((T *)this)->visit((const StringImm *)node, std::forward<Args>(args)...);
+        case IRNodeType::ReadPerm:
+            return ((T *)this)->visit((const ReadPerm *)node, std::forward<Args>(args)...);
         case IRNodeType::Broadcast:
             return ((T *)this)->visit((const Broadcast *)node, std::forward<Args>(args)...);
         case IRNodeType::Cast:
@@ -186,6 +200,8 @@ private:
             return ((T *)this)->visit((const Mul *)node, std::forward<Args>(args)...);
         case IRNodeType::Div:
             return ((T *)this)->visit((const Div *)node, std::forward<Args>(args)...);
+        case IRNodeType::Frac:
+            return ((T *)this)->visit((const Frac *)node, std::forward<Args>(args)...);
         case IRNodeType::Min:
             return ((T *)this)->visit((const Min *)node, std::forward<Args>(args)...);
         case IRNodeType::Max:
@@ -241,6 +257,8 @@ private:
         case IRNodeType::Evaluate:
         case IRNodeType::Prefetch:
         case IRNodeType::Atomic:
+        case IRNodeType::AnnExpr:
+        case IRNodeType::Permission:
             internal_error << "Unreachable";
         }
         return ExprRet{};
@@ -256,6 +274,7 @@ private:
         case IRNodeType::UIntImm:
         case IRNodeType::FloatImm:
         case IRNodeType::StringImm:
+        case IRNodeType::ReadPerm:
         case IRNodeType::Broadcast:
         case IRNodeType::Cast:
         case IRNodeType::Variable:
@@ -264,6 +283,7 @@ private:
         case IRNodeType::Mod:
         case IRNodeType::Mul:
         case IRNodeType::Div:
+        case IRNodeType::Frac:
         case IRNodeType::Min:
         case IRNodeType::Max:
         case IRNodeType::EQ:
@@ -282,6 +302,8 @@ private:
         case IRNodeType::Let:
         case IRNodeType::Shuffle:
         case IRNodeType::VectorReduce:
+        case IRNodeType::AnnExpr:
+        case IRNodeType::Permission:
             internal_error << "Unreachable";
             break;
         case IRNodeType::LetStmt:
@@ -320,6 +342,72 @@ private:
         return StmtRet{};
     }
 
+    template<typename... Args>
+    AnnRet dispatch_ann(const BaseAnnNode *node, Args &&...args) {
+        if (node == nullptr) {
+            return AnnRet{};
+        };
+        switch (node->node_type) {
+        //Expressions
+        case IRNodeType::IntImm:
+        case IRNodeType::UIntImm:
+        case IRNodeType::FloatImm:
+        case IRNodeType::StringImm:
+        case IRNodeType::ReadPerm:
+        case IRNodeType::Broadcast:
+        case IRNodeType::Cast:
+        case IRNodeType::Variable:
+        case IRNodeType::Add:
+        case IRNodeType::Sub:
+        case IRNodeType::Mod:
+        case IRNodeType::Mul:
+        case IRNodeType::Div:
+        case IRNodeType::Frac:
+        case IRNodeType::Min:
+        case IRNodeType::Max:
+        case IRNodeType::EQ:
+        case IRNodeType::NE:
+        case IRNodeType::LT:
+        case IRNodeType::LE:
+        case IRNodeType::GT:
+        case IRNodeType::GE:
+        case IRNodeType::And:
+        case IRNodeType::Or:
+        case IRNodeType::Not:
+        case IRNodeType::Select:
+        case IRNodeType::Load:
+        case IRNodeType::Ramp:
+        case IRNodeType::Call:
+        case IRNodeType::Let:
+        case IRNodeType::Shuffle:
+        case IRNodeType::VectorReduce:
+        //Statements
+        case IRNodeType::LetStmt:
+        case IRNodeType::AssertStmt:
+        case IRNodeType::ProducerConsumer:
+        case IRNodeType::For:
+        case IRNodeType::Acquire:
+        case IRNodeType::Store:
+        case IRNodeType::Provide:
+        case IRNodeType::Allocate:
+        case IRNodeType::Free:
+        case IRNodeType::Realize:
+        case IRNodeType::Block:
+        case IRNodeType::Fork:
+        case IRNodeType::IfThenElse:
+        case IRNodeType::Evaluate:
+        case IRNodeType::Prefetch:
+        case IRNodeType::Atomic:
+            internal_error << "Unreachable";
+            break;
+        case IRNodeType::AnnExpr:
+            return ((T *)this)->visit((const AnnExpr *)node, std::forward<Args>(args)...);
+        case IRNodeType::Permission:
+            return ((T *)this)->visit((const Permission *)node, std::forward<Args>(args)...);
+        }
+        return AnnRet{};
+    }
+
 public:
     template<typename... Args>
     HALIDE_ALWAYS_INLINE StmtRet dispatch(const Stmt &s, Args &&...args) {
@@ -339,6 +427,16 @@ public:
     template<typename... Args>
     HALIDE_ALWAYS_INLINE ExprRet dispatch(Expr &&e, Args &&...args) {
         return dispatch_expr(e.get(), std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    HALIDE_ALWAYS_INLINE AnnRet dispatch(const Annotation &a, Args &&...args) {
+        return dispatch_ann(a.get(), std::forward<Args>(args)...);
+    }
+
+    template<typename... Args>
+    HALIDE_ALWAYS_INLINE AnnRet dispatch(Annotation &&a, Args &&...args) {
+        return dispatch_ann(a.get(), std::forward<Args>(args)...);
     }
 };
 

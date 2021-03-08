@@ -337,7 +337,7 @@ class SimplifyUsingBounds : public IRMutator {
         containing_loops.push_back({op->name, {min, min + extent - 1}});
         Stmt body = mutate(op->body);
         containing_loops.pop_back();
-        return For::make(op->name, min, extent, op->for_type, op->device_api, body);
+        return For::make(op->name, min, extent, op->for_type, op->device_api, body, op->annotations);
     }
 
 public:
@@ -374,7 +374,7 @@ class TrimNoOps : public IRMutator {
             return Evaluate::make(0);
         } else if (is_const_zero(is_no_op.condition)) {
             // This loop is definitely needed
-            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body);
+            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body, op->annotations);
         }
 
         // The condition is something interesting. Try to see if we
@@ -386,7 +386,7 @@ class TrimNoOps : public IRMutator {
 
         if (i.is_everything()) {
             // Nope.
-            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body);
+            return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body, op->annotations);
         }
 
         if (i.is_empty()) {
@@ -427,7 +427,7 @@ class TrimNoOps : public IRMutator {
 
         Expr new_extent = new_max_var - new_min_var;
 
-        Stmt stmt = For::make(op->name, new_min_var, new_extent, op->for_type, op->device_api, body);
+        Stmt stmt = For::make(op->name, new_min_var, new_extent, op->for_type, op->device_api, body, op->annotations);
         stmt = LetStmt::make(new_max_name, new_max, stmt);
         stmt = LetStmt::make(new_min_name, new_min, stmt);
         stmt = LetStmt::make(old_max_name, old_max, stmt);

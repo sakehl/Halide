@@ -1443,6 +1443,10 @@ void CodeGen_LLVM::visit(const StringImm *op) {
     value = create_string_constant(op->value);
 }
 
+void CodeGen_LLVM::visit(const ReadPerm *op) {
+    internal_error << "Permission are not present for the LLVM backend";
+}
+
 void CodeGen_LLVM::visit(const Cast *op) {
     Halide::Type src = op->value.type();
     Halide::Type dst = op->type;
@@ -4641,6 +4645,10 @@ void CodeGen_LLVM::visit(const Atomic *op) {
         codegen(op->body);
     }
 }
+
+void CodeGen_LLVM::visit(const AnnExpr *op) { }
+
+void CodeGen_LLVM::visit(const Permission *op) { }
 
 Value *CodeGen_LLVM::create_alloca_at_entry(llvm::Type *t, int n, bool zero_initialize, const string &name) {
     IRBuilderBase::InsertPoint here = builder->saveIP();

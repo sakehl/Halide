@@ -33,6 +33,10 @@ bool should_extract(const Expr &e, bool lift_all) {
         return false;
     }
 
+    if (e.as<Frac>()) {
+        return false;
+    }
+
     if (lift_all) {
         return true;
     }
@@ -92,6 +96,11 @@ public:
 
     GVN()
         : number(0), cache(8) {
+    }
+
+    Annotation mutate(const Annotation &a) override {
+        internal_error << "Can't call GVN on an Annotation: " << a << "\n";
+        return Annotation();
     }
 
     Stmt mutate(const Stmt &s) override {

@@ -13,6 +13,10 @@ Stmt IRMutator::mutate(const Stmt &s) {
     return s.defined() ? s.get()->mutate_stmt(this) : Stmt();
 }
 
+Annotation IRMutator::mutate(const Annotation &a) {
+    return a.defined() ? a.get()->mutate_ann(this) : Annotation();
+}
+
 Expr IRMutator::visit(const IntImm *op) {
     return op;
 }
@@ -23,6 +27,9 @@ Expr IRMutator::visit(const FloatImm *op) {
     return op;
 }
 Expr IRMutator::visit(const StringImm *op) {
+    return op;
+}
+Expr IRMutator::visit(const ReadPerm *op) {
     return op;
 }
 Expr IRMutator::visit(const Variable *op) {
@@ -60,6 +67,9 @@ Expr IRMutator::visit(const Mul *op) {
     return mutate_binary_operator(this, op);
 }
 Expr IRMutator::visit(const Div *op) {
+    return mutate_binary_operator(this, op);
+}
+Expr IRMutator::visit(const Frac *op) {
     return mutate_binary_operator(this, op);
 }
 Expr IRMutator::visit(const Mod *op) {
@@ -208,13 +218,20 @@ Stmt IRMutator::visit(const For *op) {
     Expr min = mutate(op->min);
     Expr extent = mutate(op->extent);
     Stmt body = mutate(op->body);
+    bool same = true;
+    vector<Annotation> annotations;
+    for(const Annotation &a : op->annotations){
+        Annotation new_a = mutate(a);
+        same = same && new_a.same_as(a);
+        annotations.emplace_back(std::move(new_a));
+    }
     if (min.same_as(op->min) &&
         extent.same_as(op->extent) &&
-        body.same_as(op->body)) {
+        body.same_as(op->body) && same) {
         return op;
     }
     return For::make(op->name, std::move(min), std::move(extent),
-                     op->for_type, op->device_api, std::move(body));
+                     op->for_type, op->device_api, std::move(body), std::move(annotations));
 }
 
 Stmt IRMutator::visit(const Store *op) {
@@ -230,6 +247,7 @@ Stmt IRMutator::visit(const Store *op) {
 Stmt IRMutator::visit(const Provide *op) {
     vector<Expr> new_args(op->args.size());
     vector<Expr> new_values(op->values.size());
+    vector<Annotation> new_annotations;
     bool changed = false;
 
     // Mutate the args
@@ -251,10 +269,20 @@ Stmt IRMutator::visit(const Provide *op) {
         new_values[i] = new_value;
     }
 
+    for (const Annotation &old_ann: op->annotations) {
+        Annotation new_ann = mutate(old_ann);
+        if (!new_ann.same_as(old_ann)) {
+            changed = true;
+        }
+        new_annotations.push_back(new_ann);
+    }
+
+    
+
     if (!changed) {
         return op;
     }
-    return Provide::make(op->name, new_values, new_args);
+    return Provide::make(op->name, new_values, new_args, new_annotations);
 }
 
 Stmt IRMutator::visit(const Allocate *op) {
@@ -414,6 +442,29 @@ Stmt IRMutator::visit(const Atomic *op) {
     }
 }
 
+Annotation IRMutator::visit(const AnnExpr *op) {
+    Expr condition = mutate(op->condition);
+    if (condition.same_as(op->condition) ) {
+        return op;
+    } else {
+        return AnnExpr::make(op->ann_type,
+                            std::move(condition));
+    }
+}
+
+Annotation IRMutator::visit(const Permission *op) {
+    Expr variable = mutate(op->variable);
+    Expr permission = mutate(op->permission);
+    if (variable.same_as(op->variable) &&
+        permission.same_as(op->permission)) {
+        return op;
+    } else {
+        return Permission::make(op->ann_type,
+                            std::move(variable),
+                            std::move(permission));
+    }
+}
+
 Stmt IRGraphMutator::mutate(const Stmt &s) {
     auto p = stmt_replacements.emplace(s, Stmt());
     if (p.second) {
@@ -428,6 +479,14 @@ Expr IRGraphMutator::mutate(const Expr &e) {
     auto p = expr_replacements.emplace(e, Expr());
     if (p.second) {
         p.first->second = IRMutator::mutate(e);
+    }
+    return p.first->second;
+}
+
+Annotation IRGraphMutator::mutate(const Annotation &a) {
+    auto p = ann_replacements.emplace(a, Annotation());
+    if (p.second) {
+        p.first->second = IRMutator::mutate(a);
     }
     return p.first->second;
 }

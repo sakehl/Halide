@@ -122,6 +122,13 @@ class CanonicalizeGPUVars : public IRMutator {
         Expr min = mutate(op->min);
         Expr extent = mutate(op->extent);
         Stmt body = mutate(op->body);
+        bool same = true;
+        vector<Annotation> annotations;
+        for(const Annotation &a : op->annotations){
+            Annotation new_a = mutate(a);
+            same = same && new_a.same_as(a);
+            annotations.emplace_back(std::move(new_a));
+        }
 
         if ((op->for_type == ForType::GPUBlock) ||
             (op->for_type == ForType::GPUThread) ||
@@ -155,16 +162,18 @@ class CanonicalizeGPUVars : public IRMutator {
                 min = substitute(op->name, new_var, min);
                 extent = substitute(op->name, new_var, extent);
                 body = substitute(op->name, new_var, body);
+                annotations = substitute(op->name, new_var, annotations);
             }
         }
 
         if ((name == op->name) &&
             min.same_as(op->min) &&
             extent.same_as(op->extent) &&
-            body.same_as(op->body)) {
+            body.same_as(op->body) &&
+            same) {
             return op;
         } else {
-            return For::make(name, min, extent, op->for_type, op->device_api, body);
+            return For::make(name, min, extent, op->for_type, op->device_api, body, annotations);
         }
     }
 

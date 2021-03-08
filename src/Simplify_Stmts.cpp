@@ -151,10 +151,20 @@ Stmt Simplify::visit(const For *op) {
     ExprInfo min_bounds, extent_bounds;
     Expr new_min = mutate(op->min, &min_bounds);
     Expr new_extent = mutate(op->extent, &extent_bounds);
+    vector<Annotation> new_ann = mutate(op->annotations);
 
     ScopedValue<bool> old_in_vector_loop(in_vector_loop,
                                          (in_vector_loop ||
                                           op->for_type == ForType::Vectorized));
+
+    bool same_ann = true;
+    if(new_ann.size() == op->annotations.size()){
+        for(size_t i = 0; i < new_ann.size(); i++){
+            same_ann &= new_ann[i].same_as(op->annotations[i]);
+        }
+    } else{
+        same_ann = false;
+    }
 
     bool bounds_tracked = false;
     if (min_bounds.min_defined || (min_bounds.max_defined && extent_bounds.max_defined)) {
@@ -194,10 +204,12 @@ Stmt Simplify::visit(const For *op) {
         return mutate(IfThenElse::make(0 < new_extent, s));
     } else if (op->min.same_as(new_min) &&
                op->extent.same_as(new_extent) &&
-               op->body.same_as(new_body)) {
+               op->body.same_as(new_body) &&
+               same_ann
+               ) {
         return op;
     } else {
-        return For::make(op->name, new_min, new_extent, op->for_type, op->device_api, new_body);
+        return For::make(op->name, new_min, new_extent, op->for_type, op->device_api, new_body, new_ann);
     }
 }
 
@@ -206,6 +218,7 @@ Stmt Simplify::visit(const Provide *op) {
 
     vector<Expr> new_args(op->args.size());
     vector<Expr> new_values(op->values.size());
+    vector<Annotation> new_annotations;
     bool changed = false;
 
     // Mutate the args
@@ -227,10 +240,18 @@ Stmt Simplify::visit(const Provide *op) {
         new_values[i] = new_value;
     }
 
+    for (const Annotation &old_ann : op->annotations) {
+        Annotation new_ann = mutate(old_ann);
+        if (!new_ann.same_as(old_ann)) {
+            changed = true;
+        }
+        new_annotations.emplace_back(new_ann);
+    }
+
     if (!changed) {
         return op;
     } else {
-        return Provide::make(op->name, new_values, new_args);
+        return Provide::make(op->name, new_values, new_args, new_annotations);
     }
 }
 
@@ -588,6 +609,28 @@ Stmt Simplify::visit(const Atomic *op) {
         return Atomic::make(op->producer_name,
                             op->mutex_name,
                             std::move(body));
+    }
+}
+
+Annotation Simplify::visit(const AnnExpr *op) {
+    Expr condition = mutate(op->condition, nullptr);
+
+    if (condition.same_as(op->condition)) {
+        return op;
+    } else {
+        return AnnExpr::make(op->ann_type, condition);
+    }
+}
+
+
+Annotation Simplify::visit(const Permission *op) {
+    Expr variable = mutate(op->variable, nullptr);
+    Expr permission = mutate(op->permission, nullptr);
+
+    if (variable.same_as(op->variable) && permission.same_as(op->permission)) {
+        return op;
+    } else {
+        return Permission::make(op->ann_type, variable, permission);
     }
 }
 

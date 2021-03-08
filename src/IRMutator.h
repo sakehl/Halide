@@ -34,24 +34,29 @@ public:
      */
     virtual Expr mutate(const Expr &expr);
     virtual Stmt mutate(const Stmt &stmt);
+    virtual Annotation mutate(const Annotation &ann);
 
 protected:
-    // ExprNode<> and StmtNode<> are allowed to call visit (to implement mutate_expr/mutate_stmt())
+    // ExprNode<>, StmtNode<> and AnnNode are allowed to call visit (to implement mutate_expr/mutate_stmt())
     template<typename T>
     friend struct ExprNode;
     template<typename T>
     friend struct StmtNode;
+    template<typename T>
+    friend struct AnnNode;
 
     virtual Expr visit(const IntImm *);
     virtual Expr visit(const UIntImm *);
     virtual Expr visit(const FloatImm *);
     virtual Expr visit(const StringImm *);
+    virtual Expr visit(const ReadPerm *);
     virtual Expr visit(const Cast *);
     virtual Expr visit(const Variable *);
     virtual Expr visit(const Add *);
     virtual Expr visit(const Sub *);
     virtual Expr visit(const Mul *);
     virtual Expr visit(const Div *);
+    virtual Expr visit(const Frac *);
     virtual Expr visit(const Mod *);
     virtual Expr visit(const Min *);
     virtual Expr visit(const Max *);
@@ -89,6 +94,9 @@ protected:
     virtual Stmt visit(const Acquire *);
     virtual Stmt visit(const Fork *);
     virtual Stmt visit(const Atomic *);
+
+    virtual Annotation visit(const AnnExpr *);
+    virtual Annotation visit(const Permission *);    
 };
 
 /** A mutator that caches and reapplies previously-done mutations, so
@@ -98,10 +106,12 @@ class IRGraphMutator : public IRMutator {
 protected:
     std::map<Expr, Expr, ExprCompare> expr_replacements;
     std::map<Stmt, Stmt, Stmt::Compare> stmt_replacements;
+    std::map<Annotation, Annotation, Annotation::Compare> ann_replacements;
 
 public:
     Stmt mutate(const Stmt &s) override;
     Expr mutate(const Expr &e) override;
+    Annotation mutate(const Annotation &a) override;
 };
 
 /** A helper function for mutator-like things to mutate regions */

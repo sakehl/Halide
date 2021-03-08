@@ -18,6 +18,9 @@ void IRVisitor::visit(const FloatImm *) {
 void IRVisitor::visit(const StringImm *) {
 }
 
+void IRVisitor::visit(const ReadPerm *) {
+}
+
 void IRVisitor::visit(const Cast *op) {
     op->value.accept(this);
 }
@@ -41,6 +44,11 @@ void IRVisitor::visit(const Mul *op) {
 }
 
 void IRVisitor::visit(const Div *op) {
+    op->a.accept(this);
+    op->b.accept(this);
+}
+
+void IRVisitor::visit(const Frac *op) {
     op->a.accept(this);
     op->b.accept(this);
 }
@@ -261,6 +269,15 @@ void IRVisitor::visit(const Atomic *op) {
     op->body.accept(this);
 }
 
+void IRVisitor::visit(const AnnExpr *op) {
+    op->condition.accept(this);
+}
+
+void IRVisitor::visit(const Permission *op) {
+    op->variable.accept(this);
+    op->permission.accept(this);
+}
+
 void IRGraphVisitor::include(const Expr &e) {
     auto r = visited.insert(e.get());
     if (r.second) {
@@ -277,6 +294,14 @@ void IRGraphVisitor::include(const Stmt &s) {
     }
 }
 
+void IRGraphVisitor::include(const Annotation &a) {
+    auto r = visited.insert(a.get());
+    if (r.second) {
+        // Was newly inserted
+        a.accept(this);
+    }
+}
+
 void IRGraphVisitor::visit(const IntImm *) {
 }
 
@@ -288,6 +313,10 @@ void IRGraphVisitor::visit(const FloatImm *) {
 
 void IRGraphVisitor::visit(const StringImm *) {
 }
+
+void IRGraphVisitor::visit(const ReadPerm *) {
+}
+
 
 void IRGraphVisitor::visit(const Cast *op) {
     include(op->value);
@@ -312,6 +341,11 @@ void IRGraphVisitor::visit(const Mul *op) {
 }
 
 void IRGraphVisitor::visit(const Div *op) {
+    include(op->a);
+    include(op->b);
+}
+
+void IRGraphVisitor::visit(const Frac *op) {
     include(op->a);
     include(op->b);
 }
@@ -424,6 +458,9 @@ void IRGraphVisitor::visit(const For *op) {
     include(op->min);
     include(op->extent);
     include(op->body);
+    for(const Annotation &a : op->annotations){
+        include(a);
+    }
 }
 
 void IRGraphVisitor::visit(const Acquire *op) {
@@ -513,6 +550,15 @@ void IRGraphVisitor::visit(const VectorReduce *op) {
 
 void IRGraphVisitor::visit(const Atomic *op) {
     include(op->body);
+}
+
+void IRGraphVisitor::visit(const AnnExpr *op) {
+    include(op->condition);
+}
+
+void IRGraphVisitor::visit(const Permission *op) {
+    include(op->variable);
+    include(op->permission);
 }
 
 }  // namespace Internal

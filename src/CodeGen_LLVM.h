@@ -342,6 +342,7 @@ protected:
     void visit(const UIntImm *) override;
     void visit(const FloatImm *) override;
     void visit(const StringImm *) override;
+    void visit(const ReadPerm *) override;
     void visit(const Cast *) override;
     void visit(const Variable *) override;
     void visit(const Add *) override;
@@ -380,6 +381,8 @@ protected:
     void visit(const VectorReduce *) override;
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
+    void visit(const AnnExpr *) override;
+    void visit(const Permission *) override;
     // @}
 
     /** Generate code for an allocate node. It has no default

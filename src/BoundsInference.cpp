@@ -1242,7 +1242,7 @@ public:
             }
         }
 
-        return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body);
+        return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body, op->annotations);
     }
 
     Stmt visit(const ProducerConsumer *p) override {

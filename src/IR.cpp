@@ -67,6 +67,19 @@ Expr Div::make(Expr a, Expr b) {
     return node;
 }
 
+Expr Frac::make(Expr a, Expr b) {
+    internal_assert(a.defined()) << "Frac of undefined\n";
+    internal_assert(b.defined()) << "Frac of undefined\n";
+    internal_assert(a.type() == b.type()) << "Frac of mismatched types\n";
+    internal_assert(a.type().is_int_or_uint()) << "Frac should work on int or uint";
+
+    Frac *node = new Frac;
+    node->type = Type(a.type().code(), a.type().bits(), 2*a.type().lanes());
+    node->a = std::move(a);
+    node->b = std::move(b);
+    return node;
+}
+
 Expr Mod::make(Expr a, Expr b) {
     internal_assert(a.defined()) << "Mod of undefined\n";
     internal_assert(b.defined()) << "Mod of undefined\n";
@@ -325,7 +338,8 @@ Stmt ProducerConsumer::make_consume(const std::string &name, Stmt body) {
     return ProducerConsumer::make(name, false, std::move(body));
 }
 
-Stmt For::make(const std::string &name, Expr min, Expr extent, ForType for_type, DeviceAPI device_api, Stmt body) {
+Stmt For::make(const std::string &name, Expr min, Expr extent, ForType for_type, DeviceAPI device_api, Stmt body,
+  std::vector<Annotation> annotations) {
     internal_assert(min.defined()) << "For of undefined\n";
     internal_assert(extent.defined()) << "For of undefined\n";
     internal_assert(min.type() == Int(32)) << "For with non-integer min\n";
@@ -339,6 +353,7 @@ Stmt For::make(const std::string &name, Expr min, Expr extent, ForType for_type,
     node->for_type = for_type;
     node->device_api = device_api;
     node->body = std::move(body);
+    node->annotations = std::move(annotations);
     return node;
 }
 
@@ -371,7 +386,8 @@ Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter para
     return node;
 }
 
-Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args) {
+Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args,
+    const std::vector<Annotation> &annotations) {
     internal_assert(!values.empty()) << "Provide of no values\n";
     for (size_t i = 0; i < values.size(); i++) {
         internal_assert(values[i].defined()) << "Provide of undefined value\n";
@@ -384,6 +400,7 @@ Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, con
     node->name = name;
     node->values = values;
     node->args = args;
+    node->annotations = annotations;
     return node;
 }
 
@@ -900,6 +917,29 @@ Expr VectorReduce::make(VectorReduce::Operator op,
     return node;
 }
 
+Annotation AnnExpr::make(AnnotationType ann_type, Expr condition){
+    internal_assert(condition.defined()) << "AnnExpr of undefined\n";
+    internal_assert(condition.type().is_bool()) << "Argument to AnnExpr is not a bool: " << condition.type() << "\n";
+
+    AnnExpr *node = new AnnExpr;
+    node->ann_type = ann_type;
+    node->condition = std::move(condition);
+    return node;
+}
+
+Annotation Permission::make(AnnotationType ann_type, Expr variable, Expr permission){
+    internal_assert(variable.defined()) << "Permission of undefined\n";
+    internal_assert(permission.defined()) << "Permission of undefined\n";
+    internal_assert(permission.node_type() == IRNodeType::ReadPerm || permission.node_type() == IRNodeType::Frac) 
+      << "Argument to Permission should be a fraction or a read permission";
+
+    Permission *node = new Permission;
+    node->ann_type = ann_type;
+    node->variable = std::move(variable);
+    node->permission = std::move(permission);
+    return node;
+}
+
 namespace {
 
 // Helper function to determine if a sequence of indices is a
@@ -958,6 +998,10 @@ void ExprNode<StringImm>::accept(IRVisitor *v) const {
     v->visit((const StringImm *)this);
 }
 template<>
+void ExprNode<ReadPerm>::accept(IRVisitor *v) const {
+    v->visit((const ReadPerm *)this);
+}
+template<>
 void ExprNode<Cast>::accept(IRVisitor *v) const {
     v->visit((const Cast *)this);
 }
@@ -980,6 +1024,10 @@ void ExprNode<Mul>::accept(IRVisitor *v) const {
 template<>
 void ExprNode<Div>::accept(IRVisitor *v) const {
     v->visit((const Div *)this);
+}
+template<>
+void ExprNode<Frac>::accept(IRVisitor *v) const {
+    v->visit((const Frac *)this);
 }
 template<>
 void ExprNode<Mod>::accept(IRVisitor *v) const {
@@ -1125,6 +1173,14 @@ template<>
 void StmtNode<Atomic>::accept(IRVisitor *v) const {
     v->visit((const Atomic *)this);
 }
+template<>
+void AnnNode<AnnExpr>::accept(IRVisitor *v) const {
+    v->visit((const AnnExpr *)this);
+}
+template<>
+void AnnNode<Permission>::accept(IRVisitor *v) const {
+    v->visit((const Permission *)this);
+}
 
 template<>
 Expr ExprNode<IntImm>::mutate_expr(IRMutator *v) const {
@@ -1141,6 +1197,10 @@ Expr ExprNode<FloatImm>::mutate_expr(IRMutator *v) const {
 template<>
 Expr ExprNode<StringImm>::mutate_expr(IRMutator *v) const {
     return v->visit((const StringImm *)this);
+}
+template<>
+Expr ExprNode<ReadPerm>::mutate_expr(IRMutator *v) const {
+    return v->visit((const ReadPerm *)this);
 }
 template<>
 Expr ExprNode<Cast>::mutate_expr(IRMutator *v) const {
@@ -1165,6 +1225,10 @@ Expr ExprNode<Mul>::mutate_expr(IRMutator *v) const {
 template<>
 Expr ExprNode<Div>::mutate_expr(IRMutator *v) const {
     return v->visit((const Div *)this);
+}
+template<>
+Expr ExprNode<Frac>::mutate_expr(IRMutator *v) const {
+    return v->visit((const Frac *)this);
 }
 template<>
 Expr ExprNode<Mod>::mutate_expr(IRMutator *v) const {
@@ -1310,6 +1374,15 @@ Stmt StmtNode<Fork>::mutate_stmt(IRMutator *v) const {
 template<>
 Stmt StmtNode<Atomic>::mutate_stmt(IRMutator *v) const {
     return v->visit((const Atomic *)this);
+}
+
+template<>
+Annotation AnnNode<AnnExpr>::mutate_ann(IRMutator *v) const {
+    return v->visit((const AnnExpr *)this);
+}
+template<>
+Annotation AnnNode<Permission>::mutate_ann(IRMutator *v) const {
+    return v->visit((const Permission *)this);
 }
 
 Call::ConstString Call::buffer_get_dimensions = "_halide_buffer_get_dimensions";

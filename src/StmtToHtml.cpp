@@ -205,6 +205,10 @@ private:
                << close_span();
     }
 
+    void visit(const ReadPerm *op) override {
+        stream << "read";
+    }
+
     void visit(const Variable *op) override {
         stream << var(op->name);
     }
@@ -245,6 +249,9 @@ private:
     }
     void visit(const Div *op) override {
         visit_binary_op(op->a, op->b, "/");
+    }
+    void visit(const Frac *op) override {
+        visit_binary_op(op->a, op->b, "\\");
     }
     void visit(const Mod *op) override {
         visit_binary_op(op->a, op->b, "%");
@@ -722,6 +729,56 @@ private:
         stream << open_div("Atomic Body Indent", id);
         print(op->body);
         stream << close_div() << matched("}");
+        stream << close_div();
+    }
+
+    void visit(const AnnExpr *op) override {
+        stream << open_div("Annotation");
+
+        int id = unique_id();
+        stream << open_expand_button(id);
+        stream << open_span("Matched");
+        if (op->ann_type == AnnotationType::Require) {
+            stream << keyword("requires");
+        } else if (op->ann_type == AnnotationType::Ensure) {
+            stream << keyword("ensures");
+        } else if (op->ann_type == AnnotationType::Context) {
+            stream << keyword("context");
+        } else if (op->ann_type == AnnotationType::ContextEverywhere) {
+            stream << keyword("context_everywhere");
+        } else {
+            internal_error << "Unknown annotation type: " << ((int)op->ann_type) << "\n";
+        }
+        stream << " (";
+        print(op->condition);
+        stream << matched(")");
+
+        stream << close_div();
+    }
+
+    void visit(const Permission *op) override {
+        stream << open_div("Permission");
+
+        int id = unique_id();
+        stream << open_expand_button(id);
+        stream << open_span("Matched");
+        if (op->ann_type == AnnotationType::Require) {
+            stream << keyword("requires");
+        } else if (op->ann_type == AnnotationType::Ensure) {
+            stream << keyword("ensures");
+        } else if (op->ann_type == AnnotationType::Context) {
+            stream << keyword("context");
+        } else if (op->ann_type == AnnotationType::ContextEverywhere) {
+            stream << keyword("context_everywhere");
+        } else {
+            internal_error << "Unknown annotation type: " << ((int)op->ann_type) << "\n";
+        }
+        stream << "Perm(";
+        print(op->variable);
+        stream << ", ";
+        print(op->permission);
+        stream << matched(")");
+
         stream << close_div();
     }
 

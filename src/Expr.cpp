@@ -73,6 +73,12 @@ const StringImm *StringImm::make(const std::string &val) {
     return node;
 }
 
+const ReadPerm *ReadPerm::make() {
+    ReadPerm *node = new ReadPerm;
+    node->type = type_of<void*>();
+    return node;
+}
+
 /** Check if for_type executes for loop iterations in parallel and unordered. */
 bool is_unordered_parallel(ForType for_type) {
     return (for_type == ForType::Parallel ||

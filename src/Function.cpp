@@ -94,6 +94,8 @@ struct FunctionContents {
 
     bool frozen = false;
 
+    std::vector<Annotation> annotations;
+
     void accept(IRVisitor *visitor) const {
         func_schedule.accept(visitor);
 
@@ -356,6 +358,7 @@ void Function::deep_copy(const FunctionPtr &copy, DeepCopyMap &copied_map) const
     copy->frozen = contents->frozen;
     copy->output_buffers = contents->output_buffers;
     copy->func_schedule = contents->func_schedule.deep_copy(copied_map);
+    copy->annotations = contents->annotations;
 
     // Copy the pure definition
     if (contents->init_def.defined()) {
@@ -836,6 +839,10 @@ const std::vector<Definition> &Function::updates() const {
     return contents->updates;
 }
 
+const std::vector<Annotation> &Function::annotations() const {
+    return contents->annotations;
+}
+
 bool Function::has_pure_definition() const {
     return contents->init_def.defined();
 }
@@ -1012,6 +1019,14 @@ const Call *Function::is_wrapper() const {
     } else {
         return nullptr;
     }
+}
+
+void Function::add_annotation(AnnotationType type, const Expr &condition){
+    contents->annotations.push_back(AnnExpr::make(type, condition));
+}
+
+void Function::add_permission(AnnotationType type, const Expr &variable, const Expr &permission){
+    contents->annotations.push_back(Permission::make(type, variable, permission));
 }
 
 namespace {

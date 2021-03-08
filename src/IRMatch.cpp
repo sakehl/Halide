@@ -164,6 +164,9 @@ public:
     void visit(const Div *op) override {
         visit_binary_operator(op);
     }
+    void visit(const Frac *op) override {
+        visit_binary_operator(op);
+    }
     void visit(const Mod *op) override {
         visit_binary_operator(op);
     }
@@ -379,6 +382,8 @@ bool equal_helper(const BaseExprNode &a, const BaseExprNode &b) noexcept {
         return ((const FloatImm &)a).value == ((const FloatImm &)b).value;
     case IRNodeType::StringImm:
         return ((const StringImm &)a).value == ((const StringImm &)b).value;
+    case IRNodeType::ReadPerm:
+        return b.node_type == IRNodeType::ReadPerm;
     case IRNodeType::Cast:
         // While we know a and b have matching type, we don't know
         // that the types of the values match, so use equal rather
@@ -394,6 +399,8 @@ bool equal_helper(const BaseExprNode &a, const BaseExprNode &b) noexcept {
         return equal_helper_binop<Mul>(a, b);
     case IRNodeType::Div:
         return equal_helper_binop<Div>(a, b);
+    case IRNodeType::Frac:
+        return equal_helper_binop<Frac>(a, b);
     case IRNodeType::Mod:
         return equal_helper_binop<Mod>(a, b);
     case IRNodeType::Min:
@@ -470,6 +477,8 @@ bool equal_helper(const BaseExprNode &a, const BaseExprNode &b) noexcept {
     case IRNodeType::Evaluate:
     case IRNodeType::Prefetch:
     case IRNodeType::Atomic:
+    case IRNodeType::AnnExpr:
+    case IRNodeType::Permission:
         break;
     }
     return false;

@@ -29,6 +29,7 @@ public:
     // @{
     CmpResult compare_expr(const Expr &a, const Expr &b);
     CmpResult compare_stmt(const Stmt &a, const Stmt &b);
+    CmpResult compare_ann(const Annotation &a, const Annotation &b);
     // @}
 
     /** If the expressions you're comparing may contain many repeated
@@ -42,6 +43,7 @@ public:
 private:
     Expr expr;
     Stmt stmt;
+    Annotation ann;
     IRCompareCache *cache;
 
     CmpResult compare_names(const std::string &a, const std::string &b);
@@ -56,12 +58,14 @@ private:
     void visit(const UIntImm *) override;
     void visit(const FloatImm *) override;
     void visit(const StringImm *) override;
+    void visit(const ReadPerm *) override;
     void visit(const Cast *) override;
     void visit(const Variable *) override;
     void visit(const Add *) override;
     void visit(const Sub *) override;
     void visit(const Mul *) override;
     void visit(const Div *) override;
+    void visit(const Frac *) override;
     void visit(const Mod *) override;
     void visit(const Min *) override;
     void visit(const Max *) override;
@@ -98,6 +102,8 @@ private:
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
     void visit(const VectorReduce *) override;
+    void visit(const AnnExpr *) override;
+    void visit(const Permission *) override;
 };
 
 template<typename T>
@@ -200,6 +206,41 @@ IRComparer::CmpResult IRComparer::compare_stmt(const Stmt &a, const Stmt &b) {
     }
 
     stmt = a;
+    b.accept(this);
+
+    return result;
+}
+
+IRComparer::CmpResult IRComparer::compare_ann(const Annotation &a, const Annotation &b) {
+    if (result != Equal) {
+        return result;
+    }
+
+    if (a.same_as(b)) {
+        result = Equal;
+        return result;
+    }
+
+    if (!a.defined() && !b.defined()) {
+        result = Equal;
+        return result;
+    }
+
+    if (!a.defined()) {
+        result = LessThan;
+        return result;
+    }
+
+    if (!b.defined()) {
+        result = GreaterThan;
+        return result;
+    }
+
+    if (compare_scalar(a->node_type, b->node_type) != Equal) {
+        return result;
+    }
+
+    ann = a;
     b.accept(this);
 
     return result;
@@ -332,6 +373,14 @@ void IRComparer::visit(const StringImm *op) {
     const StringImm *e = expr.as<StringImm>();
     compare_names(e->value, op->value);
 }
+void IRComparer::visit(const ReadPerm *op) {
+    const ReadPerm *e = expr.as<ReadPerm>();
+    if(e){
+        result = Equal;
+    } else {
+        result = GreaterThan;
+    }
+}
 
 void IRComparer::visit(const Cast *op) {
     compare_expr(expr.as<Cast>()->value, op->value);
@@ -361,6 +410,9 @@ void IRComparer::visit(const Mul *op) {
     visit_binary_operator(this, op, expr);
 }
 void IRComparer::visit(const Div *op) {
+    visit_binary_operator(this, op, expr);
+}
+void IRComparer::visit(const Frac *op) {
     visit_binary_operator(this, op, expr);
 }
 void IRComparer::visit(const Mod *op) {
@@ -604,6 +656,19 @@ void IRComparer::visit(const Atomic *op) {
     compare_names(s->producer_name, op->producer_name);
     compare_names(s->mutex_name, op->mutex_name);
     compare_stmt(s->body, op->body);
+}
+
+void IRComparer::visit(const AnnExpr *op) {
+    const AnnExpr *a = ann.as<AnnExpr>();
+    compare_scalar(a->ann_type, op->ann_type);
+    compare_expr(a->condition, op->condition);
+}
+
+void IRComparer::visit(const Permission *op) {
+    const Permission *a = ann.as<Permission>();
+    compare_scalar(a->ann_type, op->ann_type);
+    compare_expr(a->variable, op->variable);
+    compare_expr(a->permission, op->permission);
 }
 
 void IRComparer::visit(const VectorReduce *op) {

@@ -16,7 +16,7 @@ namespace Halide {
 
 namespace Internal {
 /** Is the expression either an IntImm, a FloatImm, a StringImm, or a
- * Cast of the same, or a Ramp or Broadcast of the same. Doesn't do
+ * Cast of the same, or a Ramp or Broadcast of the same or a ReadPerm. Doesn't do
  * any constant folding. */
 bool is_const(const Expr &e);
 
@@ -1321,6 +1321,19 @@ template<typename T>
 inline Expr undef() {
     return undef(type_of<T>());
 }
+
+/**
+ * Returns a fraction, which is an exact representation of interger division.
+ * This is used in annotations for read and write permissions. A value of 1 is a
+ * write permission, a value between 0 and 1 is a read permission.
+ */
+Expr frac(Expr a, Expr b);
+
+/**
+ * A read permission, the verifier will figure out a correct value for this. 
+ * This read permission cannot be further divided. 
+ */
+const Expr read = Internal::ReadPerm::make();
 
 /** Control the values used in the memoization cache key for memoize.
  * Normally parameters and other external dependencies are

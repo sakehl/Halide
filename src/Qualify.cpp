@@ -5,6 +5,7 @@ namespace Halide {
 namespace Internal {
 
 using std::string;
+using std::vector;
 
 namespace {
 
@@ -38,6 +39,16 @@ public:
 Expr qualify(const string &prefix, const Expr &value) {
     QualifyExpr q(prefix);
     return q.mutate(value);
+}
+
+vector<Annotation> qualify(const string &prefix, const vector<Annotation> &anns){
+    vector<Annotation> results;
+    QualifyExpr q(prefix);
+    for(const Annotation &a : anns){
+        results.emplace_back(q.mutate(a));
+    }
+    
+    return results;
 }
 
 }  // namespace Internal

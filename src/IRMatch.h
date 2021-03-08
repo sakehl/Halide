@@ -883,6 +883,12 @@ std::ostream &operator<<(std::ostream &s, const BinOp<Div, A, B> &op) {
 }
 
 template<typename A, typename B>
+std::ostream &operator<<(std::ostream &s, const BinOp<Frac, A, B> &op) {
+    s << "(" << op.a << " \\ " << op.b << ")";
+    return s;
+}
+
+template<typename A, typename B>
 std::ostream &operator<<(std::ostream &s, const BinOp<And, A, B> &op) {
     s << "(" << op.a << " && " << op.b << ")";
     return s;

@@ -194,6 +194,7 @@ protected:
     void visit(const UIntImm *) override;
     void visit(const StringImm *) override;
     void visit(const FloatImm *) override;
+    void visit(const ReadPerm *) override;
     void visit(const Cast *) override;
     void visit(const Add *) override;
     void visit(const Sub *) override;
@@ -233,6 +234,8 @@ protected:
     void visit(const Fork *) override;
     void visit(const Acquire *) override;
     void visit(const Atomic *) override;
+    void visit(const AnnExpr *) override;
+    void visit(const Permission *) override;
 
     void visit_binop(Type t, const Expr &a, const Expr &b, const char *op);
     void visit_relop(Type t, const Expr &a, const Expr &b, const char *scalar_op, const char *vector_op);

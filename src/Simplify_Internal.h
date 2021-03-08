@@ -28,8 +28,8 @@
 namespace Halide {
 namespace Internal {
 
-class Simplify : public VariadicVisitor<Simplify, Expr, Stmt> {
-    using Super = VariadicVisitor<Simplify, Expr, Stmt>;
+class Simplify : public VariadicVisitor<Simplify, Expr, Stmt, Annotation> {
+    using Super = VariadicVisitor<Simplify, Expr, Stmt, Annotation>;
 
 public:
     Simplify(bool r, const Scope<Interval> *bi, const Scope<ModulusRemainder> *ai);
@@ -137,6 +137,27 @@ public:
         return Super::dispatch(s);
     }
 #endif
+
+    Annotation mutate(const Annotation &a) {
+        return Super::dispatch(a);
+    }
+
+    std::vector<Annotation> mutate(const std::vector<Annotation> &anns) {
+        bool same = true;
+        std::vector<Annotation> new_anns;
+        for(const Annotation &a : anns){
+            Annotation new_a = Super::dispatch(a);
+            if(!a.same_as(new_a)){
+                same = false;
+            }
+            new_anns.emplace_back(new_a);
+        }
+        if(same){
+            return anns;
+        } else {
+            return new_anns;
+        }
+    }
 
     bool remove_dead_lets;
     bool no_float_simplify;
@@ -280,6 +301,7 @@ public:
     Expr visit(const UIntImm *op, ExprInfo *bounds);
     Expr visit(const FloatImm *op, ExprInfo *bounds);
     Expr visit(const StringImm *op, ExprInfo *bounds);
+    Expr visit(const ReadPerm *op, ExprInfo *bounds);
     Expr visit(const Broadcast *op, ExprInfo *bounds);
     Expr visit(const Cast *op, ExprInfo *bounds);
     Expr visit(const Variable *op, ExprInfo *bounds);
@@ -287,6 +309,7 @@ public:
     Expr visit(const Sub *op, ExprInfo *bounds);
     Expr visit(const Mul *op, ExprInfo *bounds);
     Expr visit(const Div *op, ExprInfo *bounds);
+    Expr visit(const Frac *op, ExprInfo *bounds);
     Expr visit(const Mod *op, ExprInfo *bounds);
     Expr visit(const Min *op, ExprInfo *bounds);
     Expr visit(const Max *op, ExprInfo *bounds);
@@ -322,6 +345,8 @@ public:
     Stmt visit(const Acquire *op);
     Stmt visit(const Fork *op);
     Stmt visit(const Atomic *op);
+    Annotation visit(const AnnExpr *op);
+    Annotation visit(const Permission *op);
 };
 
 }  // namespace Internal

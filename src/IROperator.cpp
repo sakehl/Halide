@@ -84,7 +84,8 @@ bool is_const(const Expr &e) {
     if (e.as<IntImm>() ||
         e.as<UIntImm>() ||
         e.as<FloatImm>() ||
-        e.as<StringImm>()) {
+        e.as<StringImm>() ||
+        e.as<ReadPerm>() ) {
         return true;
     } else if (const Cast *c = e.as<Cast>()) {
         return is_const(c->value);
@@ -2474,6 +2475,12 @@ Expr undef(Type t) {
     return Internal::Call::make(t, Internal::Call::undef,
                                 std::vector<Expr>(),
                                 Internal::Call::PureIntrinsic);
+}
+
+Expr frac(Expr a, Expr b) {
+    user_assert(a.defined() && b.defined()) << "frac of undefined Expr\n";
+    Internal::match_types(a, b);
+    return Internal::Frac::make(std::move(a), std::move(b));
 }
 
 namespace {

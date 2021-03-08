@@ -26,6 +26,63 @@ using std::vector;
 
 namespace {
 
+class AnnotationPrinter : public IRPrinter{
+    using IRPrinter::visit;
+
+    void visit(const Variable * op) override{
+        string output;
+        if (ends_with(op->name, ".__thread_id_x")) {
+            output = "get_local_id(0)";
+        } else if (ends_with(op->name, ".__thread_id_y")) {
+            output = "get_local_id(1)";
+        } else if (ends_with(op->name, ".__thread_id_z")) {
+            output = "get_local_id(2)";
+        } else if (ends_with(op->name, ".__thread_id_w")) {
+            output = "get_local_id(3)";
+        } else if (ends_with(op->name, ".__block_id_x")) {
+            output = "get_group_id(0)";
+        } else if (ends_with(op->name, ".__block_id_y")) {
+            output = "get_group_id(1)";
+        } else if (ends_with(op->name, ".__block_id_z")) {
+            output = "get_group_id(2)";
+        } else if (ends_with(op->name, ".__block_id_w")) {
+            output = "get_group_id(3)";
+        } else {
+            output = c_print_name(op->name);
+        }
+        
+        stream << output;
+    }
+    
+    void visit(const Load *op) override {
+    const bool has_pred = !is_const_one(op->predicate);
+    const bool show_alignment = op->type.is_vector() && op->alignment.modulus > 1;
+    if (has_pred) {
+        open();
+    }
+    //We do not print a cast like load in annotations
+    // if (!known_type.contains(op->name)) {
+    //     stream << "(" << op->type << ")";
+    // }
+    stream << c_print_name(op->name) << "[";
+    print_no_parens(op->index);
+    if (show_alignment) {
+        stream << " aligned(" << op->alignment.modulus << ", " << op->alignment.remainder << ")";
+    }
+    stream << "]";
+    if (has_pred) {
+        stream << " if ";
+        print(op->predicate);
+        close();
+    }
+}
+public:
+    AnnotationPrinter(std::ostream &s) : IRPrinter(s) {
+
+    };
+};
+
+
 class CodeGen_OpenCL_Dev : public CodeGen_GPU_Dev {
 public:
     CodeGen_OpenCL_Dev(const Target &target);
@@ -35,7 +92,8 @@ public:
      * source module shared by a given Halide pipeline. */
     void add_kernel(Stmt stmt,
                     const std::string &name,
-                    const std::vector<DeviceArgument> &args) override;
+                    const std::vector<DeviceArgument> &args,
+                    const std::vector<Annotation> &annotations = {}) override;
 
     /** (Re)initialize the GPU kernel module. This is separate from compile,
      * since a GPU device module will often have many kernels compiled into it
@@ -63,7 +121,8 @@ protected:
         }
         void add_kernel(Stmt stmt,
                         const std::string &name,
-                        const std::vector<DeviceArgument> &args);
+                        const std::vector<DeviceArgument> &args,
+                        const std::vector<Annotation> &annotations = {});
 
     protected:
         using CodeGen_C::visit;
@@ -876,12 +935,13 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Atomic *op) {
 
 void CodeGen_OpenCL_Dev::add_kernel(Stmt s,
                                     const string &name,
-                                    const vector<DeviceArgument> &args) {
+                                    const vector<DeviceArgument> &args,
+                                    const std::vector<Annotation> &annotations) {
     debug(2) << "CodeGen_OpenCL_Dev::compile " << name << "\n";
 
     // TODO: do we have to uniquify these names, or can we trust that they are safe?
     cur_kernel_name = name;
-    clc.add_kernel(s, name, args);
+    clc.add_kernel(s, name, args, annotations);
 }
 
 namespace {
@@ -902,7 +962,8 @@ struct BufferSize {
 
 void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
                                                       const string &name,
-                                                      const vector<DeviceArgument> &args) {
+                                                      const vector<DeviceArgument> &args,
+                                                      const vector<Annotation> &annotations) {
 
     debug(2) << "Adding OpenCL kernel " << name << "\n";
 
@@ -962,6 +1023,17 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
             }
         }
     }
+    //Emit the pre and post conditions
+    stream << get_indent() << "/*@\n";
+    indent++;
+    AnnotationPrinter ap(stream);
+    for(const Annotation &a : annotations){
+        stream << get_indent();
+        ap.print(a);
+        stream << "\n";
+    }
+    indent--;
+    stream << get_indent()<< "@*/\n";
 
     // Emit the function prototype.
     stream << "__kernel void " << name << "(\n";

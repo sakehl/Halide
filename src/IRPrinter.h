@@ -110,6 +110,9 @@ public:
     /** emit a statement on the output stream */
     void print(const Stmt &);
 
+    /** emit a annotation on the output stream */
+    void print(const Annotation &);
+
     /** emit a comma delimited list of exprs, without any leading or
      * trailing punctuation. */
     void print_list(const std::vector<Expr> &exprs);
@@ -150,12 +153,14 @@ protected:
     void visit(const UIntImm *) override;
     void visit(const FloatImm *) override;
     void visit(const StringImm *) override;
+    void visit(const ReadPerm *) override;
     void visit(const Cast *) override;
     void visit(const Variable *) override;
     void visit(const Add *) override;
     void visit(const Sub *) override;
     void visit(const Mul *) override;
     void visit(const Div *) override;
+    void visit(const Frac *) override;
     void visit(const Mod *) override;
     void visit(const Min *) override;
     void visit(const Max *) override;
@@ -192,6 +197,8 @@ protected:
     void visit(const VectorReduce *) override;
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
+    void visit(const AnnExpr *) override;
+    void visit(const Permission *) override;
 };
 
 }  // namespace Internal

@@ -200,6 +200,8 @@ class ReplaceForWithIf : public IRMutator {
                 }
             }
 
+            thread_annotations[dim] = std::move(op->annotations);
+
             internal_assert(dim >= 0 && dim < block_size.threads_dimensions());
 
             Stmt body = mutate(op->body);
@@ -221,7 +223,10 @@ class ReplaceForWithIf : public IRMutator {
 public:
     ReplaceForWithIf(const ExtractBlockSize &e)
         : block_size(e) {
+        thread_annotations = vector<vector<Annotation>>(4);
     }
+
+    vector<vector<Annotation>> thread_annotations;
 };
 
 class ExtractSharedAndHeapAllocations : public IRMutator {
@@ -404,7 +409,7 @@ private:
         }
 
         return For::make(op->name, new_min, new_extent,
-                         op->for_type, op->device_api, body);
+                         op->for_type, op->device_api, body, op->annotations);
     }
 
     Stmt visit(const Block *op) override {
@@ -1090,7 +1095,7 @@ class ExtractRegisterAllocations : public IRMutator {
                 allocations.swap(old);
             }
 
-            return For::make(op->name, mutate(op->min), mutate(op->extent), op->for_type, op->device_api, body);
+            return For::make(op->name, mutate(op->min), mutate(op->extent), op->for_type, op->device_api, body, op->annotations);
         }
     }
 
@@ -1251,7 +1256,7 @@ class InjectThreadBarriers : public IRMutator {
                 body = Block::make(body, make_barrier(0));
             }
             return For::make(op->name, op->min, op->extent,
-                             op->for_type, op->device_api, body);
+                             op->for_type, op->device_api, body, op->annotations);
         } else {
             return IRMutator::visit(op);
         }
@@ -1401,14 +1406,16 @@ class FuseGPUThreadLoopsSingleKernel : public IRMutator {
             string thread_id = "." + thread_names[0];
             // Add back in any register-level allocations
             body = register_allocs.rewrap(body, thread_id);
-            body = For::make(thread_id, 0, block_size_x, innermost_loop_type, op->device_api, body);
+            body = For::make(thread_id, 0, block_size_x, innermost_loop_type, op->device_api, body,
+             std::move(f.thread_annotations[0]));
 
             // Rewrap the whole thing in other loops over threads
             for (int i = 1; i < block_size.threads_dimensions(); i++) {
                 thread_id = "." + thread_names[i];
                 body = register_allocs.rewrap(body, thread_id);
                 body = For::make("." + thread_names[i], 0, block_size.num_threads(i),
-                                 ForType::GPUThread, op->device_api, body);
+                                 ForType::GPUThread, op->device_api, body,
+                                 std::move(f.thread_annotations[i]));
             }
             thread_id.clear();
             body = register_allocs.rewrap(body, thread_id);
@@ -1424,7 +1431,7 @@ class FuseGPUThreadLoopsSingleKernel : public IRMutator {
             if (body.same_as(op->body)) {
                 return op;
             } else {
-                return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body);
+                return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body, op->annotations);
             }
         } else {
             return IRMutator::visit(op);
@@ -1492,7 +1499,7 @@ class ZeroGPULoopMins : public IRMutator {
             internal_assert(op);
             Expr adjusted = Variable::make(Int(32), op->name) + op->min;
             Stmt body = substitute(op->name, adjusted, op->body);
-            stmt = For::make(op->name, 0, op->extent, op->for_type, op->device_api, body);
+            stmt = For::make(op->name, 0, op->extent, op->for_type, op->device_api, body, op->annotations);
         }
         return stmt;
     }
@@ -1575,7 +1582,7 @@ class AddConditionToALoop : public IRMutator {
         }
 
         return For::make(op->name, op->min, op->extent, op->for_type, op->device_api,
-                         IfThenElse::make(condition, op->body, Stmt()));
+                         IfThenElse::make(condition, op->body, Stmt()), op->annotations);
     }
 
 public:
