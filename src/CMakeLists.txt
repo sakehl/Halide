@@ -479,7 +479,7 @@ endif ()
 # Add autoschedulers to the build.
 ##
 
-if (BUILD_SHARED_LIBS)
+if (BUILD_SHARED_LIBS AND WITH_AUTOSCHEDULERS)
     message(STATUS "Building autoschedulers enabled")
     add_subdirectory(autoschedulers)
 else ()

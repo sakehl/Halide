@@ -52,6 +52,13 @@ add_subdirectory(dependencies)
 # Add source directories
 ##
 
+option(WITH_AUTOSCHEDULERS "Build autoschedulers" ON)
+if (WITH_AUTOSCHEDULERS)
+    message(STATUS "Building autoschedulers enabled")
+else ()
+    message(STATUS "Building autoschedulers disabled")
+endif ()
+
 add_subdirectory(src)
 add_subdirectory(tools)
 
