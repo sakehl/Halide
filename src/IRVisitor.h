@@ -55,7 +55,10 @@ protected:
     virtual void visit(const GE *);
     virtual void visit(const And *);
     virtual void visit(const Or *);
+    virtual void visit(const Implies *);
     virtual void visit(const Not *);
+    virtual void visit(const Forall *);
+    virtual void visit(const Exists *);
     virtual void visit(const Select *);
     virtual void visit(const Load *);
     virtual void visit(const Ramp *);
@@ -130,7 +133,10 @@ protected:
     void visit(const GE *) override;
     void visit(const And *) override;
     void visit(const Or *) override;
+    void visit(const Implies *) override;
     void visit(const Not *) override;
+    void visit(const Forall *) override;
+    void visit(const Exists *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -222,8 +228,14 @@ private:
             return ((T *)this)->visit((const And *)node, std::forward<Args>(args)...);
         case IRNodeType::Or:
             return ((T *)this)->visit((const Or *)node, std::forward<Args>(args)...);
+        case IRNodeType::Implies:
+            return ((T *)this)->visit((const Implies *)node, std::forward<Args>(args)...);
         case IRNodeType::Not:
             return ((T *)this)->visit((const Not *)node, std::forward<Args>(args)...);
+        case IRNodeType::Forall:
+            return ((T *)this)->visit((const Forall *)node, std::forward<Args>(args)...);
+        case IRNodeType::Exists:
+            return ((T *)this)->visit((const Exists *)node, std::forward<Args>(args)...);
         case IRNodeType::Select:
             return ((T *)this)->visit((const Select *)node, std::forward<Args>(args)...);
         case IRNodeType::Load:
@@ -294,7 +306,10 @@ private:
         case IRNodeType::GE:
         case IRNodeType::And:
         case IRNodeType::Or:
+        case IRNodeType::Implies:
         case IRNodeType::Not:
+        case IRNodeType::Forall:
+        case IRNodeType::Exists:
         case IRNodeType::Select:
         case IRNodeType::Load:
         case IRNodeType::Ramp:
@@ -373,7 +388,10 @@ private:
         case IRNodeType::GE:
         case IRNodeType::And:
         case IRNodeType::Or:
+        case IRNodeType::Implies:
         case IRNodeType::Not:
+        case IRNodeType::Forall:
+        case IRNodeType::Exists:
         case IRNodeType::Select:
         case IRNodeType::Load:
         case IRNodeType::Ramp:

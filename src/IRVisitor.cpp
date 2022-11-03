@@ -108,8 +108,23 @@ void IRVisitor::visit(const Or *op) {
     op->b.accept(this);
 }
 
+void IRVisitor::visit(const Implies *op) {
+    op->a.accept(this);
+    op->b.accept(this);
+}
+
 void IRVisitor::visit(const Not *op) {
     op->a.accept(this);
+}
+
+void IRVisitor::visit(const Forall *op) {
+    op->select.accept(this);
+    op->main.accept(this);
+}
+
+void IRVisitor::visit(const Exists *op) {
+    op->select.accept(this);
+    op->main.accept(this);
 }
 
 void IRVisitor::visit(const Select *op) {
@@ -174,6 +189,11 @@ void IRVisitor::visit(const For *op) {
     op->min.accept(this);
     op->extent.accept(this);
     op->body.accept(this);
+    // We standard do not visit annotations, since they contain code that is not executed, thus should in most cases
+    // not be inspected
+    // for(const Annotation &a : op->annotations){
+    //     a.accept(this);
+    // }
 }
 
 void IRVisitor::visit(const Acquire *op) {
@@ -253,6 +273,11 @@ void IRVisitor::visit(const IfThenElse *op) {
 
 void IRVisitor::visit(const Evaluate *op) {
     op->value.accept(this);
+    // We standard do not visit annotations, since they contain code that is not executed, thus should in most cases
+    // not be inspected
+    // for(const Annotation &a : op->annotations){
+    //     a.accept(this);
+    // }
 }
 
 void IRVisitor::visit(const Shuffle *op) {
@@ -405,8 +430,23 @@ void IRGraphVisitor::visit(const Or *op) {
     include(op->b);
 }
 
+void IRGraphVisitor::visit(const Implies *op) {
+    include(op->a);
+    include(op->b);
+}
+
 void IRGraphVisitor::visit(const Not *op) {
     include(op->a);
+}
+
+void IRGraphVisitor::visit(const Forall *op) {
+    include(op->select);
+    include(op->main);
+}
+
+void IRGraphVisitor::visit(const Exists *op) {
+    include(op->select);
+    include(op->main);
 }
 
 void IRGraphVisitor::visit(const Select *op) {
@@ -458,9 +498,11 @@ void IRGraphVisitor::visit(const For *op) {
     include(op->min);
     include(op->extent);
     include(op->body);
-    for(const Annotation &a : op->annotations){
-        include(a);
-    }
+    // We standard do not visit annotations, since they contain code that is not executed, thus should in most cases
+    // not be inspected
+    // for(const Annotation &a : op->annotations){
+    //     include(a);
+    // }
 }
 
 void IRGraphVisitor::visit(const Acquire *op) {
@@ -536,6 +578,11 @@ void IRGraphVisitor::visit(const IfThenElse *op) {
 
 void IRGraphVisitor::visit(const Evaluate *op) {
     include(op->value);
+    // We standard do not visit annotations, since they contain code that is not executed, thus should in most cases
+    // not be inspected
+    // for(const Annotation &a : op->annotations){
+    //     include(a);
+    // }
 }
 
 void IRGraphVisitor::visit(const Shuffle *op) {

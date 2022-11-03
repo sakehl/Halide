@@ -71,6 +71,10 @@ std::ostream &operator<<(std::ostream &stream, const Stmt &);
  * readable form */
 std::ostream &operator<<(std::ostream &stream, const ForType &);
 
+/** Emit a halide annotation type (requires, ensures, etc) in a human
+ * readable form */
+std::ostream &operator<<(std::ostream &stream, const AnnotationType &);
+
 /** Emit a horizontal vector reduction op in human-readable form. */
 std::ostream &operator<<(std::ostream &stream, const VectorReduce::Operator &);
 
@@ -79,6 +83,8 @@ std::ostream &operator<<(std::ostream &stream, const NameMangling &);
 
 /** Emit a halide LoweredFunc in a human readable format */
 std::ostream &operator<<(std::ostream &stream, const LoweredFunc &);
+
+std::ostream &operator<<(std::ostream &stream, const Function &);
 
 /** Emit a halide linkage value in a human readable format */
 std::ostream &operator<<(std::ostream &stream, const LinkageType &);
@@ -90,6 +96,10 @@ struct Indentation {
     int indent;
 };
 std::ostream &operator<<(std::ostream &stream, const Indentation &);
+
+std::string to_string(const Expr &);
+std::string to_string(const Stmt &);
+std::string to_string(const Annotation &);
 
 /** An IRVisitor that emits IR to the given output stream in a human
  * readable form. Can be subclassed if you want to modify the way in
@@ -172,7 +182,10 @@ protected:
     void visit(const GE *) override;
     void visit(const And *) override;
     void visit(const Or *) override;
+    void visit(const Implies *) override;
     void visit(const Not *) override;
+    void visit(const Forall *) override;
+    void visit(const Exists *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;

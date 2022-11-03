@@ -268,6 +268,23 @@ protected:
     bool using_vector_typedefs;
 };
 
+class AnnotationPrinter : public IRPrinter {
+public:
+    AnnotationPrinter(std::ostream &s);
+protected:
+    using IRPrinter::visit;
+
+    void visit(const Variable *op) override;
+
+    void visit(const Load *op) override;
+
+    void visit(const Forall *op) override;
+
+    void visit(const Exists *op) override;
+
+    void visit(const Permission *op) override;
+};
+
 }  // namespace Internal
 }  // namespace Halide
 

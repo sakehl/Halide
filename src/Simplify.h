@@ -26,6 +26,9 @@ Stmt simplify(const Stmt &, bool remove_dead_let_stmts = true,
 Expr simplify(const Expr &, bool remove_dead_let_stmts = true,
               const Scope<Interval> &bounds = Scope<Interval>::empty_scope(),
               const Scope<ModulusRemainder> &alignment = Scope<ModulusRemainder>::empty_scope());
+Annotation simplify(const Annotation &, bool remove_dead_let_stmts = true,
+              const Scope<Interval> &bounds = Scope<Interval>::empty_scope(),
+              const Scope<ModulusRemainder> &alignment = Scope<ModulusRemainder>::empty_scope());
 // @}
 
 /** Attempt to statically prove an expression is true using the simplifier. */

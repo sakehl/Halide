@@ -60,6 +60,14 @@ bool is_const_zero(const Expr &e);
  * to one (in all lanes, if a vector expression) */
 bool is_const_one(const Expr &e);
 
+/** Is the expression a const (as defined by is_const), and also equal
+ * to true */
+bool is_const_true(const Expr &e);
+
+/** Is the expression a const (as defined by is_const), and also equal
+ * to false */
+bool is_const_false(const Expr &e);
+
 /** Is the statement a no-op (which we represent as either an
  * undefined Stmt, or as an Evaluate node of a constant) */
 bool is_no_op(const Stmt &s);
@@ -358,6 +366,8 @@ Expr rounding_halving_add(Expr a, Expr b);
 Expr halving_sub(Expr a, Expr b);
 /** Compute narrow((widen(a) - widen(b) + 1) / 2) */
 Expr rounding_halving_sub(Expr a, Expr b);
+
+Annotation add_antecedent(Expr const &left_hand_side, Annotation const &ann);
 
 }  // namespace Internal
 

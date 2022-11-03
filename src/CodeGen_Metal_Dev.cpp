@@ -31,7 +31,8 @@ public:
     void add_kernel(Stmt stmt,
                     const std::string &name,
                     const std::vector<DeviceArgument> &args,
-                    const std::vector<Annotation> &annotations = {}) override;
+                    const std::vector<Annotation> &annotations = {},
+                    const Expr shared_mem_size = 0) override;
 
     /** (Re)initialize the GPU kernel module. This is separate from compile,
      * since a GPU device module will often have many kernels compiled into it
@@ -548,7 +549,8 @@ void CodeGen_Metal_Dev::CodeGen_Metal_C::visit(const Atomic *op) {
 void CodeGen_Metal_Dev::add_kernel(Stmt s,
                                    const string &name,
                                    const vector<DeviceArgument> &args,
-                                   const std::vector<Annotation> &annotations) {
+                                   const std::vector<Annotation> &annotations,
+                                   const Expr shared_mem_size) {
     debug(2) << "CodeGen_Metal_Dev::compile " << name << "\n";
 
     // TODO: do we have to uniquify these names, or can we trust that they are safe?

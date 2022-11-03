@@ -200,8 +200,6 @@ class ReplaceForWithIf : public IRMutator {
                 }
             }
 
-            thread_annotations[dim] = std::move(op->annotations);
-
             internal_assert(dim >= 0 && dim < block_size.threads_dimensions());
 
             Stmt body = mutate(op->body);
@@ -210,9 +208,11 @@ class ReplaceForWithIf : public IRMutator {
             body = substitute(op->name, var + op->min, body);
 
             if (equal(op->extent, block_size.num_threads(dim))) {
+                if(dim==0) add_annotations(op->annotations);
                 return body;
             } else {
                 Expr cond = var < op->extent;
+                if(dim==0) add_annotations(op->annotations, cond);
                 return IfThenElse::make(cond, body, Stmt());
             }
         } else {
@@ -220,13 +220,28 @@ class ReplaceForWithIf : public IRMutator {
         }
     }
 
+    void add_annotations(vector<Annotation> ans, Expr cond){
+        for(Annotation a: ans){
+            thread_annotations.emplace_back(add_antecedent(cond, a));
+        }
+    }
+
+    void add_annotations(vector<Annotation> ans){
+        thread_annotations.insert(
+            thread_annotations.end(),
+            std::make_move_iterator(ans.begin()),
+            std::make_move_iterator(ans.end())
+         );
+    }
+    
+
 public:
     ReplaceForWithIf(const ExtractBlockSize &e)
         : block_size(e) {
-        thread_annotations = vector<vector<Annotation>>(4);
+        thread_annotations = vector<Annotation>();
     }
 
-    vector<vector<Annotation>> thread_annotations;
+    vector<Annotation> thread_annotations;
 };
 
 class ExtractSharedAndHeapAllocations : public IRMutator {
@@ -408,8 +423,12 @@ private:
             host_side_preamble = old_preamble;
         }
 
+        vector<Annotation> new_anns;
+        for(Annotation a: op->annotations){
+            new_anns.emplace_back(mutate(a));
+        }
         return For::make(op->name, new_min, new_extent,
-                         op->for_type, op->device_api, body, op->annotations);
+                         op->for_type, op->device_api, body, new_anns);
     }
 
     Stmt visit(const Block *op) override {
@@ -1209,6 +1228,7 @@ class InjectThreadBarriers : public IRMutator {
 
     const ExtractSharedAndHeapAllocations &block_allocs;
     const ExtractRegisterAllocations &register_allocs;
+    const ExtractBlockSize &block_size;
 
     std::set<std::string> shared_stores;
     std::set<std::string> device_stores;
@@ -1231,10 +1251,65 @@ class InjectThreadBarriers : public IRMutator {
         return MemoryType::Auto;
     }
 
-    Stmt make_barrier(int mask) {
+    Stmt make_barrier(int mask, vector<Annotation> annotations) {
         return Evaluate::make(Call::make(Int(32), Call::gpu_thread_barrier,
                                          {IntImm::make(Int(32), mask)},
-                                         Call::Intrinsic));
+                                         Call::Intrinsic), annotations);
+    }
+
+    class AnnotationChanger : public IRMutator{
+        AnnotationType new_type;
+
+        using IRMutator::visit;
+
+        Annotation visit(const AnnExpr *e) override{
+            if(e->ann_type != new_type){
+                return AnnExpr::make(new_type, e->condition);
+            } else {
+                return e;
+            }
+        }
+
+        Annotation visit(const Permission *e) override{
+            if(e->ann_type != new_type){
+                return Permission::make(new_type, e->antecedent,
+                     e->variable,
+                     e->permission,
+                     e->forall_vars);
+            } else {
+                return e;
+            }
+        }
+
+    public:
+        AnnotationChanger(AnnotationType t) : new_type(t) { };
+    };
+
+    class LoadFinder : public IRVisitor{
+        std::set<string> relevant_load_names;
+        using IRVisitor::visit;
+
+        void visit(const Load *op) override{
+            //auto it = shared.find(op->name);
+            auto elem = relevant_load_names.find(op->name);
+            if (elem != relevant_load_names.end()){
+                found_load = true;
+            }
+        }
+
+    public:
+        bool found_load;
+        LoadFinder(std::set<string> names) : relevant_load_names(names), found_load(false) { };
+
+        static bool has_load_name(std::set<string> names, IRHandle node){
+            LoadFinder lf = LoadFinder(names);
+            node.accept(&lf);
+            return lf.found_load;
+        }
+    };
+
+    Annotation change_annotation_type(AnnotationType t, Annotation a){
+        return AnnotationChanger(t).mutate(a);
     }
 
     Stmt visit(const For *op) override {
@@ -1247,16 +1322,31 @@ class InjectThreadBarriers : public IRMutator {
 
         if (!is_parallel(op->for_type)) {
             Stmt body = mutate(op->body);
+            // TODO: LarsvdH, look what this entails for barrier contracts
             // Serial for loops at the block level with internal
             // synchronization also need synchronization after each
             // loop iteration.
             if (!in_threads && injected_barrier) {
                 // Any memory access fences should be handled by the
                 // synchronizations within the block
-                body = Block::make(body, make_barrier(0));
+                body = Block::make(body, make_barrier(0, {}));
             }
             return For::make(op->name, op->min, op->extent,
                              op->for_type, op->device_api, body, op->annotations);
+        } else if(op->for_type == ForType::GPUThread && ends_with(op->name, thread_names[0])){
+            //Todo: Extent this to all more dimensions
+            if (!equal(op->extent, block_size.num_threads(0))){
+                Expr var = Variable::make(Int(32), "." + thread_names[0]);
+                Expr cond = var < op->extent;
+                vector<Annotation> ant_annotations;
+                for(Annotation a: op->annotations){
+                    ant_annotations.emplace_back(add_antecedent(cond , a));
+                }
+                remaining_annotations = ant_annotations;
+            } else {
+                remaining_annotations = op->annotations;
+            }
+            return IRMutator::visit(op);
         } else {
             return IRMutator::visit(op);
         }
@@ -1315,43 +1405,97 @@ class InjectThreadBarriers : public IRMutator {
             // First, we record which loads from shared/device memory occur
             // in the rest block
             Stmt rest = mutate(op->rest);
+            vector<Annotation> rest_annotations = remaining_annotations;
 
             // Now, record which stores occur in the first stmt
             // of this block
             shared_stores.clear();
             device_stores.clear();
             Stmt first = mutate(op->first);
+            
+            vector<Annotation> first_annotations = remaining_annotations;
+
+            std::set<std::string> redistributed_mem;
 
             // If there are any loads in the rest part that
             // load from something stored in first, insert the appropriate
             // fence type
             int mask = 0;
+            bool shared_fence = false;
+            bool global_fence = false;
             for (const auto &st : shared_stores) {
                 auto elem = shared_loads.find(st);
                 if (elem != shared_loads.end()) {
-                    mask |= CodeGen_GPU_Dev::MemoryFenceType::Shared;
-                    break;
+                    shared_fence = true;
+                    redistributed_mem.insert(*elem);
                 }
             }
+            if(shared_fence) mask |= CodeGen_GPU_Dev::MemoryFenceType::Shared;
+
             for (const auto &st : device_stores) {
                 auto elem = device_loads.find(st);
                 if (elem != device_loads.end()) {
-                    mask |= CodeGen_GPU_Dev::MemoryFenceType::Device;
-                    break;
+                    global_fence = true;
+                    redistributed_mem.insert(*elem);
                 }
             }
+            if(global_fence) mask |= CodeGen_GPU_Dev::MemoryFenceType::Device;
+
+            vector<Annotation> barrier_annotations;
+            vector<Annotation> new_remaining_annotations;
+
+            // The first requirements become the new requirments of the remaining block
+            // The first ensures become the requirements for the barrier, but only if they contain
+            // references to redistributed memory. Otherwise they will stay at the remaing block
+            for(const auto &a : first_annotations){
+                bool has_mem_reference = LoadFinder::has_load_name(redistributed_mem, a);
+                if(has_mem_reference && (a.type() == AnnotationType::Ensure || a.type() == AnnotationType::Context)){
+                    if(a.type() == AnnotationType::Ensure)
+                        barrier_annotations.emplace_back(change_annotation_type(AnnotationType::Require, a));
+                    else if(a.type() == AnnotationType::Context){
+                        Annotation new_a = change_annotation_type(AnnotationType::Require, a);
+                        new_remaining_annotations.emplace_back(new_a);
+                        barrier_annotations.emplace_back(new_a);
+                    }
+                } else {
+                    new_remaining_annotations.emplace_back(a);
+                }
+            }
+
+            // The rest requirements become the new ensures for the barrier
+            // The rest ensures become the ensures of the remaining block
+            for(const auto &a : rest_annotations){
+                bool has_mem_reference = LoadFinder::has_load_name(redistributed_mem, a);
+                if(has_mem_reference && (a.type() == AnnotationType::Require || a.type() == AnnotationType::Context)){
+                    if(a.type() == AnnotationType::Require)
+                        barrier_annotations.emplace_back(change_annotation_type(AnnotationType::Ensure, a));
+                    else if(a.type() == AnnotationType::Context){
+                        Annotation new_a = change_annotation_type(AnnotationType::Ensure, a);
+                        new_remaining_annotations.emplace_back(new_a);
+                        barrier_annotations.emplace_back(new_a);
+                    }
+                } else {
+                    new_remaining_annotations.emplace_back(a);
+                }
+            }
+
+            remaining_annotations = new_remaining_annotations;
+
             injected_barrier = true;
-            return Block::make({first, make_barrier(mask), rest});
+            return Block::make({first, make_barrier(mask, barrier_annotations), rest});
         } else {
             return IRMutator::visit(op);
         }
     }
 
 public:
-    InjectThreadBarriers(ExtractSharedAndHeapAllocations &sha, ExtractRegisterAllocations &ra)
+    vector<Annotation> remaining_annotations;
+
+    InjectThreadBarriers(ExtractSharedAndHeapAllocations &sha, ExtractRegisterAllocations &ra, const ExtractBlockSize &bz)
         : in_threads(false),
           block_allocs(sha),
-          register_allocs(ra) {
+          register_allocs(ra),
+          block_size(bz) {
     }
 };
 
@@ -1387,10 +1531,12 @@ class FuseGPUThreadLoopsSingleKernel : public IRMutator {
             debug(3) << "Extracted register-level allocations:\n"
                      << body << "\n\n";
 
+            vector<Annotation> new_annotations;
             if (register_allocs.has_thread_loop) {
                 // If there's no loop over threads, everything is already synchronous.
-                InjectThreadBarriers i{block_allocations, register_allocs};
+                InjectThreadBarriers i{block_allocations, register_allocs, block_size};
                 body = i.mutate(body);
+                new_annotations = i.remaining_annotations;
             }
 
             debug(3) << "Injected synchronization:\n"
@@ -1398,6 +1544,10 @@ class FuseGPUThreadLoopsSingleKernel : public IRMutator {
 
             ReplaceForWithIf f(block_size);
             body = f.mutate(body);
+            //No barriers were inserted, thus we do not have new annotations yet
+            if (!register_allocs.has_thread_loop){
+                new_annotations = f.thread_annotations;
+            }
 
             debug(3) << "Replaced for with if:\n"
                      << body << "\n\n";
@@ -1407,15 +1557,14 @@ class FuseGPUThreadLoopsSingleKernel : public IRMutator {
             // Add back in any register-level allocations
             body = register_allocs.rewrap(body, thread_id);
             body = For::make(thread_id, 0, block_size_x, innermost_loop_type, op->device_api, body,
-             std::move(f.thread_annotations[0]));
+             std::move(new_annotations));
 
             // Rewrap the whole thing in other loops over threads
             for (int i = 1; i < block_size.threads_dimensions(); i++) {
                 thread_id = "." + thread_names[i];
                 body = register_allocs.rewrap(body, thread_id);
                 body = For::make("." + thread_names[i], 0, block_size.num_threads(i),
-                                 ForType::GPUThread, op->device_api, body,
-                                 std::move(f.thread_annotations[i]));
+                                 ForType::GPUThread, op->device_api, body);
             }
             thread_id.clear();
             body = register_allocs.rewrap(body, thread_id);
@@ -1499,7 +1648,8 @@ class ZeroGPULoopMins : public IRMutator {
             internal_assert(op);
             Expr adjusted = Variable::make(Int(32), op->name) + op->min;
             Stmt body = substitute(op->name, adjusted, op->body);
-            stmt = For::make(op->name, 0, op->extent, op->for_type, op->device_api, body, op->annotations);
+            vector<Annotation> annotations = substitute(op->name, adjusted, op->annotations);
+            stmt = For::make(op->name, 0, op->extent, op->for_type, op->device_api, body, annotations);
         }
         return stmt;
     }

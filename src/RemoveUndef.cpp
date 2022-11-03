@@ -104,6 +104,9 @@ private:
     Expr visit(const Or *op) override {
         return mutate_binary_operator(op);
     }
+    Expr visit(const Implies *op) override {
+        return mutate_binary_operator(op);
+    }
 
     Expr visit(const Not *op) override {
         Expr a = mutate(op->a);
@@ -114,6 +117,36 @@ private:
             return op;
         } else {
             return Not::make(a);
+        }
+    }
+
+    Expr visit(const Forall *op) override {
+        Expr select = mutate(op->select);
+        Expr main = mutate(op->main);
+        if(!select.defined() || !main.defined()){
+            return Expr();
+        }
+
+        if (select.same_as(op->select) &&
+                   main.same_as(op->main)) {
+            return op;
+        } else {
+            return Forall::make(op->vars, select, main);
+        }
+    }
+
+    Expr visit(const Exists *op) override {
+        Expr select = mutate(op->select);
+        Expr main = mutate(op->main);
+        if(!select.defined() || !main.defined()){
+            return Expr();
+        }
+
+        if (select.same_as(op->select) &&
+                   main.same_as(op->main)) {
+            return op;
+        } else {
+            return Exists::make(op->vars, select, main);
         }
     }
 
@@ -416,13 +449,13 @@ private:
         }
 
         if (predicate.defined()) {
-            Stmt stmt = IfThenElse::make(predicate, Provide::make(op->name, new_values, new_args, op->annotations));
+            Stmt stmt = IfThenElse::make(predicate, Provide::make(op->name, new_values, new_args));
             predicate = Expr();
             return stmt;
         } else if (!changed) {
             return op;
         } else {
-            return Provide::make(op->name, new_values, new_args, op->annotations);
+            return Provide::make(op->name, new_values, new_args);
         }
     }
 
@@ -568,12 +601,19 @@ private:
 
     Stmt visit(const Evaluate *op) override {
         Expr v = mutate(op->value);
+        bool same = true;
+        vector<Annotation> annotations;
+        for(const Annotation &a : op->annotations){
+            Annotation new_a = mutate(a);
+            same = same && new_a.same_as(a);
+            annotations.emplace_back(std::move(new_a));
+        }
         if (!v.defined()) {
             return Stmt();
-        } else if (v.same_as(op->value)) {
+        } else if (same && v.same_as(op->value)) {
             return op;
         } else {
-            return Evaluate::make(v);
+            return Evaluate::make(std::move(v), std::move(annotations));
         }
     }
 };

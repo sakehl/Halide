@@ -79,6 +79,199 @@ bool contains_impure_call(const Expr &expr) {
     return is_not_pure.result;
 }
 
+class FindFreeVars : public IRVisitor {
+
+    using IRVisitor::visit;
+
+    Scope<> scope;
+
+    void visit(const Variable *op) override {
+        if (!scope.contains(op->name)) {
+            free_vars.push(op->name, op->name);
+        }
+    }
+
+    void visit(const Let *op) override {
+        op->value.accept(this);
+        {
+            ScopedBinding<> bind(scope, op->name);
+            op->body.accept(this);
+        }
+    }
+
+    void visit(const LetStmt *op) override {
+        op->value.accept(this);
+        {
+            ScopedBinding<> bind(scope, op->name);
+            op->body.accept(this);
+        }
+    }
+
+    void visit(const For *op) override {
+        op->min.accept(this);
+        op->extent.accept(this);
+        {
+            ScopedBinding<> bind(scope, op->name);
+            op->body.accept(this);
+        }
+    }
+
+public:
+    Scope<string> free_vars;
+};
+
+/* Make the correct annotations for a normal serial loop
+ Example:
+     context Perm(a[i], write);
+     context Perm(b[i], read);
+     require b[i] > 0;
+     ensure a[i] > 0;
+    for(int i = i_min; i < i_min+extent; i++) a[i] = b[i];
+            
+    The idea:
+    * Make a new variable that is not present in expression yet (i_forall)
+    * Replace i with i_forall
+    * Place everything in in between foralls
+    * Permissions are available in the whole invariant:
+       loop_invariant (\forall* int i_forall; i_min <= i_forall && i_forall < i_min+extent; Perm(a[i_forall], write) ); )
+    * Requires/contexts are valid the whole loop invariant:
+       loop_invariant (\forall int i_forall; i_min <= i_forall && i_forall < i_min+extent; b[i_forall] > 0 ); )
+    * Ensures become valide throughout the loop invariant:
+       loop_invariant (\forall int i_forall; i_min <= i_forall && i_forall < i_min+extent && i_forall<i; a[i_forall] > 0 ); )
+
+    * For the outside of the loop, we also need annotations. Here we do something similar, but we keep the annotation type (requires/ensures)
+    * and they are always completely (not depending on i anymore)
+*/
+
+class LoopInvariantMaker : public IRMutator{
+    string for_loop_var;
+    string forall_var;
+    Expr bounds;
+    Expr through_out_bounds;
+    Expr extent;
+    std::map<string, Expr> replacer;
+    bool static_ann;
+
+    using IRMutator::visit;
+    using IRMutator::mutate;
+
+    Annotation visit(const AnnExpr *op) override {
+        if(static_ann){
+            Expr antecedent = GT::make(extent, make_zero(extent.type()));
+            outside_ann = add_antecedent(antecedent, AnnExpr::make(op->ann_type, op->condition));
+            return add_antecedent(antecedent, AnnExpr::make(AnnotationType::LoopInvariant, op->condition));
+        }
+
+        Expr condition = substitute(replacer, op->condition);
+        Expr outside_forall = Forall::make({forall_var}, bounds, condition);
+        outside_ann = AnnExpr::make(op->ann_type, outside_forall);
+
+        Expr forall_bounds;
+        if (op->ann_type == AnnotationType::Require || op->ann_type == AnnotationType::Context) {
+            forall_bounds = bounds;
+        } else if (op->ann_type == AnnotationType::Ensure) {
+            forall_bounds = through_out_bounds;
+        } else {
+            user_error << "Wrong annotation type passed to a function: " << op;
+        }
+        
+        Expr forall = Forall::make({forall_var}, forall_bounds, condition);
+        return AnnExpr::make(AnnotationType::LoopInvariant, forall);
+    }
+
+    Annotation visit(const Permission *op) override {
+        if(static_ann){
+            Expr antecedent = And::make(GT::make(extent, make_zero(extent.type())), op->antecedent);
+            outside_ann = Permission::make(op->ann_type, antecedent, op->variable, op->permission, op->forall_vars);
+            return Permission::make(AnnotationType::LoopInvariant, antecedent, op->variable, op->permission, op->forall_vars);
+        }
+        
+        Expr new_antecedent = substitute(replacer, op->antecedent);
+        Expr new_variable = substitute(replacer, op->variable);
+        Expr new_permission = substitute(replacer, op->permission);
+
+        Expr outside_antecedent = And::make(bounds, new_antecedent);
+        vector<string> new_forall_vars = op->forall_vars;
+        new_forall_vars.emplace_back(forall_var);
+        outside_ann = Permission::make(op->ann_type, outside_antecedent, new_variable, new_permission, new_forall_vars);
+
+        Expr forall_bounds;
+        if (op->ann_type == AnnotationType::Require || op->ann_type == AnnotationType::Context) {
+            forall_bounds = bounds;
+        } else if (op->ann_type == AnnotationType::Ensure) {
+            forall_bounds = through_out_bounds;
+        } else {
+            user_error << "Wrong annotation type passed to a function: " << op;
+        }
+
+        Expr antecedent = And::make(forall_bounds, new_antecedent);
+        return Permission::make(AnnotationType::LoopInvariant, antecedent, new_variable, new_permission, new_forall_vars);
+    }
+
+public:
+    Annotation mutate(const Annotation &a) override {
+        if(!a.defined()){
+            return Annotation();
+        }
+
+        if(a.type() == AnnotationType::LoopInvariant){
+            // Keep it as it is, and don't return an outside annotation
+            outside_ann = nullptr;
+            return a;
+        }
+
+        static_ann = false;
+        FindFreeVars finder = FindFreeVars();
+        a.accept(&finder);
+        if(!finder.free_vars.contains(for_loop_var)){
+            // If it doesn't contain the for_loop var, we don't want to repeat for instance a write permissions
+            // a number of times (that is incorrect). We just require that the extent is more than 0.
+            static_ann = true;
+        }
+
+        return a.get()->mutate_ann(this);
+    }
+
+    Annotation outside_ann;
+    Annotation loop_bound;
+
+    LoopInvariantMaker(string for_loop_v, Expr loop_min, Expr ext)
+       : for_loop_var(for_loop_v), extent(ext)
+    {   
+        forall_var = for_loop_v +".forall";
+
+        Expr forall = Variable::make(Int(32), forall_var);
+        Expr for_loop = Variable::make(Int(32), for_loop_v);
+
+        replacer[for_loop_v] = forall;
+
+        bounds = And::make(LE::make(loop_min, forall), LT::make(forall, Add::make(loop_min, ext)));
+        loop_bound = AnnExpr::make(AnnotationType::LoopInvariant, And::make(
+            LE::make(loop_min, for_loop), LE::make(for_loop, Add::make(loop_min, ext))));
+        through_out_bounds = And::make(bounds, LT::make(forall, for_loop));
+    }
+    
+};
+
+pair<vector<Annotation>, vector<Annotation>> loop_invariants_annotations(const vector<Annotation> &anns,
+ string for_loop_var, Expr loop_min, Expr extent){
+    vector<Annotation> loop_invariants;
+    vector<Annotation> outside_anns;
+    
+    LoopInvariantMaker lim = LoopInvariantMaker(for_loop_var, loop_min, extent);
+    loop_invariants.emplace_back(lim.loop_bound);
+
+    for(auto const &ann : anns){
+        Annotation loop_inv = lim.mutate(ann);
+        loop_invariants.emplace_back(loop_inv);
+        if(lim.outside_ann.get() != nullptr){
+            outside_anns.emplace_back(lim.outside_ann);
+        }
+    }
+
+    return std::make_pair(loop_invariants, outside_anns);
+}
+
 // Build a loop nest about a provide node using a schedule
 Stmt build_loop_nest(
     const Stmt &body,
@@ -274,7 +467,7 @@ Stmt build_loop_nest(
         }
     }
 
-    vector<Annotation> curr_ann = qualify(prefix, func.annotations());
+    vector<Annotation> curr_ann = qualify(prefix, def.annotations());
 
     // Rewrap the statement in the containing lets and fors.
     for (int i = (int)nest.size() - 1; i >= 0; i--) {
@@ -285,12 +478,27 @@ Stmt build_loop_nest(
         } else if ((nest[i].type == Container::If) || (nest[i].type == Container::IfInner)) {
             internal_assert(nest[i].value.defined());
             stmt = IfThenElse::make(nest[i].value, stmt, Stmt());
+
+            vector<Annotation> new_anns;
+            for (const auto &a : curr_ann)
+                new_anns.emplace_back(add_antecedent(nest[i].value, a));
+
+            curr_ann = new_anns;
         } else {
             internal_assert(nest[i].type == Container::For);
             const Dim &dim = stage_s.dims()[nest[i].dim_idx];
             Expr min = Variable::make(Int(32), nest[i].name + ".loop_min");
             Expr extent = Variable::make(Int(32), nest[i].name + ".loop_extent");
-            stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, curr_ann);
+            std::vector<Annotation> loop_invariants, outside_anns;
+            std::tie(loop_invariants, outside_anns) = loop_invariants_annotations(curr_ann, nest[i].name, min, extent);
+            if(dim.for_type == ForType::GPUBlock){
+                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt);   
+            } else if(dim.for_type == ForType::Serial) {
+                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, loop_invariants);
+            } else {
+                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, curr_ann);
+            }
+            curr_ann = outside_anns;
         }
     }
 
@@ -368,10 +576,8 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
         debug(3) << "Site " << i << " = " << s << "\n";
     }
 
-    vector<Annotation> q_annotations = qualify(prefix, func.annotations());
-
     // Make the (multi-dimensional multi-valued) store node.
-    Stmt body = Provide::make(func.name(), values, site, q_annotations);
+    Stmt body = Provide::make(func.name(), values, site);
     if (def.schedule().atomic()) {  // Add atomic node.
         bool any_unordered_parallel = false;
         for (const auto &d : def.schedule().dims()) {
@@ -947,7 +1153,7 @@ private:
 
             Stmt stmt = For::make(new_var, Variable::make(Int(32), new_var + ".loop_min"),
                                   Variable::make(Int(32), new_var + ".loop_extent"),
-                                  for_type, device_api, body);
+                                  for_type, device_api, body, op->annotations);
 
             // Add let stmts defining the bound of the renamed for-loop.
             stmt = LetStmt::make(new_var + ".loop_min", min_val, stmt);

@@ -918,6 +918,7 @@ int generate_filter_main_inner(int argc, char **argv, std::ostream &error_output
         // to allow legacy build systems to work more easily.
         std::map<std::string, Output> output_name_to_enum = {
             {"cpp", Output::c_source},
+            {"pvl", Output::pvl},
             {"h", Output::c_header},
             {"html", Output::stmt_html},
             {"o", Output::object},

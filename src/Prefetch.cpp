@@ -255,7 +255,7 @@ class ReducePrefetchDimension : public IRMutator {
                 args.push_back(prefetch->args[i]);
             }
 
-            stmt = Evaluate::make(Call::make(prefetch->type, Call::prefetch, args, Call::Intrinsic));
+            stmt = Evaluate::make(Call::make(prefetch->type, Call::prefetch, args, Call::Intrinsic), op->annotations);
             for (size_t i = 0; i < index_names.size(); ++i) {
                 stmt = For::make(index_names[i], 0, prefetch->args[(i + max_dim) * 2 + 2],
                                  ForType::Serial, DeviceAPI::None, stmt);
@@ -321,7 +321,7 @@ class SplitPrefetch : public IRMutator {
             }
 
             vector<Expr> args = {base, new_offset, Expr(1), simplify(max_byte_size / elem_size)};
-            stmt = Evaluate::make(Call::make(prefetch->type, Call::prefetch, args, Call::Intrinsic));
+            stmt = Evaluate::make(Call::make(prefetch->type, Call::prefetch, args, Call::Intrinsic), op->annotations);
             for (size_t i = 0; i < index_names.size(); ++i) {
                 stmt = For::make(index_names[i], 0, extents[i],
                                  ForType::Serial, DeviceAPI::None, stmt);

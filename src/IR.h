@@ -180,6 +180,15 @@ struct Or : public ExprNode<Or> {
     static const IRNodeType _node_type = IRNodeType::Or;
 };
 
+/** Logical implies - P ==> Q */
+struct Implies : public ExprNode<Implies> {
+    Expr a, b;
+
+    static Expr make(Expr a, Expr b);
+
+    static const IRNodeType _node_type = IRNodeType::Implies;
+};
+
 /** Logical not - true if the expression false */
 struct Not : public ExprNode<Not> {
     Expr a;
@@ -187,6 +196,26 @@ struct Not : public ExprNode<Not> {
     static Expr make(Expr a);
 
     static const IRNodeType _node_type = IRNodeType::Not;
+};
+
+/** Logical forall - forall i,j; condition; main */
+struct Forall : public ExprNode<Forall> {
+    std::vector<std::string> vars;
+    Expr select, main;
+
+    static Expr make(std::vector<std::string> vars, Expr select, Expr main);
+
+    static const IRNodeType _node_type = IRNodeType::Forall;
+};
+
+/** Logical exists - exists i,j; condition; main */
+struct Exists : public ExprNode<Exists> {
+    std::vector<std::string> vars;
+    Expr select, main;
+
+    static Expr make(std::vector<std::string> vars, Expr select, Expr main);
+
+    static const IRNodeType _node_type = IRNodeType::Exists;
 };
 
 /** A ternary operator. Evalutes 'true_value' and 'false_value',
@@ -346,10 +375,8 @@ struct Provide : public StmtNode<Provide> {
     std::string name;
     std::vector<Expr> values;
     std::vector<Expr> args;
-    std::vector<Annotation> annotations;
 
-    static Stmt make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args,
-        const std::vector<Annotation> &annotations = {});
+    static Stmt make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args);
 
     static const IRNodeType _node_type = IRNodeType::Provide;
 };
@@ -460,8 +487,9 @@ struct IfThenElse : public StmtNode<IfThenElse> {
 /** Evaluate and discard an expression, presumably because it has some side-effect. */
 struct Evaluate : public StmtNode<Evaluate> {
     Expr value;
+    std::vector<Annotation> annotations;
 
-    static Stmt make(Expr v);
+    static Stmt make(Expr v, std::vector<Annotation> annotations = {});
 
     static const IRNodeType _node_type = IRNodeType::Evaluate;
 };
@@ -878,12 +906,16 @@ struct AnnExpr : public AnnNode<AnnExpr> {
 };
 
 struct Permission : public AnnNode<Permission> {
+    Expr antecedent; //The left hand side of an implication
     Expr variable;
     Expr permission;
+    std::vector<std::string> forall_vars;
 
     static Annotation make(AnnotationType ann_type,
+                     Expr antecedent,
                      Expr variable,
-                     Expr permission);
+                     Expr permission,
+                     std::vector<std::string> forall_vars);
 
     static const IRNodeType _node_type = IRNodeType::Permission;
 };

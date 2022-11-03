@@ -150,12 +150,6 @@ class SplitTuples : public IRMutator {
             args.push_back(mutate(e));
         }
 
-        // Mutate the annotations
-        vector<Annotation> anns;
-        for (const Annotation &a : op->annotations) {
-            anns.push_back(mutate(a));
-        }
-
         // Get the Function
         auto it = env.find(op->name);
         internal_assert(it != env.end());
@@ -276,7 +270,7 @@ class SplitTuples : public IRMutator {
                 // Just make a provide node
                 int i = *c.begin();
                 string name = op->name + "." + std::to_string(i);
-                s = Provide::make(name, {mutate(op->values[i])}, args, anns);
+                s = Provide::make(name, {mutate(op->values[i])}, args);
             } else {
                 // Make a list of let statements that compute the
                 // values (doing any loads), and then a block of
@@ -289,7 +283,7 @@ class SplitTuples : public IRMutator {
                         lets.emplace_back(var_name, val);
                         val = Variable::make(val.type(), var_name);
                     }
-                    provides.push_back(Provide::make(name, {val}, args, anns));
+                    provides.push_back(Provide::make(name, {val}, args));
                 }
 
                 s = Block::make(provides);

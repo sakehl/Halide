@@ -200,6 +200,9 @@ public:
     void visit(const Or *op) override {
         visit_binary_operator(op);
     }
+    void visit(const Implies *op) override {
+        visit_binary_operator(op);
+    }
 
     void visit(const Not *op) override {
         const Not *e = expr.as<Not>();
@@ -209,6 +212,48 @@ public:
         } else {
             result = false;
         }
+    }
+
+    void visit(const Forall *op) override {
+        const Forall *e = expr.as<Forall>();
+        if(e && op->vars.size() == e->vars.size()){
+            for (size_t i = 0; result && i < e->vars.size(); i++) {
+                result = result && (e->vars[i] == op->vars[i]);
+            }
+        } else{
+            result = false;
+        }
+
+        if (result) {
+            expr = e->select;
+            op->select.accept(this);
+            expr = e->main;
+            op->main.accept(this);
+        } else {
+            result = false;
+        }
+
+    }
+
+    void visit(const Exists *op) override {
+        const Forall *e = expr.as<Forall>();
+        if(e && op->vars.size() == e->vars.size()){
+            for (size_t i = 0; result && i < e->vars.size(); i++) {
+                result = result && (e->vars[i] == op->vars[i]);
+            }
+        } else{
+            result = false;
+        }
+
+        if (result) {
+            expr = e->select;
+            op->select.accept(this);
+            expr = e->main;
+            op->main.accept(this);
+        } else {
+            result = false;
+        }
+
     }
 
     void visit(const Select *op) override {
@@ -359,6 +404,11 @@ bool equal_helper(int a, int b) {
     return a == b;
 }
 
+HALIDE_ALWAYS_INLINE
+bool equal_helper(std::string a, std::string b) {
+    return a.compare(b) == 0;
+}
+
 template<typename T>
 HALIDE_ALWAYS_INLINE bool equal_helper(const std::vector<T> &a, const std::vector<T> &b) {
     if (a.size() != b.size()) {
@@ -423,8 +473,18 @@ bool equal_helper(const BaseExprNode &a, const BaseExprNode &b) noexcept {
         return equal_helper_binop<And>(a, b);
     case IRNodeType::Or:
         return equal_helper_binop<Or>(a, b);
+    case IRNodeType::Implies:
+        return equal_helper_binop<Implies>(a, b);
     case IRNodeType::Not:
         return equal_helper(((const Not &)a).a, ((const Not &)b).a);
+    case IRNodeType::Forall:
+        return (equal_helper(((const Forall &)a).vars, ((const Forall &)b).vars) &&
+                equal_helper(((const Forall &)a).select, ((const Forall &)b).select) &&
+                equal_helper(((const Forall &)a).main, ((const Forall &)b).main));
+    case IRNodeType::Exists:
+        return (equal_helper(((const Exists &)a).vars, ((const Exists &)b).vars) &&
+                equal_helper(((const Exists &)a).select, ((const Exists &)b).select) &&
+                equal_helper(((const Exists &)a).main, ((const Exists &)b).main));
     case IRNodeType::Select:
         return (equal_helper(((const Select &)a).condition, ((const Select &)b).condition) &&
                 equal_helper(((const Select &)a).true_value, ((const Select &)b).true_value) &&

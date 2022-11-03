@@ -11,6 +11,7 @@
 #include "AddParameterChecks.h"
 #include "AllocationBoundsInference.h"
 #include "AsyncProducers.h"
+#include "AutomateAnnotations.h"
 #include "BoundSmallAllocations.h"
 #include "Bounds.h"
 #include "BoundsInference.h"
@@ -130,6 +131,9 @@ Module lower(const vector<Function> &output_funcs,
     // Try to simplify the RHS/LHS of a function definition by propagating its
     // specializations' conditions
     simplify_specializations(env);
+
+    // Add automatic annotations for functions these are:
+    add_automatic_annotations(env);
 
     debug(1) << "Creating initial loop nests...\n";
     bool any_memoized = false;

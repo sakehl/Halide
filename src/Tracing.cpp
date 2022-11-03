@@ -216,7 +216,7 @@ private:
                 }
             }
 
-            stmt = Provide::make(op->name, traces, args, op->annotations);
+            stmt = Provide::make(op->name, traces, args);
             for (const auto &p : lets) {
                 stmt = LetStmt::make(p.first, p.second, stmt);
             }

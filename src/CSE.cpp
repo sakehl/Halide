@@ -264,11 +264,17 @@ class CSEEveryExprInStmt : public IRMutator {
         return s;
     }
 
+
+
 public:
     using IRMutator::mutate;
 
     Expr mutate(const Expr &e) override {
         return common_subexpression_elimination(e, lift_all);
+    }
+
+    Annotation mutate(const Annotation &a) override {
+        return a;
     }
 
     CSEEveryExprInStmt(bool l)

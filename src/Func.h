@@ -938,6 +938,11 @@ public:
                       const std::string &fn_name = "",
                       const Target &target = get_target_from_environment());
 
+    void compile_to_pvl(const std::string &filename,
+                      const std::vector<Argument> &,
+                      const std::string &fn_name = "",
+                      const Target &target = get_target_from_environment());
+
     /** Write out an internal representation of lowered code. Useful
      * for analyzing and debugging scheduling. Can emit html or plain
      * text. */
@@ -2459,17 +2464,32 @@ public:
     /** Add the condition to the pre and post-conditions everywhere in the program. */
     Func &context_everywhere(const Expr &condition);
 
+    /** Add the condition to the loop invariant, needed when using reduction domains. */
+    Func &loop_invariant(const Expr &condition);
+
     /** Require a `permission` to a specific variable. */
     Func &require_perm(const Expr &variable, const Expr &permission);
+
+    /** If 'antecedent' then require a`permission` to a specific variable. */
+    Func &require_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
 
     /** Ensure a `permission` to a specific variable. */
     Func &ensure_perm(const Expr &variable, const Expr &permission);
 
+    /** If 'antecedent' then ensure a `permission` to a specific variable. */
+    Func &ensure_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
+
     /** Require and ensure a `permission` to a specific variable. */
     Func &context_perm(const Expr &variable, const Expr &permission);
 
+    /** If 'antecedent' then require and ensure a `permission` to a specific variable. */
+    Func &context_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
+
     /** Require and ensure a `permission` to a specific variable in the whole program. */
     Func &context_everywhere_perm(const Expr &variable, const Expr &permission);
+
+    /** If 'antecedent' then require and ensure a `permission` to a specific variable in the whole program. */
+    Func &context_everywhere_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
 };
 
 namespace Internal {

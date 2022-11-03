@@ -110,6 +110,10 @@ public:
     const Specialization &add_specialization(Expr condition);
     // @}
 
+    const std::vector<Annotation> &annotations() const;
+    std::vector<Annotation> &annotations();
+    void add_annotation(Annotation annotation);
+
     /** Attempt to get the source file and line where this definition
      * was made using DWARF introspection. Returns an empty string if
      * no debug symbols were found or the debug symbols were not

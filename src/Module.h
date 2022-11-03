@@ -29,6 +29,7 @@ enum class Output {
     bitcode,
     c_header,
     c_source,
+    pvl,
     compiler_log,
     cpp_stub,
     featurization,

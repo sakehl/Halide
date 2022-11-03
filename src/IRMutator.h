@@ -68,7 +68,10 @@ protected:
     virtual Expr visit(const GE *);
     virtual Expr visit(const And *);
     virtual Expr visit(const Or *);
+    virtual Expr visit(const Implies *);
     virtual Expr visit(const Not *);
+    virtual Expr visit(const Forall *);
+    virtual Expr visit(const Exists *);
     virtual Expr visit(const Select *);
     virtual Expr visit(const Load *);
     virtual Expr visit(const Ramp *);

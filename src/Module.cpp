@@ -45,6 +45,7 @@ std::map<Output, const OutputInfo> get_output_info(const Target &target) {
         {Output::bitcode, {"bitcode", ".bc", IsMulti}},
         {Output::c_header, {"c_header", ".h", IsSingle}},
         {Output::c_source, {"c_source", ".halide_generated.cpp", IsSingle}},
+        {Output::pvl, {"pvl", ".pvl", IsSingle}},
         {Output::compiler_log, {"compiler_log", ".halide_compiler_log", IsSingle}},
         {Output::cpp_stub, {"cpp_stub", ".stub.h", IsSingle}},
         {Output::featurization, {"featurization", ".featurization", IsMulti}},
@@ -651,6 +652,14 @@ void Module::compile(const std::map<Output, std::string> &output_files) const {
         Internal::CodeGen_C cg(file,
                                target(),
                                target().has_feature(Target::CPlusPlusMangling) ? Internal::CodeGen_C::CPlusPlusImplementation : Internal::CodeGen_C::CImplementation);
+        cg.compile(*this);
+    }
+    if (contains(output_files, Output::pvl)) {
+        debug(1) << "Module.compile(): pvl " << output_files.at(Output::pvl) << "\n";
+        std::ofstream file(output_files.at(Output::pvl));
+        Internal::CodeGen_C cg(file,
+                               target(),
+                               Internal::CodeGen_C::PVL);
         cg.compile(*this);
     }
     if (contains(output_files, Output::python_extension)) {

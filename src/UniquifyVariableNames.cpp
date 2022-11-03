@@ -91,15 +91,22 @@ class UniquifyVariableNames : public IRMutator {
         Expr extent = mutate(op->extent);
         string new_name = make_new_name(op->name);
         Stmt body = mutate(op->body);
+        bool same = true;
+        vector<Annotation> annotations;
+        for(const Annotation &a : op->annotations){
+            Annotation new_a = mutate(a);
+            same = same && new_a.same_as(a);
+            annotations.emplace_back(std::move(new_a));
+        }
         renaming.pop(op->name);
 
-        if (new_name == op->name &&
+        if (same && new_name == op->name &&
             body.same_as(op->body) &&
             min.same_as(op->min) &&
             extent.same_as(op->extent)) {
             return op;
         } else {
-            return For::make(new_name, min, extent, op->for_type, op->device_api, body);
+            return For::make(new_name, min, extent, op->for_type, op->device_api, body, annotations);
         }
     }
 

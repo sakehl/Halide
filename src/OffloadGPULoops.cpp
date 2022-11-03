@@ -14,6 +14,7 @@
 #include "InjectHostDevBufferCopies.h"
 #include "OffloadGPULoops.h"
 #include "Util.h"
+#include "Simplify.h"
 
 namespace Halide {
 namespace Internal {
@@ -187,7 +188,7 @@ class InjectGpuOffload : public IRMutator {
             using IRVisitor::visit;
             void visit(const For *op) override {
                 if(ends_with(op->name, ".__thread_id_x")) {
-                       annotations = std::move(op->annotations);
+                       annotations = op->annotations;
                        return;
                 }
                 op->body.accept(this);
@@ -197,9 +198,27 @@ class InjectGpuOffload : public IRMutator {
             vector<Annotation> annotations;
         } find_annotations;
 
+        vector<Annotation> annotations;
         loop->accept(&find_annotations);
-        
-        gpu_codegen->add_kernel(loop, kernel_name, closure_args, find_annotations.annotations);
+        annotations = std::move(find_annotations.annotations);
+        // TODO: Change this back when we have multidimensional support for verification
+        // for(int i = 0; i < 4; i++){
+        for(int i = 0; i < 1; i++){
+            annotations.emplace(annotations.begin(), AnnExpr::make(AnnotationType::ContextEverywhere, 
+                EQ::make(
+                    Call::make(Int(32), "get_local_size", {i}, Call::PureExtern)
+                    , bounds.num_threads[i])));
+            annotations.emplace(annotations.begin()+1, AnnExpr::make(AnnotationType::ContextEverywhere, 
+                EQ::make(
+                    Call::make(Int(32), " get_num_groups", {i}, Call::PureExtern)
+                    , bounds.num_blocks[i])));
+        }
+
+        // annotations.emplace(annotations.begin(),AnnExpr::make(AnnotationType::Require, 
+        //         EQ::make(
+        //             Variable::make(Int(32),"shared_mem_size_1"), simplify(bounds.shared_mem_size/Int(32).bytes()) )));
+
+        gpu_codegen->add_kernel(loop, kernel_name, closure_args, annotations, simplify(bounds.shared_mem_size/Int(32).bytes()));
 
         // get the actual name of the generated kernel for this loop
         kernel_name = gpu_codegen->get_current_kernel_name();

@@ -216,6 +216,19 @@ Expr Or::make(Expr a, Expr b) {
     return node;
 }
 
+Expr Implies::make(Expr a, Expr b) {
+    internal_assert(a.defined()) << "Implies of undefined\n";
+    internal_assert(b.defined()) << "Implies of undefined\n";
+    internal_assert(a.type().is_bool()) << "lhs of Implies is not a bool\n";
+    internal_assert(b.type().is_bool()) << "rhs of Implies is not a bool\n";
+
+    Implies *node = new Implies;
+    node->type = Bool(a.type().lanes());
+    node->a = std::move(a);
+    node->b = std::move(b);
+    return node;
+}
+
 Expr Not::make(Expr a) {
     internal_assert(a.defined()) << "Not of undefined\n";
     internal_assert(a.type().is_bool()) << "argument of Not is not a bool\n";
@@ -223,6 +236,34 @@ Expr Not::make(Expr a) {
     Not *node = new Not;
     node->type = Bool(a.type().lanes());
     node->a = std::move(a);
+    return node;
+}
+
+Expr Forall::make(std::vector<std::string> vars, Expr select, Expr main) {
+    internal_assert(select.defined()) << "Forall of undefined\n";
+    internal_assert(main.defined()) << "Forall of undefined\n";
+    internal_assert(select.type().is_bool() && select.type().is_scalar()) << "select of Forall is not a scalar bool\n";
+    internal_assert(main.type().is_bool() && main.type().is_scalar()) << "main of Forall is not a scalar bool\n";
+
+    Forall *node = new Forall;
+    node->type = select.type();
+    node->vars = vars;
+    node->select = std::move(select);
+    node->main = std::move(main);
+    return node;
+}
+
+Expr Exists::make(std::vector<std::string> vars, Expr select, Expr main) {
+    internal_assert(select.defined()) << "Exists of undefined\n";
+    internal_assert(main.defined()) << "Exists of undefined\n";
+    internal_assert(select.type().is_bool() && select.type().is_scalar()) << "select of Exists is not a scalar bool\n";
+    internal_assert(main.type().is_bool() && main.type().is_scalar()) << "main of Exists is not a scalar bool\n";
+
+    Exists *node = new Exists;
+    node->type = select.type();
+    node->vars = vars;
+    node->select = std::move(select);
+    node->main = std::move(main);
     return node;
 }
 
@@ -386,8 +427,7 @@ Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter para
     return node;
 }
 
-Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args,
-    const std::vector<Annotation> &annotations) {
+Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args) {
     internal_assert(!values.empty()) << "Provide of no values\n";
     for (size_t i = 0; i < values.size(); i++) {
         internal_assert(values[i].defined()) << "Provide of undefined value\n";
@@ -400,7 +440,6 @@ Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, con
     node->name = name;
     node->values = values;
     node->args = args;
-    node->annotations = annotations;
     return node;
 }
 
@@ -574,11 +613,12 @@ Stmt IfThenElse::make(Expr condition, Stmt then_case, Stmt else_case) {
     return node;
 }
 
-Stmt Evaluate::make(Expr v) {
+Stmt Evaluate::make(Expr v, std::vector<Annotation> annotations) {
     internal_assert(v.defined()) << "Evaluate of undefined\n";
 
     Evaluate *node = new Evaluate;
     node->value = std::move(v);
+    node->annotations = std::move(annotations);
     return node;
 }
 
@@ -927,7 +967,8 @@ Annotation AnnExpr::make(AnnotationType ann_type, Expr condition){
     return node;
 }
 
-Annotation Permission::make(AnnotationType ann_type, Expr variable, Expr permission){
+Annotation Permission::make(AnnotationType ann_type, Expr antecedent, Expr variable, Expr permission, std::vector<std::string> forall_vars){
+    internal_assert(antecedent.defined()) << "Permission of undefined\n";
     internal_assert(variable.defined()) << "Permission of undefined\n";
     internal_assert(permission.defined()) << "Permission of undefined\n";
     internal_assert(permission.node_type() == IRNodeType::ReadPerm || permission.node_type() == IRNodeType::Frac) 
@@ -936,7 +977,9 @@ Annotation Permission::make(AnnotationType ann_type, Expr variable, Expr permiss
     Permission *node = new Permission;
     node->ann_type = ann_type;
     node->variable = std::move(variable);
+    node->antecedent = std::move(antecedent);
     node->permission = std::move(permission);
+    node->forall_vars = std::move(forall_vars);
     return node;
 }
 
@@ -1074,8 +1117,20 @@ void ExprNode<Or>::accept(IRVisitor *v) const {
     v->visit((const Or *)this);
 }
 template<>
+void ExprNode<Implies>::accept(IRVisitor *v) const {
+    v->visit((const Implies *)this);
+}
+template<>
 void ExprNode<Not>::accept(IRVisitor *v) const {
     v->visit((const Not *)this);
+}
+template<>
+void ExprNode<Forall>::accept(IRVisitor *v) const {
+    v->visit((const Forall *)this);
+}
+template<>
+void ExprNode<Exists>::accept(IRVisitor *v) const {
+    v->visit((const Exists *)this);
 }
 template<>
 void ExprNode<Select>::accept(IRVisitor *v) const {
@@ -1275,8 +1330,20 @@ Expr ExprNode<Or>::mutate_expr(IRMutator *v) const {
     return v->visit((const Or *)this);
 }
 template<>
+Expr ExprNode<Implies>::mutate_expr(IRMutator *v) const {
+    return v->visit((const Implies *)this);
+}
+template<>
 Expr ExprNode<Not>::mutate_expr(IRMutator *v) const {
     return v->visit((const Not *)this);
+}
+template<>
+Expr ExprNode<Forall>::mutate_expr(IRMutator *v) const {
+    return v->visit((const Forall *)this);
+}
+template<>
+Expr ExprNode<Exists>::mutate_expr(IRMutator *v) const {
+    return v->visit((const Exists *)this);
 }
 template<>
 Expr ExprNode<Select>::mutate_expr(IRMutator *v) const {

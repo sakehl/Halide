@@ -631,7 +631,8 @@ public:
     void add_kernel(Stmt stmt,
                     const std::string &name,
                     const std::vector<DeviceArgument> &args,
-                    const std::vector<Annotation> &annotations = {}
+                    const std::vector<Annotation> &annotations = {},
+                    const Expr shared_mem_size = 0
                     ) override;
 
     void init_module() override;
@@ -664,7 +665,8 @@ CodeGen_OpenGLCompute_Dev::CodeGen_OpenGLCompute_Dev(const Target &target)
 void CodeGen_OpenGLCompute_Dev::add_kernel(Stmt s,
                                            const string &name,
                                            const vector<DeviceArgument> &args,
-                                           const std::vector<Annotation> &annotations) {
+                                           const std::vector<Annotation> &annotations,
+                                           const Expr shared_mem_size) {
     debug(2) << "CodeGen_OpenGLCompute_Dev::compile " << name << "\n";
 
     // TODO: do we have to uniquify these names, or can we trust that they are safe?

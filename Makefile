@@ -409,6 +409,7 @@ SOURCE_FILES = \
   AssociativeOpsTable.cpp \
   Associativity.cpp \
   AsyncProducers.cpp \
+  AutomateAnnotations.cpp \
   AutoScheduleUtils.cpp \
   BoundaryConditions.cpp \
   Bounds.cpp \
@@ -582,6 +583,7 @@ HEADER_FILES = \
   AssociativeOpsTable.h \
   Associativity.h \
   AsyncProducers.h \
+  AutomateAnnotations.h \
   AutoScheduleUtils.h \
   BoundaryConditions.h \
   Bounds.h \

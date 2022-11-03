@@ -53,7 +53,10 @@ public:
     void visit(const GE *) override;
     void visit(const And *) override;
     void visit(const Or *) override;
+    void visit(const Implies *) override;
     void visit(const Not *) override;
+    void visit(const Forall *) override;
+    void visit(const Exists *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -179,7 +182,19 @@ void ComputeModulusRemainder::visit(const Or *) {
     internal_error << "modulus_remainder of bool\n";
 }
 
+void ComputeModulusRemainder::visit(const Implies *) {
+    internal_error << "modulus_remainder of bool\n";
+}
+
 void ComputeModulusRemainder::visit(const Not *) {
+    internal_error << "modulus_remainder of bool\n";
+}
+
+void ComputeModulusRemainder::visit(const Forall *) {
+    internal_error << "modulus_remainder of bool\n";
+}
+
+void ComputeModulusRemainder::visit(const Exists *) {
     internal_error << "modulus_remainder of bool\n";
 }
 

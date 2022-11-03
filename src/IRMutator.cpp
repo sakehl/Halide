@@ -105,6 +105,9 @@ Expr IRMutator::visit(const And *op) {
 Expr IRMutator::visit(const Or *op) {
     return mutate_binary_operator(this, op);
 }
+Expr IRMutator::visit(const Implies *op) {
+    return mutate_binary_operator(this, op);
+}
 
 Expr IRMutator::visit(const Not *op) {
     Expr a = mutate(op->a);
@@ -112,6 +115,28 @@ Expr IRMutator::visit(const Not *op) {
         return op;
     }
     return Not::make(std::move(a));
+}
+
+Expr IRMutator::visit(const Forall *op) {
+    Expr select = mutate(op->select);
+    Expr main = mutate(op->main);
+    if (select.same_as(op->select) &&
+        main.same_as(op->main)) {
+        return op;
+    } else {
+        return Forall::make(op->vars, std::move(select), std::move(main));
+    }
+}
+
+Expr IRMutator::visit(const Exists *op) {
+    Expr select = mutate(op->select);
+    Expr main = mutate(op->main);
+    if (select.same_as(op->select) &&
+        main.same_as(op->main)) {
+        return op;
+    } else {
+        return Exists::make(op->vars, std::move(select), std::move(main));
+    }
 }
 
 Expr IRMutator::visit(const Select *op) {
@@ -269,20 +294,10 @@ Stmt IRMutator::visit(const Provide *op) {
         new_values[i] = new_value;
     }
 
-    for (const Annotation &old_ann: op->annotations) {
-        Annotation new_ann = mutate(old_ann);
-        if (!new_ann.same_as(old_ann)) {
-            changed = true;
-        }
-        new_annotations.push_back(new_ann);
-    }
-
-    
-
     if (!changed) {
         return op;
     }
-    return Provide::make(op->name, new_values, new_args, new_annotations);
+    return Provide::make(op->name, new_values, new_args);
 }
 
 Stmt IRMutator::visit(const Allocate *op) {
@@ -373,11 +388,18 @@ Stmt IRMutator::visit(const IfThenElse *op) {
 }
 
 Stmt IRMutator::visit(const Evaluate *op) {
+    bool same = true;
+    vector<Annotation> annotations;
+    for(const Annotation &a : op->annotations){
+        Annotation new_a = mutate(a);
+        same = same && new_a.same_as(a);
+        annotations.emplace_back(std::move(new_a));
+    }
     Expr v = mutate(op->value);
-    if (v.same_as(op->value)) {
+    if (same && v.same_as(op->value)) {
         return op;
     }
-    return Evaluate::make(std::move(v));
+    return Evaluate::make(std::move(v), std::move(annotations));
 }
 
 Expr IRMutator::visit(const Shuffle *op) {
@@ -454,14 +476,18 @@ Annotation IRMutator::visit(const AnnExpr *op) {
 
 Annotation IRMutator::visit(const Permission *op) {
     Expr variable = mutate(op->variable);
+    Expr antecedent = mutate(op->antecedent);
     Expr permission = mutate(op->permission);
     if (variable.same_as(op->variable) &&
+        antecedent.same_as(op->antecedent) &&
         permission.same_as(op->permission)) {
         return op;
     } else {
         return Permission::make(op->ann_type,
+                            std::move(antecedent),
                             std::move(variable),
-                            std::move(permission));
+                            std::move(permission),
+                            op->forall_vars);
     }
 }
 

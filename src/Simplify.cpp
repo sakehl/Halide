@@ -352,6 +352,12 @@ Stmt simplify(const Stmt &s, bool remove_dead_let_stmts,
     return Simplify(remove_dead_let_stmts, &bounds, &alignment).mutate(s);
 }
 
+Annotation simplify(const Annotation &a, bool remove_dead_let_stmts,
+              const Scope<Interval> &bounds,
+              const Scope<ModulusRemainder> &alignment) {
+    return Simplify(remove_dead_let_stmts, &bounds, &alignment).mutate(a);
+}
+
 class SimplifyExprs : public IRMutator {
 public:
     using IRMutator::mutate;

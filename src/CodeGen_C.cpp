@@ -2945,5 +2945,113 @@ int test1(struct halide_buffer_t *_buf_buffer, float _alpha, int32_t _beta, void
     std::cout << "CodeGen_C test passed\n";
 }
 
+
+void AnnotationPrinter::visit(const Variable *op) {
+    string output;
+    if (ends_with(op->name, ".__thread_id_x")) {
+        output = "get_local_id(0)";
+    } else if (ends_with(op->name, ".__thread_id_y")) {
+        output = "get_local_id(1)";
+    } else if (ends_with(op->name, ".__thread_id_z")) {
+        output = "get_local_id(2)";
+    } else if (ends_with(op->name, ".__thread_id_w")) {
+        output = "get_local_id(3)";
+    } else if (ends_with(op->name, ".__block_id_x")) {
+        output = "get_group_id(0)";
+    } else if (ends_with(op->name, ".__block_id_y")) {
+        output = "get_group_id(1)";
+    } else if (ends_with(op->name, ".__block_id_z")) {
+        output = "get_group_id(2)";
+    } else if (ends_with(op->name, ".__block_id_w")) {
+        output = "get_group_id(3)";
+    } else {
+        output = c_print_name(op->name);
+    }
+
+    stream << output;
+}
+
+void AnnotationPrinter::visit(const Load *op) {
+    const bool has_pred = !is_const_one(op->predicate);
+    const bool show_alignment = op->type.is_vector() && op->alignment.modulus > 1;
+    if (has_pred) {
+        open();
+    }
+    //We do not print a cast like load in annotations
+    // if (!known_type.contains(op->name)) {
+    //     stream << "(" << op->type << ")";
+    // }
+    stream << c_print_name(op->name) << "[";
+    print_no_parens(op->index);
+    if (show_alignment) {
+        stream << " aligned(" << op->alignment.modulus << ", " << op->alignment.remainder << ")";
+    }
+    stream << "]";
+    if (has_pred) {
+        stream << " if ";
+        print(op->predicate);
+        close();
+    }
+}
+
+std::string add_forall_vars(std::vector<std::string> vars){
+    std::ostringstream o;
+    for (size_t i = 0; i < vars.size(); ++i) {
+        if (i > 0) {
+            o << ", ";
+        }
+        o << "int " << c_print_name(vars[i]);
+    }
+    return o.str();
+}
+
+void AnnotationPrinter::visit(const Forall *op) {
+    stream << "(\\forall ";
+    stream << add_forall_vars(op->vars) << "; ";
+
+    print_no_parens(op->select);
+    stream << "; ";
+    print_no_parens(op->main);
+    stream << ")";
+}
+
+void AnnotationPrinter::visit(const Exists *op) {
+    stream << "(\\exists ";
+    stream << add_forall_vars(op->vars) << "; ";
+
+    print_no_parens(op->select);
+    stream << "; ";
+    print_no_parens(op->main);
+    stream << ")";
+}
+
+void AnnotationPrinter::visit(const Permission *op) {
+    stream << op->ann_type << " ";
+    if(!op->forall_vars.empty()){
+        stream << "(\\forall* ";
+        stream << add_forall_vars(op->forall_vars) << "; ";
+
+        print_no_parens(op->antecedent);
+        stream << "; ";
+    } else {
+        //Check if the right hand side is simply true
+        if( !is_const_true(op->antecedent) ){
+            print_no_parens(op->antecedent);
+            stream << " ==> ";
+        }
+    }
+    
+    stream << "Perm(";
+    print_no_parens(op->variable);
+    stream << ", ";
+    print_no_parens(op->permission);
+    stream << ")";
+
+    if(!op->forall_vars.empty()) stream << ")";
+}
+
+AnnotationPrinter::AnnotationPrinter(std::ostream &s)
+        : IRPrinter(s){};
+
 }  // namespace Internal
 }  // namespace Halide

@@ -255,9 +255,21 @@ class MonotonicVisitor : public IRVisitor {
         result = unify(ra, rb);
     }
 
+    void visit(const Implies *op) override {
+        internal_error << "Monotonic of Implies\n";
+    }
+
     void visit(const Not *op) override {
         op->a.accept(this);
         result = flip(result);
+    }
+
+    void visit(const Forall *op) override {
+        internal_error << "Monotonic of Forall\n";
+    }
+
+    void visit(const Exists *op) override {
+        internal_error << "Monotonic of Exists\n";
     }
 
     void visit(const Select *op) override {

@@ -23,6 +23,7 @@ struct DefinitionContents {
     StageSchedule stage_schedule;
     std::vector<Specialization> specializations;
     std::string source_location;
+    std::vector<Annotation> annotations;
 
     DefinitionContents()
         : predicate(const_true()) {
@@ -60,6 +61,10 @@ struct DefinitionContents {
         }
         for (size_t i = 0; i < args.size(); ++i) {
             args[i] = mutator->mutate(args[i]);
+        }
+
+        for (size_t i = 0; i < annotations.size(); ++i) {
+            annotations[i] = mutator->mutate(annotations[i]);
         }
 
         stage_schedule.mutate(mutator);
@@ -118,6 +123,7 @@ Definition Definition::get_copy() const {
     copy.contents->args = contents->args;
     copy.contents->stage_schedule = contents->stage_schedule.get_copy();
     copy.contents->source_location = contents->source_location;
+    copy.contents->annotations = contents->annotations;
 
     // Deep-copy specializations
     for (const Specialization &s : contents->specializations) {
@@ -211,6 +217,18 @@ const Specialization &Definition::add_specialization(Expr condition) {
 
     contents->specializations.push_back(s);
     return contents->specializations.back();
+}
+
+std::vector<Annotation> &Definition::annotations() {
+    return contents->annotations;
+}
+
+const std::vector<Annotation> &Definition::annotations() const {
+    return contents->annotations;
+}
+
+void Definition::add_annotation(Annotation annotation){
+    contents->annotations.push_back(annotation);
 }
 
 }  // namespace Internal

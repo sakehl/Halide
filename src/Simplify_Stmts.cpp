@@ -256,18 +256,10 @@ Stmt Simplify::visit(const Provide *op) {
         new_values[i] = new_value;
     }
 
-    for (const Annotation &old_ann : op->annotations) {
-        Annotation new_ann = mutate(old_ann);
-        if (!new_ann.same_as(old_ann)) {
-            changed = true;
-        }
-        new_annotations.emplace_back(new_ann);
-    }
-
     if (!changed) {
         return op;
     } else {
-        return Provide::make(op->name, new_values, new_args, new_annotations);
+        return Provide::make(op->name, new_values, new_args);
     }
 }
 
@@ -345,6 +337,14 @@ Stmt Simplify::visit(const Allocate *op) {
 Stmt Simplify::visit(const Evaluate *op) {
     Expr value = mutate(op->value, nullptr);
 
+    bool same = true;
+    vector<Annotation> annotations;
+    for(const Annotation &a : op->annotations){
+        Annotation new_a = mutate(a);
+        same = same && new_a.same_as(a);
+        annotations.emplace_back(std::move(new_a));
+    }
+
     // Rewrite Lets inside an evaluate as LetStmts outside the Evaluate.
     vector<pair<string, Expr>> lets;
     while (const Let *let = value.as<Let>()) {
@@ -352,12 +352,12 @@ Stmt Simplify::visit(const Evaluate *op) {
         value = let->body;
     }
 
-    if (value.same_as(op->value)) {
+    if (same && value.same_as(op->value)) {
         internal_assert(lets.empty());
         return op;
     } else {
         // Rewrap the lets outside the evaluate node
-        Stmt stmt = Evaluate::make(value);
+        Stmt stmt = Evaluate::make(std::move(value), std::move(annotations));
         for (size_t i = lets.size(); i > 0; i--) {
             stmt = LetStmt::make(lets[i - 1].first, lets[i - 1].second, stmt);
         }
@@ -644,13 +644,14 @@ Annotation Simplify::visit(const AnnExpr *op) {
 
 
 Annotation Simplify::visit(const Permission *op) {
+    Expr antecedent = mutate(op->antecedent, nullptr);
     Expr variable = mutate(op->variable, nullptr);
     Expr permission = mutate(op->permission, nullptr);
 
-    if (variable.same_as(op->variable) && permission.same_as(op->permission)) {
+    if (antecedent.same_as(op->antecedent) && variable.same_as(op->variable) && permission.same_as(op->permission)) {
         return op;
     } else {
-        return Permission::make(op->ann_type, variable, permission);
+        return Permission::make(op->ann_type, antecedent, variable, permission, op->forall_vars);
     }
 }
 

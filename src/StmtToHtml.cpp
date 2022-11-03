@@ -262,6 +262,9 @@ private:
     void visit(const Or *op) override {
         visit_binary_op(op->a, op->b, "||");
     }
+    void visit(const Implies *op) override {
+        visit_binary_op(op->a, op->b, "==>");
+    }
     void visit(const NE *op) override {
         visit_binary_op(op->a, op->b, "!=");
     }
@@ -296,6 +299,30 @@ private:
         stream << "!";
         print(op->a);
         stream << close_span();
+    }
+    void visit(const Forall *op) override {
+        stream << open_div("Forall");
+        stream << "(\\forall";
+        for(auto & var: op->vars)
+            stream << " int " << var;
+        stream << "; ";
+        print(op->select);
+        stream << "; ";
+        print(op->main);
+        stream << ")";
+        stream << close_div();
+    }
+    void visit(const Exists *op) override {
+        stream << open_div("Exists");
+        stream << "(\\exists";
+        for(auto & var: op->vars)
+            stream << " int " << var;
+        stream << "; ";
+        print(op->select);
+        stream << "; ";
+        print(op->main);
+        stream << ")";
+        stream << close_div();
     }
     void visit(const Select *op) override {
         stream << open_span("Select");
@@ -737,7 +764,6 @@ private:
 
         int id = unique_id();
         stream << open_expand_button(id);
-        stream << open_span("Matched");
         if (op->ann_type == AnnotationType::Require) {
             stream << keyword("requires");
         } else if (op->ann_type == AnnotationType::Ensure) {
@@ -751,7 +777,7 @@ private:
         }
         stream << " (";
         print(op->condition);
-        stream << matched(")");
+        stream << ")";
 
         stream << close_div();
     }
@@ -761,7 +787,6 @@ private:
 
         int id = unique_id();
         stream << open_expand_button(id);
-        stream << open_span("Matched");
         if (op->ann_type == AnnotationType::Require) {
             stream << keyword("requires");
         } else if (op->ann_type == AnnotationType::Ensure) {
@@ -773,11 +798,30 @@ private:
         } else {
             internal_error << "Unknown annotation type: " << ((int)op->ann_type) << "\n";
         }
+        stream << " ";
+        if(!op->forall_vars.empty()){
+            stream << "(\\forall*";
+            for(auto & var: op->forall_vars)
+                stream << " int " << var;
+            stream << "; ";
+
+            print(op->antecedent);
+            stream << "; ";
+        } else {
+            //Check if the right hand side is simply true
+            if( !is_const_true(op->antecedent) ){
+                print(op->antecedent);
+                stream << " ==> ";
+            }
+        }
+
         stream << "Perm(";
         print(op->variable);
         stream << ", ";
         print(op->permission);
-        stream << matched(")");
+        stream << ")";
+
+        if(!op->forall_vars.empty()) stream << ")";
 
         stream << close_div();
     }

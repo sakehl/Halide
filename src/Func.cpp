@@ -2688,27 +2688,57 @@ Func &Func::context_everywhere(const Expr &condition) {
     return *this;
 }
 
+Func &Func::loop_invariant(const Expr &condition) {
+    invalidate_cache();
+    func.add_annotation(AnnotationType::LoopInvariant,condition);
+    return *this;
+}
+
 Func &Func::require_perm(const Expr &variable, const Expr &perm) {
     invalidate_cache();
-    func.add_permission(AnnotationType::Require,variable, perm);
+    func.add_permission(AnnotationType::Require, make_bool(true), variable, perm);
+    return *this;
+}
+
+Func &Func::require_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::Require, antecedent, variable, perm);
     return *this;
 }
 
 Func &Func::ensure_perm(const Expr &variable, const Expr &perm) {
     invalidate_cache();
-    func.add_permission(AnnotationType::Ensure,variable, perm);
+    func.add_permission(AnnotationType::Ensure, make_bool(true), variable, perm);
+    return *this;
+}
+
+Func &Func::ensure_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::Ensure, antecedent, variable, perm);
     return *this;
 }
 
 Func &Func::context_perm(const Expr &variable, const Expr &perm) {
     invalidate_cache();
-    func.add_permission(AnnotationType::Context,variable, perm);
+    func.add_permission(AnnotationType::Context, make_bool(true), variable, perm);
+    return *this;
+}
+
+Func &Func::context_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::Context, antecedent, variable, perm);
     return *this;
 }
 
 Func &Func::context_everywhere_perm(const Expr &variable, const Expr &perm) {
     invalidate_cache();
-    func.add_permission(AnnotationType::ContextEverywhere,variable, perm);
+    func.add_permission(AnnotationType::ContextEverywhere, make_bool(true), variable, perm);
+    return *this;
+}
+
+Func &Func::context_everywhere_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
+    invalidate_cache();
+    func.add_permission(AnnotationType::ContextEverywhere, antecedent, variable, perm);
     return *this;
 }
 
@@ -3190,6 +3220,11 @@ void Func::compile_to_header(const string &filename, const vector<Argument> &arg
 void Func::compile_to_c(const string &filename, const vector<Argument> &args,
                         const string &fn_name, const Target &target) {
     pipeline().compile_to_c(filename, args, fn_name, target);
+}
+
+void Func::compile_to_pvl(const string &filename, const vector<Argument> &args,
+                        const string &fn_name, const Target &target) {
+    pipeline().compile_to_pvl(filename, args, fn_name, target);
 }
 
 void Func::compile_to_lowered_stmt(const string &filename,

@@ -73,7 +73,16 @@ protected:
     void visit(const GE *op) override;
     void visit(const And *) override;
     void visit(const Or *) override;
+    void visit(const Implies *op) override {
+        internal_error << "Encounter unexpected expression \"Implies\" when differentiating.";
+    }
     void visit(const Not *) override;
+    void visit(const Forall *op) override {
+        internal_error << "Encounter unexpected expression \"Forall\" when differentiating.";
+    }
+    void visit(const Exists *op) override {
+        internal_error << "Encounter unexpected expression \"Exists\" when differentiating.";
+    }
     void visit(const Select *op) override;
     void visit(const Let *op) override;
     void visit(const Call *op) override;

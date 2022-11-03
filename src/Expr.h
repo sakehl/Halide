@@ -51,7 +51,10 @@ enum class IRNodeType {
     GE,
     And,
     Or,
+    Implies,
     Not,
+    Forall,
+    Exists,
     Select,
     Load,
     Ramp,
@@ -133,9 +136,9 @@ inline void destroy<IRNode>(const IRNode *t) {
  * added to every contract, for instance function, loop and barrier contracts. */
 enum class AnnotationType {
     Require,
-    Ensure,
     Context,
     ContextEverywhere,
+    Ensure,
     LoopInvariant
 };
 

@@ -23,7 +23,8 @@ struct CodeGen_GPU_Dev {
     virtual void add_kernel(Stmt stmt,
                             const std::string &name,
                             const std::vector<DeviceArgument> &args,
-                            const std::vector<Annotation> &annotations) = 0;
+                            const std::vector<Annotation> &annotations,
+                            const Expr shared_mem_size) = 0;
 
     /** (Re)initialize the GPU kernel module. This is separate from compile,
      * since a GPU device module will often have many kernels compiled into it

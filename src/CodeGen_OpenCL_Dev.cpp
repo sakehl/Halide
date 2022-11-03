@@ -2,6 +2,7 @@
 #include <array>
 #include <sstream>
 #include <utility>
+#include <set>
 
 #include "CSE.h"
 #include "CodeGen_C.h"
@@ -23,65 +24,9 @@ using std::ostringstream;
 using std::sort;
 using std::string;
 using std::vector;
+using std::set;
 
 namespace {
-
-class AnnotationPrinter : public IRPrinter{
-    using IRPrinter::visit;
-
-    void visit(const Variable * op) override{
-        string output;
-        if (ends_with(op->name, ".__thread_id_x")) {
-            output = "get_local_id(0)";
-        } else if (ends_with(op->name, ".__thread_id_y")) {
-            output = "get_local_id(1)";
-        } else if (ends_with(op->name, ".__thread_id_z")) {
-            output = "get_local_id(2)";
-        } else if (ends_with(op->name, ".__thread_id_w")) {
-            output = "get_local_id(3)";
-        } else if (ends_with(op->name, ".__block_id_x")) {
-            output = "get_group_id(0)";
-        } else if (ends_with(op->name, ".__block_id_y")) {
-            output = "get_group_id(1)";
-        } else if (ends_with(op->name, ".__block_id_z")) {
-            output = "get_group_id(2)";
-        } else if (ends_with(op->name, ".__block_id_w")) {
-            output = "get_group_id(3)";
-        } else {
-            output = c_print_name(op->name);
-        }
-        
-        stream << output;
-    }
-    
-    void visit(const Load *op) override {
-    const bool has_pred = !is_const_one(op->predicate);
-    const bool show_alignment = op->type.is_vector() && op->alignment.modulus > 1;
-    if (has_pred) {
-        open();
-    }
-    //We do not print a cast like load in annotations
-    // if (!known_type.contains(op->name)) {
-    //     stream << "(" << op->type << ")";
-    // }
-    stream << c_print_name(op->name) << "[";
-    print_no_parens(op->index);
-    if (show_alignment) {
-        stream << " aligned(" << op->alignment.modulus << ", " << op->alignment.remainder << ")";
-    }
-    stream << "]";
-    if (has_pred) {
-        stream << " if ";
-        print(op->predicate);
-        close();
-    }
-}
-public:
-    AnnotationPrinter(std::ostream &s) : IRPrinter(s) {
-
-    };
-};
-
 
 class CodeGen_OpenCL_Dev : public CodeGen_GPU_Dev {
 public:
@@ -93,7 +38,8 @@ public:
     void add_kernel(Stmt stmt,
                     const std::string &name,
                     const std::vector<DeviceArgument> &args,
-                    const std::vector<Annotation> &annotations = {}) override;
+                    const std::vector<Annotation> &annotations = {},
+                    const Expr shared_mem_size = 0) override;
 
     /** (Re)initialize the GPU kernel module. This is separate from compile,
      * since a GPU device module will often have many kernels compiled into it
@@ -122,7 +68,8 @@ protected:
         void add_kernel(Stmt stmt,
                         const std::string &name,
                         const std::vector<DeviceArgument> &args,
-                        const std::vector<Annotation> &annotations = {});
+                        const std::vector<Annotation> &annotations = {},
+                        const Expr shared_memory_size = 0);
 
     protected:
         using CodeGen_C::visit;
@@ -139,12 +86,14 @@ protected:
         std::string shared_name;
 
         void visit(const For *) override;
+        void visit(const Evaluate *) override;
         void visit(const Ramp *op) override;
         void visit(const Broadcast *op) override;
         void visit(const Call *op) override;
         void visit(const Load *op) override;
         void visit(const Store *op) override;
         void visit(const Cast *op) override;
+        void visit(const Mod *op) override;
         void visit(const Select *op) override;
         void visit(const EQ *) override;
         void visit(const NE *) override;
@@ -282,8 +231,39 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const For *loop) {
 
     } else {
         user_assert(loop->for_type != ForType::Parallel) << "Cannot use parallel loops inside OpenCL kernel\n";
+
+        if(loop->annotations.size() != 0){
+            stream << get_indent() << "/*@\n";
+            indent++;
+            AnnotationPrinter ap(stream);
+            for (const Annotation &a : loop->annotations) {
+                stream << get_indent();
+                ap.print(a);
+                stream << ";\n";
+            }
+            indent--;
+            stream << get_indent() << "@*/\n";
+        }
+
         CodeGen_C::visit(loop);
     }
+}
+
+void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Evaluate *op) {
+    if(op->annotations.size() != 0){
+        stream << get_indent() << "/*@\n";
+        indent++;
+        AnnotationPrinter ap(stream);
+        for (const Annotation &a : op->annotations) {
+            stream << get_indent();
+            ap.print(a);
+            stream << ";\n";
+        }
+        indent--;
+        stream << get_indent() << "@*/\n";
+
+    }
+    op->value.accept(this);
 }
 
 void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Ramp *op) {
@@ -798,6 +778,27 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Cast *op) {
     }
 }
 
+void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Mod *op) {
+    if(op->a.type().is_int() && op->b.type().is_int()){
+        Expr zero = make_zero(op->a.type());
+        if (can_prove(op->b > zero)) {
+            Expr res = Call::make(op->a.type(), Call::mod_round_to_zero, {op->a, op->b}, Call::Intrinsic);
+            visit_binop(op->type, op->a, op->b, "%");
+            string mod_id = id;
+            if (!can_prove(op->a > zero)){
+                Expr add_b = select(op->a < zero, op->b, zero);
+                res += add_b;
+            }
+            print_expr(res);
+        } else {
+            CodeGen_C::visit(op);    
+        }
+    } else {
+        CodeGen_C::visit(op);
+    }
+}
+
+
 void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Select *op) {
     if (!op->condition.type().is_scalar()) {
         // A vector of bool was recursively introduced while
@@ -936,12 +937,13 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Atomic *op) {
 void CodeGen_OpenCL_Dev::add_kernel(Stmt s,
                                     const string &name,
                                     const vector<DeviceArgument> &args,
-                                    const std::vector<Annotation> &annotations) {
+                                    const std::vector<Annotation> &annotations,
+                                    const Expr shared_mem_size) {
     debug(2) << "CodeGen_OpenCL_Dev::compile " << name << "\n";
 
     // TODO: do we have to uniquify these names, or can we trust that they are safe?
     cur_kernel_name = name;
-    clc.add_kernel(s, name, args, annotations);
+    clc.add_kernel(s, name, args, annotations, shared_mem_size);
 }
 
 namespace {
@@ -963,7 +965,8 @@ struct BufferSize {
 void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
                                                       const string &name,
                                                       const vector<DeviceArgument> &args,
-                                                      const vector<Annotation> &annotations) {
+                                                      const vector<Annotation> &annotations,
+                                                      const Expr shared_mem_size) {
 
     debug(2) << "Adding OpenCL kernel " << name << "\n";
 
@@ -1023,17 +1026,76 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
             }
         }
     }
-    //Emit the pre and post conditions
+
+    class FindShared : public IRVisitor {
+        using IRVisitor::visit;
+        void visit(const Allocate *op) override {
+            if (op->memory_type == MemoryType::GPUShared) {
+                internal_assert(alloc == nullptr)
+                    << "Found multiple shared allocations in opencl kernel\n";
+                alloc = op;
+            }
+        }
+
+    public:
+        const Allocate *alloc = nullptr;
+    } find_shared;
+    s.accept(&find_shared);
+
+    if (find_shared.alloc) {
+        shared_name = find_shared.alloc->name;
+    } else {
+        shared_name = "__shared";
+    }
+
+    //Gather all the arrays that are accessed
+    class ArrayAccesses : public IRVisitor {
+    public:
+        set<string> arrays;
+        string shared_name;
+        ArrayAccesses(string sh_n) : shared_name(sh_n) { }
+
+    private:
+        using IRVisitor::visit;
+
+        void visit(const Load *op) override {
+            if(op->name != shared_name){
+                arrays.insert(op->name);
+            }
+            op->predicate.accept(this);
+            op->index.accept(this);
+        }
+
+        void visit(const Store *op) override {
+            if(op->name != shared_name){
+                arrays.insert(op->name);
+            }
+            op->predicate.accept(this);
+            op->value.accept(this);
+            op->index.accept(this);
+        }
+    } array_accesses(shared_name);
+    s.accept(&array_accesses);
+
+    //Emit the verification criteria
     stream << get_indent() << "/*@\n";
     indent++;
+    //The accessed arrays are not null
+    for (const string &array : array_accesses.arrays) {
+        stream << get_indent();
+        stream << "context_everywhere " << print_name(array) << " != NULL;\n";
+    }
+    stream << get_indent();
+        stream << "requires " << "shared_mem_size_1 == " << shared_mem_size <<";\n";
+    //The pre and post conditions
     AnnotationPrinter ap(stream);
-    for(const Annotation &a : annotations){
+    for (const Annotation &a : annotations) {
         stream << get_indent();
         ap.print(a);
-        stream << "\n";
+        stream << ";\n";
     }
     indent--;
-    stream << get_indent()<< "@*/\n";
+    stream << get_indent() << "@*/\n";
 
     // Emit the function prototype.
     stream << "__kernel void " << name << "(\n";
@@ -1086,33 +1148,18 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
         }
     }
 
-    class FindShared : public IRVisitor {
-        using IRVisitor::visit;
-        void visit(const Allocate *op) override {
-            if (op->memory_type == MemoryType::GPUShared) {
-                internal_assert(alloc == nullptr)
-                    << "Found multiple shared allocations in opencl kernel\n";
-                alloc = op;
-            }
-        }
-
-    public:
-        const Allocate *alloc = nullptr;
-    } find_shared;
-    s.accept(&find_shared);
-
-    if (find_shared.alloc) {
-        shared_name = find_shared.alloc->name;
-    } else {
-        shared_name = "__shared";
-    }
     // Note that int16 below is an int32x16, not an int16_t. The type
     // is chosen to be large to maximize alignment.
     stream << ",\n"
-           << " __local int16* "
+           //<< " __local int16* "
+           //We choose to just make shared memory int*, this makes sure to not get casts
+           << " __local int* "
            << print_name(shared_name)
            << ")\n";
-
+    Allocation alloc;
+    alloc.type = Int(32);
+    allocations.push(shared_name, alloc);
+    //allocations.add();
     open_scope();
 
     // Reinterpret half args passed as uint16 back to half

@@ -901,6 +901,12 @@ std::ostream &operator<<(std::ostream &s, const BinOp<Or, A, B> &op) {
 }
 
 template<typename A, typename B>
+std::ostream &operator<<(std::ostream &s, const BinOp<Implies, A, B> &op) {
+    s << "(" << op.a << " ==> " << op.b << ")";
+    return s;
+}
+
+template<typename A, typename B>
 std::ostream &operator<<(std::ostream &s, const BinOp<Min, A, B> &op) {
     s << "min(" << op.a << ", " << op.b << ")";
     return s;

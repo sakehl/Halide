@@ -274,25 +274,25 @@ ostream &operator<<(ostream &out, const ForType &type) {
     return out;
 }
 
-ostream &operator<<(ostream &out, const AnnotationType &type) {
+ostream &operator<<(ostream &stream, const AnnotationType &type) {
     switch (type) {
     case AnnotationType::Require:
-        out << "requires";
+        stream << "requires";
         break;
     case AnnotationType::Ensure:
-        out << "ensures";
+        stream << "ensures";
         break;
     case AnnotationType::Context:
-        out << "context";
+        stream << "context";
         break;
     case AnnotationType::ContextEverywhere:
-        out << "context_everywhere";
+        stream << "context_everywhere";
         break;
     case AnnotationType::LoopInvariant:
-        out << "loop_invariant";
+        stream << "loop_invariant";
         break;
     }
-    return out;
+    return stream;
 }
 
 ostream &operator<<(ostream &out, const VectorReduce::Operator &op) {
@@ -368,6 +368,50 @@ ostream &operator<<(ostream &stream, const LoweredFunc &function) {
     return stream;
 }
 
+void print_def(ostream &stream, const Definition &def, string func_name){
+    // First print annotations
+    for(const auto &ann: def.annotations()){
+        stream << "  " << ann << "\n";
+    }
+
+    stream << func_name << "(";
+    for (size_t i = 0; i < def.args().size(); i++) {
+        stream << def.args()[i];
+        if (i + 1 < def.args().size()) {
+            stream << ", ";
+        }
+    }
+    stream << ") = ";
+    if(def.values().size() == 1){
+        stream << def.values()[0];
+    } else {
+        stream << "(";
+        for (size_t i = 0; i < def.values().size(); i++) {
+            stream << def.values()[i];
+            if (i + 1 < def.values().size()) {
+                stream << ", ";
+            }
+        }
+        stream << ")";
+    }
+    stream << ";\n";
+}
+
+ostream &operator<<(ostream &stream, const Function &function) {
+    if(function.definition().defined()){
+        print_def(stream, function.definition(), function.name());
+    }
+    for(const auto &update : function.updates()){
+        print_def(stream, update, function.name());
+    }
+
+    stream << function.name() << " ensures:\n";
+    for(const auto &ann: function.func_annotations()){
+        stream << "  " << ann << "\n";
+    }
+    return stream;
+}
+
 std::ostream &operator<<(std::ostream &stream, const LinkageType &type) {
     switch (type) {
     case LinkageType::ExternalPlusMetadata:
@@ -403,6 +447,23 @@ std::ostream &operator<<(std::ostream &out, const DimType &t) {
         break;
     }
     return out;
+}
+
+std::string to_string(const Expr &e){
+    ostringstream out;
+    out << e;
+    return out.str();
+}
+
+std::string to_string(const Stmt &s){
+    ostringstream out;
+    out << s;
+    return out.str();
+}
+std::string to_string(const Annotation &a){
+    ostringstream out;
+    out << a;
+    return out.str();
 }
 
 IRPrinter::IRPrinter(ostream &s)
@@ -661,9 +722,41 @@ void IRPrinter::visit(const Or *op) {
     close();
 }
 
+void IRPrinter::visit(const Implies *op) {
+    open();
+    print(op->a);
+    stream << " ==> ";
+    print(op->b);
+    close();
+}
+
 void IRPrinter::visit(const Not *op) {
     stream << "!";
     print(op->a);
+}
+
+void IRPrinter::visit(const Forall *op) {
+    stream << "(\\forall";
+    for(auto & var: op->vars)
+        stream << " int " << var;
+    stream << "; ";
+
+    print_no_parens(op->select);
+    stream << "; ";
+    print_no_parens(op->main);
+    stream << ")";
+}
+
+void IRPrinter::visit(const Exists *op) {
+    stream << "(\\exists";
+    for(auto & var: op->vars)
+        stream << " int " << var;
+    stream << "; ";
+
+    print_no_parens(op->select);
+    stream << "; ";
+    print_no_parens(op->main);
+    stream << ")";
 }
 
 void IRPrinter::visit(const Select *op) {
@@ -769,10 +862,13 @@ void IRPrinter::visit(const ProducerConsumer *op) {
 
 void IRPrinter::visit(const For *op) {
     ScopedBinding<> bind(known_type, op->name);
+    indent++;
     for(const Annotation &a : op->annotations){
+        stream << get_indent();
         print(a);
         stream << "\n";
     }
+    indent--;
     stream << get_indent() << op->for_type << op->device_api << " (" << op->name << ", ";
     print_no_parens(op->min);
     stream << ", ";
@@ -850,10 +946,6 @@ void IRPrinter::visit(const Store *op) {
 }
 
 void IRPrinter::visit(const Provide *op) {
-    for(const Annotation &a : op->annotations){
-        print(a);
-        stream << "\n";
-    }
     stream << get_indent() << op->name << "(";
     print_list(op->args);
     stream << ") = ";
@@ -1017,6 +1109,13 @@ void IRPrinter::visit(const IfThenElse *op) {
 }
 
 void IRPrinter::visit(const Evaluate *op) {
+    indent++;
+    for(const Annotation &a : op->annotations){
+        stream << get_indent();
+        print(a);
+        stream << "\n";
+    }
+    indent--;
     stream << get_indent();
     print_no_parens(op->value);
     stream << "\n";
@@ -1085,18 +1184,36 @@ void IRPrinter::visit(const Atomic *op) {
 }
 
 void IRPrinter::visit(const AnnExpr *op) {
-    stream << get_indent() << op->ann_type << "(";
+    stream << op->ann_type << " ";
     print_no_parens(op->condition);
-    stream << ")";
 }
 
 
 void IRPrinter::visit(const Permission *op) {
-    stream << get_indent() << op->ann_type << "( Perm(";
+    stream << op->ann_type << " ";
+    if(!op->forall_vars.empty()){
+        stream << "(\\forall*";
+        for(auto & var: op->forall_vars)
+            stream << " int " << var;
+        stream << "; ";
+
+        print_no_parens(op->antecedent);
+        stream << "; ";
+    } else {
+        //Check if the right hand side is simply true
+        if( !is_const_true(op->antecedent) ){
+            print_no_parens(op->antecedent);
+            stream << " ==> ";
+        }
+    }
+    
+    stream << "Perm(";
     print_no_parens(op->variable);
     stream << ", ";
     print_no_parens(op->permission);
     stream << ")";
+
+    if(!op->forall_vars.empty()) stream << ")";
 }
 
 }  // namespace Internal

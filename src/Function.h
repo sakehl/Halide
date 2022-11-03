@@ -175,7 +175,12 @@ public:
     /** Get a const reference to this function's update definitions. */
     const std::vector<Definition> &updates() const;
 
-    const std::vector<Annotation> &annotations() const;
+    const std::vector<Annotation> &init_annotations() const;
+
+    const std::vector<Annotation> &update_annotations(int idx=0) const;
+
+    /** Will contain the ensure annotations of the whole function */
+    const std::vector<Annotation> &func_annotations() const;
 
     /** Does this function have an update definition? */
     bool has_update_definition() const;
@@ -298,8 +303,17 @@ public:
     /** Add the condition to annotations of the function. */
     void add_annotation(AnnotationType type, const Expr &condition);
 
+    void add_annotation(Annotation ann);
+
+    void add_func_annotation(Annotation ann);
+
+    void clear_func_annotations();
+
     /** Add the permission to the annotations of the function. */
-    void add_permission(AnnotationType type, const Expr &variable, const Expr &permission);
+    void add_permission(AnnotationType type, const Expr &antecedent, const Expr &variable, const Expr &permission);
+
+    /** Make sure that permissions are first in the vector*/
+    void sort_annotations();
 };
 
 /** Deep copy an entire Function DAG. */

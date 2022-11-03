@@ -26,7 +26,11 @@ Expr substitute(const std::string &name, const Expr &replacement, const Expr &ex
 Stmt substitute(const std::string &name, const Expr &replacement, const Stmt &stmt);
 
 /** Substitute variables with the given name with the replacement
- * expression within annotation. */
+ * expression within the annotation. */
+Annotation substitute(const std::string &name, const Expr &replacement, const Annotation &ann);
+
+/** Substitute variables with the given name with the replacement
+ * expression within the annotations. */
 std::vector<Annotation> substitute(const std::string &name, const Expr &replacement, const std::vector<Annotation> &anns);
 
 /** Substitute variables with names in the map. */

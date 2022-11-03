@@ -85,7 +85,7 @@ bool is_const(const Expr &e) {
         e.as<UIntImm>() ||
         e.as<FloatImm>() ||
         e.as<StringImm>() ||
-        e.as<ReadPerm>() ) {
+        e.as<ReadPerm>()) {
         return true;
     } else if (const Cast *c = e.as<Cast>()) {
         return is_const(c->value);
@@ -341,6 +341,22 @@ bool is_const_one(const Expr &e) {
         return (c->is_intrinsic(Call::bool_to_mask) || c->is_intrinsic(Call::cast_mask)) &&
                is_const_one(c->args[0]);
     }
+    return false;
+}
+
+bool is_const_true(const Expr &e) {
+    if (const UIntImm *uint_imm = e.as<UIntImm>()) {
+        return uint_imm->value == 1;
+    }
+
+    return false;
+}
+
+bool is_const_false(const Expr &e) {
+    if (const UIntImm *uint_imm = e.as<UIntImm>()) {
+        return uint_imm->value == 0;
+    }
+
     return false;
 }
 
@@ -1141,6 +1157,28 @@ Expr rounding_halving_sub(Expr a, Expr b) {
     match_types(a, b);
     Type result_type = a.type();
     return Call::make(result_type, Call::rounding_halving_sub, {std::move(a), std::move(b)}, Call::PureIntrinsic);
+}
+
+Annotation add_antecedent(Expr const &left_hand_side, Annotation const &ann) {
+    Annotation result;
+
+    if (const AnnExpr *i = ann.as<AnnExpr>()) {
+        Expr new_condition = Implies::make(left_hand_side, i->condition);
+        result = AnnExpr::make(i->ann_type, new_condition);
+    } else if (const Permission *i = ann.as<Permission>()) {
+        Expr new_antecedent;
+        if (is_const_true(i->antecedent)) {
+            new_antecedent = left_hand_side;
+        } else {
+            new_antecedent = And::make(left_hand_side, i->antecedent);
+        }
+
+        result = Permission::make(i->ann_type, new_antecedent, i->variable, i->permission, i->forall_vars);
+    } else {
+        user_assert(false) << "add_antecedent couldn't match the given annotation";
+    }
+
+    return result;
 }
 
 }  // namespace Internal

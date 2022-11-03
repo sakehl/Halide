@@ -3,6 +3,7 @@
 #include <memory>
 #include <set>
 #include <utility>
+#include <algorithm>
 
 #include "CSE.h"
 #include "Func.h"
@@ -94,7 +95,7 @@ struct FunctionContents {
 
     bool frozen = false;
 
-    std::vector<Annotation> annotations;
+    vector<Annotation> func_annotations;
 
     void accept(IRVisitor *visitor) const {
         func_schedule.accept(visitor);
@@ -358,7 +359,9 @@ void Function::deep_copy(const FunctionPtr &copy, DeepCopyMap &copied_map) const
     copy->frozen = contents->frozen;
     copy->output_buffers = contents->output_buffers;
     copy->func_schedule = contents->func_schedule.deep_copy(copied_map);
-    copy->annotations = contents->annotations;
+    // TODO: LarsvdHaak, unsure if this goes correctly in case we use Function::in.
+    // A wrapper will make a copy, but I think it is a shallow copy.
+    copy->func_annotations = contents->func_annotations;
 
     // Copy the pure definition
     if (contents->init_def.defined()) {
@@ -839,8 +842,18 @@ const std::vector<Definition> &Function::updates() const {
     return contents->updates;
 }
 
-const std::vector<Annotation> &Function::annotations() const {
-    return contents->annotations;
+const std::vector<Annotation> &Function::init_annotations() const {
+    return contents->init_def.annotations();
+}
+
+
+const std::vector<Annotation> &Function::update_annotations(int idx) const {
+    internal_assert(idx < (int)contents->updates.size()) << "Invalid update definition index\n";
+    return contents->updates[idx].annotations();
+}
+
+const std::vector<Annotation> &Function::func_annotations() const {
+    return contents->func_annotations;
 }
 
 bool Function::has_pure_definition() const {
@@ -1022,11 +1035,52 @@ const Call *Function::is_wrapper() const {
 }
 
 void Function::add_annotation(AnnotationType type, const Expr &condition){
-    contents->annotations.push_back(AnnExpr::make(type, condition));
+    add_annotation(AnnExpr::make(type, condition));
 }
 
-void Function::add_permission(AnnotationType type, const Expr &variable, const Expr &permission){
-    contents->annotations.push_back(Permission::make(type, variable, permission));
+void Function::add_annotation(Annotation ann){
+    if(contents->updates.size() == 0){
+        contents->init_def.add_annotation(ann);
+    } else {
+        contents->updates.back().add_annotation(ann);
+    }
+}
+
+void Function::add_func_annotation(Annotation ann){
+    contents->func_annotations.emplace_back(ann);
+}
+
+void Function::clear_func_annotations(){
+    contents->func_annotations.clear();
+}
+
+void Function::add_permission(AnnotationType type, const Expr &antecedent, const Expr &variable, const Expr &permission){
+    add_annotation(Permission::make(type, antecedent, variable, permission, {}));
+}
+
+// x < y
+bool compare_annotations(Annotation x, Annotation y){
+    //Check if x is a permission and y is not a permission, than x should always go before y.
+    const Permission *y_perm, *x_perm;
+    x_perm = x.as<Permission>();
+    y_perm = y.as<Permission>();
+    if(x_perm != nullptr && y_perm == nullptr){
+        return true;
+    } else if(x_perm == nullptr && y_perm != nullptr) {
+        return false;
+    }
+    //Otherwise the order is based on annotation type
+    return x.type() < y.type();
+}
+
+void Function::sort_annotations(){
+    std::stable_sort(contents->init_def.annotations().begin(), contents->init_def.annotations().end(), compare_annotations);
+
+    for (Definition &def : contents->updates) {
+        std::stable_sort(def.annotations().begin(), def.annotations().end(), compare_annotations);
+    }
+
+    std::stable_sort(contents->func_annotations.begin(), contents->func_annotations.end(), compare_annotations);
 }
 
 namespace {

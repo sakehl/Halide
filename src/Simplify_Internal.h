@@ -325,7 +325,10 @@ public:
     Expr visit(const GE *op, ExprInfo *bounds);
     Expr visit(const And *op, ExprInfo *bounds);
     Expr visit(const Or *op, ExprInfo *bounds);
+    Expr visit(const Implies *op, ExprInfo *bounds);
     Expr visit(const Not *op, ExprInfo *bounds);
+    Expr visit(const Forall *op, ExprInfo *bounds);
+    Expr visit(const Exists *op, ExprInfo *bounds);
     Expr visit(const Select *op, ExprInfo *bounds);
     Expr visit(const Ramp *op, ExprInfo *bounds);
     Stmt visit(const IfThenElse *op);

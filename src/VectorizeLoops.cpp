@@ -959,6 +959,14 @@ class VectorSubs : public IRMutator {
             extent = bounds_of_lanes(extent).max;
             Expr var = Variable::make(Int(32), op->name);
             body = IfThenElse::make(likely(var < op->min + op->extent), body);
+
+            vector<Annotation> new_annotations;
+            for(const Annotation &a : annotations){
+                same = false;
+                Annotation new_a = add_antecedent(likely(var < op->min + op->extent), a);
+                new_annotations.emplace_back(std::move(new_a));
+            }
+            annotations = new_annotations;
         }
 
         if (op->for_type == ForType::Vectorized) {
@@ -969,7 +977,9 @@ class VectorSubs : public IRMutator {
                            << ". Can only vectorize loops over a "
                            << "constant extent > 1\n";
             }
-
+            
+            // TODO (Lars van den Haak): Maybe add the annotations from the loop the vectorized vars.
+            // Have to think about this still, and see an actual use case when loops are vectorized
             vectorized_vars.push_back({op->name, min, (int)extent_int->value});
             update_replacements();
             // Go over lets which were vectorized and update them according to the current

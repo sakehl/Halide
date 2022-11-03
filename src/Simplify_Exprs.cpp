@@ -247,6 +247,53 @@ Expr Simplify::visit(const Variable *op, ExprInfo *bounds) {
     }
 }
 
+Expr Simplify::visit(const Implies *op, ExprInfo *bounds) {
+    Expr a = mutate(op->a, nullptr);
+    Expr b = mutate(op->b, nullptr);
+    if(is_const_false(a))
+        return const_true();
+    if(is_const_true(a))
+        return b;
+
+    if (a.same_as(op->a) &&
+        b.same_as(op->b)) {
+        return op;
+    } else {
+        return Implies::make(a, b);
+    }
+}
+
+Expr Simplify::visit(const Forall *op, ExprInfo *bounds) {
+    Expr select = mutate(op->select, nullptr);
+    Expr main = mutate(op->main, nullptr);
+
+    if(const Forall* old_forall = main.as<Forall>()){
+        std::vector<std::string> new_forall_vars = op->vars;
+        new_forall_vars.insert( new_forall_vars.end(), old_forall->vars.begin(), old_forall->vars.end() );
+        Expr new_select = And::make(select, old_forall->select);
+        return Forall::make(new_forall_vars, new_select, old_forall->main);
+    }
+
+    if (select.same_as(op->select) &&
+        main.same_as(op->main)) {
+        return op;
+    } else {
+        return Forall::make(op->vars, select, main);
+    }
+}
+
+Expr Simplify::visit(const Exists *op, ExprInfo *bounds) {
+    Expr select = mutate(op->select, nullptr);
+    Expr main = mutate(op->main, nullptr);
+
+    if (select.same_as(op->select) &&
+        main.same_as(op->main)) {
+        return op;
+    } else {
+        return Forall::make(op->vars, select, main);
+    }
+}
+
 Expr Simplify::visit(const Ramp *op, ExprInfo *bounds) {
     ExprInfo base_bounds, stride_bounds;
     Expr base = mutate(op->base, &base_bounds);

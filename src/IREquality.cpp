@@ -77,7 +77,10 @@ private:
     void visit(const GE *) override;
     void visit(const And *) override;
     void visit(const Or *) override;
+    void visit(const Implies *) override;
     void visit(const Not *) override;
+    void visit(const Forall *) override;
+    void visit(const Exists *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -445,6 +448,9 @@ void IRComparer::visit(const GE *op) {
 void IRComparer::visit(const And *op) {
     visit_binary_operator(this, op, expr);
 }
+void IRComparer::visit(const Implies *op) {
+    visit_binary_operator(this, op, expr);
+}
 void IRComparer::visit(const Or *op) {
     visit_binary_operator(this, op, expr);
 }
@@ -452,6 +458,28 @@ void IRComparer::visit(const Or *op) {
 void IRComparer::visit(const Not *op) {
     const Not *e = expr.as<Not>();
     compare_expr(e->a, op->a);
+}
+
+void IRComparer::visit(const Forall *op) {
+    const Forall *e = expr.as<Forall>();
+    compare_expr(e->select, op->select);
+    compare_expr(e->main, op->main);
+
+    compare_scalar(e->vars.size(), op->vars.size());
+    for (size_t i = 0; (i < e->vars.size()) && result == Equal; i++) {
+        compare_names(e->vars[i], op->vars[i]);
+    }
+}
+
+void IRComparer::visit(const Exists *op) {
+    const Exists *e = expr.as<Exists>();
+    compare_expr(e->select, op->select);
+    compare_expr(e->main, op->main);
+
+    compare_scalar(e->vars.size(), op->vars.size());
+    for (size_t i = 0; (i < e->vars.size()) && result == Equal; i++) {
+        compare_names(e->vars[i], op->vars[i]);
+    }
 }
 
 void IRComparer::visit(const Select *op) {
@@ -669,6 +697,11 @@ void IRComparer::visit(const Permission *op) {
     compare_scalar(a->ann_type, op->ann_type);
     compare_expr(a->variable, op->variable);
     compare_expr(a->permission, op->permission);
+
+    compare_scalar(a->forall_vars.size(), op->forall_vars.size());
+    for (size_t i = 0; (i < a->forall_vars.size()) && result == Equal; i++) {
+        compare_names(a->forall_vars[i], op->forall_vars[i]);
+    }
 }
 
 void IRComparer::visit(const VectorReduce *op) {

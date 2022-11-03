@@ -832,7 +832,7 @@ class RenormalizeGPULoops : public IRMutator {
             internal_assert(!expr_uses_var(f->min, op->name) &&
                             !expr_uses_var(f->extent, op->name));
             Stmt inner = LetStmt::make(op->name, op->value, f->body);
-            inner = For::make(f->name, f->min, f->extent, f->for_type, f->device_api, inner);
+            inner = For::make(f->name, f->min, f->extent, f->for_type, f->device_api, inner, f->annotations);
             return mutate(inner);
         } else if (a && in_gpu_loop && !in_thread_loop) {
             internal_assert(a->extents.size() == 1);
@@ -908,7 +908,14 @@ class RenormalizeGPULoops : public IRMutator {
                    for_a->min.same_as(for_b->min) &&
                    for_a->extent.same_as(for_b->extent)) {
             Stmt inner = IfThenElse::make(op->condition, for_a->body, for_b->body);
-            inner = For::make(for_a->name, for_a->min, for_a->extent, for_a->for_type, for_a->device_api, inner, for_a->annotations);
+            vector<Annotation> new_ann;
+            for(const auto &ann: for_a->annotations){
+                new_ann.emplace_back(add_antecedent(op->condition, ann) );
+            }
+            for(const auto &ann: for_b->annotations){
+                new_ann.emplace_back(add_antecedent(Not::make(op->condition), ann) );
+            }
+            inner = For::make(for_a->name, for_a->min, for_a->extent, for_a->for_type, for_a->device_api, inner, new_ann);
             return mutate(inner);
         } else {
             internal_error << "Unexpected construct inside if statement: " << Stmt(op) << "\n";

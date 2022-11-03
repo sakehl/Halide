@@ -7,8 +7,8 @@ namespace Halide {
 namespace Internal {
 
 using std::map;
-using std::vector;
 using std::string;
+using std::vector;
 
 namespace {
 
@@ -38,6 +38,34 @@ public:
             return r;
         } else {
             return v;
+        }
+    }
+
+    Expr visit(const Forall *op) override {
+        for(auto & var: op->vars) hidden.push(var);
+        Expr select = mutate(op->select);
+        Expr main = mutate(op->main);
+        for(auto & var: op->vars) hidden.pop(var);
+
+        if (select.same_as(op->select) &&
+            main.same_as(op->main)) {
+            return op;
+        } else {
+            return Forall::make(op->vars, select, main);
+        }
+    }
+
+    Expr visit(const Exists *op) override {
+        for(auto & var: op->vars) hidden.push(var);
+        Expr select = mutate(op->select);
+        Expr main = mutate(op->main);
+        for(auto & var: op->vars) hidden.pop(var);
+
+        if (select.same_as(op->select) &&
+            main.same_as(op->main)) {
+            return op;
+        } else {
+            return Exists::make(op->vars, select, main);
         }
     }
 
@@ -74,10 +102,10 @@ public:
         Expr new_extent = mutate(op->extent);
         bool same = true;
         vector<Annotation> new_annotations;
-        for(const Annotation &a : op->annotations){
+        for (const Annotation &a : op->annotations) {
             Annotation new_a = mutate(a);
             same = same && new_a.same_as(a);
-            new_annotations.emplace_back(std::move(new_a));
+            new_annotations.emplace_back(new_a);
         }
 
         hidden.push(op->name);
@@ -91,6 +119,26 @@ public:
             return op;
         } else {
             return For::make(op->name, new_min, new_extent, op->for_type, op->device_api, new_body, new_annotations);
+        }
+    }
+
+    Annotation visit(const Permission *op) override {
+        for(auto & var: op->forall_vars) hidden.push(var);
+        Expr antecedent = mutate(op->antecedent);
+        Expr variable = mutate(op->variable);
+        Expr permission = mutate(op->permission);
+        for(auto & var: op->forall_vars) hidden.pop(var);
+        
+        if (variable.same_as(op->variable) &&
+            antecedent.same_as(op->antecedent) &&
+            permission.same_as(op->permission)) {
+            return op;
+        } else {
+            return Permission::make(op->ann_type,
+                                antecedent,
+                                variable,
+                                permission,
+                                op->forall_vars);
         }
     }
 };
@@ -111,12 +159,19 @@ Stmt substitute(const string &name, const Expr &replacement, const Stmt &stmt) {
     return s.mutate(stmt);
 }
 
+Annotation substitute(const string &name, const Expr &replacement, const Annotation &ann) {
+    map<string, Expr> m;
+    m[name] = replacement;
+    Substitute s(m);
+    return s.mutate(ann);
+}
+
 vector<Annotation> substitute(const string &name, const Expr &replacement, const vector<Annotation> &anns) {
     map<string, Expr> m;
     m[name] = replacement;
     vector<Annotation> results;
     Substitute s(m);
-    for(const auto &a : anns){
+    for (const auto &a : anns) {
         results.emplace_back(s.mutate(a));
     }
     return results;
@@ -140,7 +195,7 @@ Annotation substitute(const map<string, Expr> &m, const Annotation &ann) {
 vector<Annotation> substitute(const map<string, Expr> &m, const vector<Annotation> &anns) {
     vector<Annotation> results;
     Substitute s(m);
-    for(const auto &a : anns){
+    for (const auto &a : anns) {
         results.emplace_back(s.mutate(a));
     }
     return results;
