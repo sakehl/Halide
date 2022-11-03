@@ -1,0 +1,15 @@
+## Build Halide
+In the Halid-dev directory run:
+
+$ cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -Wno-dev -S . -B build
+
+to prepare build, then
+
+$ cmake --build build
+
+## Build Halide examples
+From the verification-tests directory run:
+
+$ cmake --build build && cmake --install build --prefix Halide-install
+
+Results are found in `even_c.cpp`. In `halide.out` all the debug info is found.
