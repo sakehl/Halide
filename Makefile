@@ -401,6 +401,7 @@ HEXAGON_RUNTIME_LIBS = \
 SOURCE_FILES = \
   AddAtomicMutex.cpp \
   AddImageChecks.cpp \
+  AddParameterAnnotations.cpp \
   AddParameterChecks.cpp \
   AlignLoads.cpp \
   AllocationBoundsInference.cpp \
@@ -508,6 +509,7 @@ SOURCE_FILES = \
   PrintLoopNest.cpp \
   Profiling.cpp \
   PurifyIndexMath.cpp \
+  PVLPrinter.cpp \
   PythonExtensionGen.cpp \
   Qualify.cpp \
   Random.cpp \
@@ -575,6 +577,7 @@ SOURCE_FILES = \
 HEADER_FILES = \
   AddAtomicMutex.h \
   AddImageChecks.h \
+  AddParameterAnnotations.h \
   AddParameterChecks.h \
   AlignLoads.h \
   AllocationBoundsInference.h \
@@ -685,6 +688,7 @@ HEADER_FILES = \
   Prefetch.h \
   Profiling.h \
   PurifyIndexMath.h \
+  PVLPrinter.h \
   PythonExtensionGen.h \
   Qualify.h \
   Random.h \

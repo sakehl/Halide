@@ -110,16 +110,21 @@ struct LoweredFunc {
      * the Target. */
     NameMangling name_mangling;
 
+    /** Annotations on the top level of the function*/
+    std::vector<Annotation> annotations;
+
     LoweredFunc(const std::string &name,
                 const std::vector<LoweredArgument> &args,
                 Stmt body,
                 LinkageType linkage,
-                NameMangling mangling = NameMangling::Default);
+                NameMangling mangling = NameMangling::Default,
+                std::vector<Annotation> annotations = {});
     LoweredFunc(const std::string &name,
                 const std::vector<Argument> &args,
                 Stmt body,
                 LinkageType linkage,
-                NameMangling mangling = NameMangling::Default);
+                NameMangling mangling = NameMangling::Default,
+                std::vector<Annotation> annotations = {});
 };
 
 }  // namespace Internal

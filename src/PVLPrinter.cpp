@@ -1,0 +1,451 @@
+#include "IREquality.h"
+#include "PVLPrinter.h"
+#include "IROperator.h"
+
+using std::string;
+using std::vector;
+
+namespace Halide {
+namespace Internal {
+
+PVLPrinter::PVLPrinter(std::ostream &s) : IRPrinter(s), in_annotations(false), in_reduction(false), buffer_annotation(false) {
+
+}
+
+void PVLPrinter::visit(const Call *op) {
+    string name = op->name;
+    vector<Expr> args = op->args;
+
+    if(name == func_name){
+        if(in_annotations){
+            user_assert(call_correct(op)) << "The call '" << op << "' is not called correctly in the annotations of " << func_name;
+            stream << "\\result";
+            return;
+        }
+
+        name = prev_def_name;
+        // The reduction function needs extra arguments (rx-1, ry-1, ...)
+        if(in_reduction){
+            for(size_t i=0; i<rvars.size(); i++){
+                // We explicitely do not make a Variable with reduction domain, since we want the -1 only for the first rvar
+                Expr arg = Variable::make(Int(32), rvars[i]);
+                if(i==0) arg = arg - make_one(Int(32));
+                args.emplace_back(arg);
+            }
+        }
+    }
+
+    if(op->is_extern()){
+        stream << name;
+    } else {
+        stream << c_print_name(name);
+    }
+    
+    stream << "(";
+    print_list(args);
+    stream << ")";
+}
+
+void PVLPrinter::visit(const Forall *op){
+    stream << "(\\forall";
+    for(auto & var: op->vars)
+        stream << " int " << c_print_name(var);
+    stream << "; ";
+
+    print_no_parens(op->select);
+    stream << "; ";
+    print_no_parens(op->main);
+    stream << ")";
+}
+
+void PVLPrinter::visit(const Exists *op) {
+    stream << "(\\exists";
+    for(auto & var: op->vars)
+        stream << " int " << c_print_name(var);
+    stream << "; ";
+
+    print_no_parens(op->select);
+    stream << "; ";
+    print_no_parens(op->main);
+    stream << ")";
+}
+
+void PVLPrinter::visit(const Variable *op) {
+    // Reduction domains variable in definitions should be called with -1
+    if(op->reduction_domain.defined() && !in_annotations){
+        stream << "(" << c_print_name(op->name) << " - 1)";
+    } else {
+        stream << c_print_name(op->name);
+    }
+}
+
+void PVLPrinter::visit(const AnnExpr *op) {
+    switch(op->ann_type) {
+        case AnnotationType::Require:
+            if(!buffer_annotation)
+                user_error << "Require annotation is only allowed for image parameters: " << op << "\n";
+        break;
+    case AnnotationType::LoopInvariant:
+        user_error << "Incorrect annotation type: " << op << "\n";
+        break;
+    case AnnotationType::Ensure:
+    case AnnotationType::Context:
+    case AnnotationType::ContextEverywhere:
+        break;
+    }
+
+    stream << "ensures ";
+    print_no_parens(op->condition);
+}
+
+void PVLPrinter::visit(const Permission *op) {
+    user_error << "Permission annotations should not be possible here: " << op << "\n";
+}
+
+bool PVLPrinter::call_correct(const Call *op) {
+    // Check the arguments
+    if(op->args.size() != pure_args.size()) return false;
+
+    for (size_t i = 0; i < op->args.size(); i++) {
+        // Either they are equal to the def args, or same as the original variable
+        if(!equal(op->args[i], def_args[i]) && !(op->args[i].as<Variable>() != nullptr && op->args[i].as<Variable>()->name == pure_args[i]))
+            return false;
+    }
+
+    return true;
+}
+
+void PVLPrinter::print_func(Function f){
+    func_name =  f.name();
+    prev_def_name = "";
+    pure_args = f.args();
+    def_args = f.definition().args();
+
+    string new_name = func_name + "0";
+
+    in_annotations = true;
+    print_ann(f.definition().annotations());
+    in_annotations = false;
+    print_def(f.definition(), f.args(), f.output_types(), new_name, "");
+
+    stream << "\n";
+    
+    int nr = 1;
+    for(const auto &update : f.updates()){
+        prev_def_name = new_name;
+        def_args = update.args();
+        new_name = func_name + std::to_string(nr);
+        nr++;
+
+        in_annotations = true;
+        print_ann(update.annotations(), !update.schedule().rvars().empty());
+        in_annotations = false;
+        print_def(update, f.args(), f.output_types(), new_name, prev_def_name);
+
+        stream << "\n";
+    }
+
+    print_lhs_def(f.args(), f.output_types(), func_name);
+    stream << " = ";
+    stream << c_print_name(new_name) << "(";
+    for (size_t i = 0; i < f.args().size(); i++) {
+        stream << c_print_name(f.args()[i]);
+        if (i + 1 < f.args().size()) {
+            stream << ", ";
+        }
+    }
+
+    stream << ");\n \n";
+}
+
+void PVLPrinter::print_buffer(Parameter p){
+    vector<string> implicit_args;
+    vector<Expr> implicit_vars;
+    for(int i=0; i < p.dimensions(); i++){
+        string implicit = "_" + to_string(i);
+        implicit_args.emplace_back(implicit);
+        implicit_vars.emplace_back(Variable::make(Int(32), implicit));
+    }
+
+    func_name = p.name() + "_im";
+    prev_def_name = p.name();
+    pure_args = implicit_args;
+    def_args = implicit_vars;
+
+    in_annotations = true;
+    buffer_annotation = true;
+    print_ann(p.annotations());
+    buffer_annotation = false;
+    in_annotations = false;
+
+    print_lhs_def(implicit_args, {p.type()}, p.name());
+    stream << ";\n";
+}
+
+void PVLPrinter::print_ann(vector<Annotation> anns, bool has_reduction){
+    indent++;
+    for(const auto &ann: anns){
+        // Do not error on loop invariants for reductions
+        if(has_reduction && ann.type() == AnnotationType::LoopInvariant) continue;
+        stream << get_indent();
+        print(ann);
+        stream << ";\n";
+    }
+    indent--;
+}
+
+void PVLPrinter::print_reduction_ann(vector<Annotation> anns){
+    indent++;
+    for(const auto &ann: anns){
+        // Do not error on loop invariants for reductions
+        if(ann.type() != AnnotationType::LoopInvariant) continue;
+        internal_assert(ann.as<AnnExpr>() != nullptr) << "Only expression annotations allowed here";
+        stream << "ensures ";
+        print(ann.as<AnnExpr>()->condition);
+        stream << ";\n";
+    }
+    indent--;
+}
+
+void PVLPrinter::print_def(Definition def, vector<string> original_args, vector<Type> output_types, string func_name, string old_func_name){
+
+    print_lhs_def(original_args, output_types, func_name);
+    stream << " = ";
+
+    // Check if this update definition has different arguments than the pure definition
+    vector<Expr> different_args;
+    for(size_t i = 0; i< def.args().size(); i++) {
+        // If we do not have the original variable, we need to add an equality
+        if(!(def.args()[i].as<Variable>() != nullptr && def.args()[i].as<Variable>()->name == original_args[i])){
+            different_args.emplace_back(EQ::make(Variable::make(Int(32), original_args[i]), def.args()[i]));
+        }
+    }
+
+    // Check for reduction variables
+    vector<ReductionVariable> rvars = def.schedule().rvars();
+    bool has_rvar = !rvars.empty();
+
+    if(has_rvar){
+        // Go make the reduction function here
+        return print_red_func(def, original_args, different_args, output_types, func_name, old_func_name);
+    }
+
+    if(!different_args.empty()){
+        for(size_t i = 0; i < different_args.size(); i++) {
+            print(different_args[i]);
+            if (i + 1 < different_args.size()) {
+                stream << " && ";
+            }
+        }
+
+        stream << " ? ";
+    }
+    
+    if(def.values().size() == 1){
+        print_no_parens(def.values()[0]);
+    } else {
+        stream << "(";
+        for (size_t i = 0; i < def.values().size(); i++) {
+            print_no_parens(def.values()[i]);
+            if (i + 1 < def.values().size()) {
+                stream << ", ";
+            }
+        }
+        stream << ")";
+    }
+
+    if(!different_args.empty()){
+        stream << " : " << c_print_name(old_func_name) << "(";
+
+        for (size_t i = 0; i < original_args.size(); i++) {
+            stream << c_print_name(original_args[i]);
+            if (i + 1 < original_args.size()) {
+                stream << ", ";
+            }
+        }
+        stream << ")";
+    }
+    stream << ";\n";
+}
+
+void PVLPrinter::print_lhs_def(vector<string> original_args, vector<Type> output_types, string func_name){
+    stream << get_indent() << "pure ";
+
+    if(output_types.size() == 1){
+        print_type(output_types[0]);
+        stream << " ";
+    } else {
+        stream << "(";
+        for (size_t i = 0; i < output_types.size(); i++) {
+            print_type(output_types[i]);
+            if (i + 1 < output_types.size()) {
+                stream << ", ";
+            }
+        }
+        stream << ")";
+    }
+    
+    stream << c_print_name(func_name) << "(";
+
+    for (size_t i = 0; i < original_args.size(); i++) {
+        stream << "int " << c_print_name(original_args[i]);
+        if (i + 1 < original_args.size()) {
+            stream << ", ";
+        }
+    }
+
+    stream << ")";
+}
+
+void PVLPrinter::print_red_func(Definition def, vector<string> original_args, vector<Expr> different_args, vector<Type> output_types,
+        string func_name, string old_func_name){
+    // We are going to make a new function, that is going to loop through our reduction variables
+    // So we call that function and define it afterwards.
+    string reduction_func = func_name + "r";
+    prev_def_name = reduction_func;
+    stream << c_print_name(reduction_func) << "(";
+    for (size_t i = 0; i < original_args.size(); i++) {
+        stream << c_print_name(original_args[i]) << ", ";
+    }
+
+    vector<ReductionVariable> rvars = def.schedule().rvars();
+
+    this->rvars = vector<string>();
+
+    vector<string> new_args = original_args;
+    for (size_t i = 0; i < rvars.size(); i++) {
+        print(rvars[i].min);
+        stream << " + ";
+        print(rvars[i].extent);
+        new_args.emplace_back(rvars[i].var);
+        this->rvars.emplace_back(rvars[i].var);
+        if (i + 1 < rvars.size()) {
+            stream << ", ";
+        }
+    }
+    stream << ");\n\n";
+    in_annotations = true;
+    print_reduction_ann(def.annotations());
+    in_annotations = false;
+
+    print_lhs_def(new_args, output_types, reduction_func);
+    stream << " = ";
+    // First the part where all the reduction variables are at the minimum
+    for (size_t i = 0; i < rvars.size(); i++) {
+        stream << c_print_name(rvars[i].var) << " == ";
+        print(rvars[i].min);
+        if (i + 1 < rvars.size()) {
+            stream << " && ";
+        }
+    }
+    // First choice is the base function (old function)
+    stream << " ? " << c_print_name(old_func_name) << "(";
+    for (size_t i = 0; i < original_args.size(); i++) {
+        stream << c_print_name(original_args[i]);
+        if (i + 1 < original_args.size()) {
+            stream << ", ";
+        }
+    }
+    stream << ") : ";
+    // Todo, a sort of recursion when there is more than one reduction variable
+    // user_assert(rvars.size() == 1) << "Not yet implemented multiple reduction variables";
+
+    // We go from the last rvar to the first
+    for(size_t i = rvars.size()-1; i>0; i--){
+        // The vars r_0, r_1, ..., r_{i-1} are zero (and r_i is not zero)
+        for(size_t j = 0; j<i; j++){
+            stream << c_print_name(rvars[j].var) << " == ";
+            print(rvars[j].min);
+            if (j + 1 < i) {
+                stream << " && ";
+            }
+        }
+
+        stream << " ? " << c_print_name(reduction_func) << "(";
+        // Print normal arguments
+        for (size_t k = 0; k < original_args.size(); k++)
+            stream << c_print_name(original_args[k]) << ", ";
+        // Reset variables r_0 to r_{i-1} to maximum
+        for(size_t j = 0; j<i; j++){
+            print(rvars[j].min);
+            stream << " + ";
+            print(rvars[j].extent);
+            stream << ", ";
+        }
+        // Substract one from r_i
+        stream << c_print_name(rvars[i].var) << " - 1";
+        // The remaining reduction variables are placed as is
+        for(size_t k=i+1; k<rvars.size(); k++)
+            stream << ", " << c_print_name(rvars[k].var);
+        // Close function call
+        stream << ") : ";
+    }
+    
+    if(!different_args.empty()){
+        // If there are different arguments, we only go conditionally to the actual definition
+        for(size_t i = 0; i < different_args.size(); i++) {
+            print(different_args[i]);
+            if (i + 1 < different_args.size()) {
+                stream << " && ";
+            }
+        }
+
+        stream << " ? ";
+    }
+
+    in_reduction = true;
+
+    if(def.values().size() == 1){
+        print_no_parens(def.values()[0]);
+    } else {
+        // TODO: Consider if this is correct, if there are function with reduction variables and multiple values
+        stream << "(";
+        for (size_t i = 0; i < def.values().size(); i++) {
+            print_no_parens(def.values()[i]);
+            if (i + 1 < def.values().size()) {
+                stream << ", ";
+            }
+        }
+        stream << ")";
+    }
+
+    in_reduction = false;
+
+    if(!different_args.empty()){
+        stream << " : " << c_print_name(reduction_func) << "(";
+
+        for (size_t i = 0; i < original_args.size(); i++) {
+            stream << c_print_name(original_args[i]) << ", ";
+        }
+        for (size_t i = 0; i < rvars.size(); i++) {
+            stream << c_print_name(rvars[i].var);
+            // Only the first one gets reduced
+            if(i==0) stream << " - 1";
+            if (i + 1 < rvars.size()) {
+                stream << ", ";
+            }
+        }
+        stream << ")";
+    }
+    stream << ";\n";
+
+}
+
+void PVLPrinter::print_type(const Type &type) {
+    switch (type.code()) {
+    case Type::Int:
+        stream << "int";
+        break;
+    case Type::UInt:
+        stream << "uint";
+        break;
+    case Type::Float:
+        stream << "float";
+        break;
+    default:
+        user_error << "Unsupported type " << type << " for PVL translation";
+}
+}
+
+}
+}

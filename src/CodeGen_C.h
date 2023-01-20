@@ -33,6 +33,7 @@ public:
         CPlusPlusImplementation,
         CExternDecl,
         CPlusPlusExternDecl,
+        PVL,
     };
 
     /** Initialize a C code generator pointing at a particular output
@@ -151,6 +152,10 @@ protected:
         return output_kind == CPlusPlusHeader ||
                output_kind == CPlusPlusImplementation ||
                output_kind == CPlusPlusExternDecl;
+    }
+
+    bool is_pvl() {
+        return output_kind == PVL;
     }
 
     /** Open a new C scope (i.e. throw in a brace, increase the indent) */

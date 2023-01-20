@@ -25,10 +25,11 @@ struct ParameterContents {
     Expr scalar_default, scalar_min, scalar_max, scalar_estimate;
     const bool is_buffer;
     MemoryType memory_type = MemoryType::Auto;
+    std::vector<Annotation> annotations;
 
-    ParameterContents(Type t, bool b, int d, const std::string &n)
+    ParameterContents(Type t, bool b, int d, const std::string &n, std::vector<Annotation> annotations = {})
         : type(t), dimensions(d), name(n), buffer(Buffer<>()), data(0),
-          host_alignment(t.bytes()), buffer_constraints(dimensions), is_buffer(b) {
+          host_alignment(t.bytes()), buffer_constraints(dimensions), is_buffer(b), annotations(annotations) {
         // stride_constraint[0] defaults to 1. This is important for
         // dense vectorization. You can unset it by setting it to a
         // null expression. (param.set_stride(0, Expr());)
@@ -353,6 +354,31 @@ ArgumentEstimates Parameter::get_argument_estimates() const {
     }
     return argument_estimates;
 }
+
+void Parameter::requires(const Expr &condition) {
+    add_annotation(AnnExpr::make(AnnotationType::Require, condition));
+}
+
+void Parameter::ensures(const Expr &condition) {
+    add_annotation(AnnExpr::make(AnnotationType::Ensure, condition));
+}
+
+void Parameter::context(const Expr &condition) {
+    add_annotation(AnnExpr::make(AnnotationType::Context, condition));
+}
+
+void Parameter::context_everywhere(const Expr &condition) {
+    add_annotation(AnnExpr::make(AnnotationType::ContextEverywhere, condition));
+}
+
+std::vector<Annotation> Parameter::annotations() const{
+    return contents->annotations;
+}
+
+void Parameter::add_annotation(Annotation annotation) {
+    contents->annotations.emplace_back(annotation);
+}
+
 
 void check_call_arg_types(const std::string &name, std::vector<Expr> *args, int dims) {
     user_assert(args->size() == (size_t)dims)

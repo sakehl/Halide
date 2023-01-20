@@ -1,5 +1,6 @@
 #include "Simplify_Internal.h"
 #include "Substitute.h"
+#include "IRMutator.h"
 
 namespace Halide {
 namespace Internal {
@@ -31,6 +32,25 @@ class CountVarUses : public IRVisitor {
 public:
     CountVarUses(std::map<std::string, int> &var_uses)
         : var_uses(var_uses) {
+    }
+};
+
+class ReplaceAnnotationDeadLets : public IRMutator {
+    std::string var;
+    Expr value;
+
+    using IRMutator::visit;
+
+    Expr visit(const Variable *variable) override {
+        if(variable->name == var)
+            return value;
+        else
+            return variable;
+    } 
+
+public:
+    ReplaceAnnotationDeadLets(string var, Expr &value)
+        : var(var), value(value) {
     }
 };
 
@@ -254,7 +274,12 @@ Body Simplify::simplify_let(const LetOrLetStmt *op, ExprInfo *bounds) {
             // The old name is still in use. We'd better keep it as well.
             result = LetOrLetStmt::make(it->op->name, it->value, result);
             count_var_uses(it->value, vars_used);
+        } else {
+            ReplaceAnnotationDeadLets replace(it->op->name, it->value);
+            result = replace.mutate(result);
         }
+
+        // ReplaceAnnotationDeadLets
 
         const LetOrLetStmt *new_op = result.template as<LetOrLetStmt>();
         if (new_op &&

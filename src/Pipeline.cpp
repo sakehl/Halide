@@ -1,11 +1,13 @@
 #include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <utility>
 
 #include "Argument.h"
 #include "CodeGen_Internal.h"
 #include "FindCalls.h"
 #include "Func.h"
+#include "IRPrinter.h"
 #include "IRVisitor.h"
 #include "InferArguments.h"
 #include "LLVM_Output.h"
@@ -16,6 +18,8 @@
 #include "PrintLoopNest.h"
 #include "RealizationOrder.h"
 #include "WasmExecutor.h"
+#include "WrapCalls.h"
+#include "PVLPrinter.h"
 
 using namespace Halide::Internal;
 
@@ -317,6 +321,44 @@ void Pipeline::compile_to_pvl(const string &filename,
                             const Target &target) {
     Module m = compile_to_module(args, fn_name, target);
     m.compile(single_output(filename, m, Output::pvl));
+}
+
+void Pipeline::translate_to_pvl(const string &filename,
+                            const vector<Argument> &args) {
+    user_assert(defined()) << "Can't compile undefined Pipeline.\n";
+
+    for (const Function &f : contents->outputs) {
+        user_assert(f.has_pure_definition() || f.has_extern_definition())
+            << "Can't compile Pipeline with undefined output Func: " << f.name() << ".\n";
+    }
+
+    // Compute an environment
+    std::map<string, Function> env;
+    std::map<string, Parameter> par_env;
+    for (const Function &f : contents->outputs) {
+        find_parameter_and_function_calls(f, env, par_env);
+    }
+
+    // Create a deep-copy of the entire graph of Funcs.
+    vector<Function> outputs;
+    std::tie(outputs, env) = deep_copy(contents->outputs, env);
+
+    // Unsure if needed?
+    // Substitute in wrapper Funcs
+    // env = wrap_func_calls(env);
+
+    debug(1) << "Translating input buffers to PVL...\n";
+    std::ofstream file(filename);
+    PVLPrinter printer(file);
+    for (auto &iter : par_env) {
+        if(iter.second.is_buffer())
+            printer.print_buffer(iter.second);
+    }
+
+    debug(1) << "Translating functions to PVL...\n";
+    for (auto &iter : env) {
+        printer.print_func(iter.second);
+    }
 }
 
 void Pipeline::print_loop_nest() {

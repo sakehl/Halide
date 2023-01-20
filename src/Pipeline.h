@@ -280,6 +280,9 @@ public:
                       const std::string &fn_name,
                       const Target &target = get_target_from_environment());
 
+    void translate_to_pvl(const std::string &filename,
+                      const std::vector<Argument> &);
+
     /** Write out an internal representation of lowered code. Useful
      * for analyzing and debugging scheduling. Can emit html or plain
      * text. */

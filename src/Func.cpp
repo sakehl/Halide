@@ -2664,13 +2664,13 @@ Func::operator Stage() const {
     return Stage(func, func.definition(), 0);
 }
 
-Func &Func::require(const Expr &condition) {
+Func &Func::requires(const Expr &condition) {
     invalidate_cache();
     func.add_annotation(AnnotationType::Require,condition);
     return *this;
 }
 
-Func &Func::ensure(const Expr &condition) {
+Func &Func::ensures(const Expr &condition) {
     invalidate_cache();
     func.add_annotation(AnnotationType::Ensure,condition);
     return *this;
@@ -2694,25 +2694,25 @@ Func &Func::loop_invariant(const Expr &condition) {
     return *this;
 }
 
-Func &Func::require_perm(const Expr &variable, const Expr &perm) {
+Func &Func::requires_perm(const Expr &variable, const Expr &perm) {
     invalidate_cache();
     func.add_permission(AnnotationType::Require, make_bool(true), variable, perm);
     return *this;
 }
 
-Func &Func::require_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
+Func &Func::requires_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
     invalidate_cache();
     func.add_permission(AnnotationType::Require, antecedent, variable, perm);
     return *this;
 }
 
-Func &Func::ensure_perm(const Expr &variable, const Expr &perm) {
+Func &Func::ensures_perm(const Expr &variable, const Expr &perm) {
     invalidate_cache();
     func.add_permission(AnnotationType::Ensure, make_bool(true), variable, perm);
     return *this;
 }
 
-Func &Func::ensure_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
+Func &Func::ensures_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
     invalidate_cache();
     func.add_permission(AnnotationType::Ensure, antecedent, variable, perm);
     return *this;
@@ -3225,6 +3225,10 @@ void Func::compile_to_c(const string &filename, const vector<Argument> &args,
 void Func::compile_to_pvl(const string &filename, const vector<Argument> &args,
                         const string &fn_name, const Target &target) {
     pipeline().compile_to_pvl(filename, args, fn_name, target);
+}
+
+void Func::translate_to_pvl(const string &filename, const vector<Argument> &args) {
+    pipeline().translate_to_pvl(filename, args);
 }
 
 void Func::compile_to_lowered_stmt(const string &filename,

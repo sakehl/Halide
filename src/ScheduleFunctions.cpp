@@ -58,6 +58,14 @@ bool var_name_match(const string &v1, const string &v2) {
             Internal::ends_with(v2, "." + v1));
 }
 
+// struct loopLevelComp {
+//     bool operator()(LoopLevel const l1, LoopLevel const l2){
+//         return l1.to_string() < l2.to_string();
+//     }
+// };
+
+using LoopAnnotationMap = map<string, map<string,vector<Annotation>>>;
+
 class ContainsImpureCall : public IRVisitor {
     using IRVisitor::visit;
 
@@ -124,8 +132,8 @@ public:
  Example:
      context Perm(a[i], write);
      context Perm(b[i], read);
-     require b[i] > 0;
-     ensure a[i] > 0;
+     requires b[i] > 0;
+     ensures a[i] > 0;
     for(int i = i_min; i < i_min+extent; i++) a[i] = b[i];
             
     The idea:
@@ -148,6 +156,7 @@ class LoopInvariantMaker : public IRMutator{
     string forall_var;
     Expr bounds;
     Expr through_out_bounds;
+    Expr up_to_bounds;
     Expr extent;
     std::map<string, Expr> replacer;
     bool static_ann;
@@ -167,10 +176,12 @@ class LoopInvariantMaker : public IRMutator{
         outside_ann = AnnExpr::make(op->ann_type, outside_forall);
 
         Expr forall_bounds;
-        if (op->ann_type == AnnotationType::Require || op->ann_type == AnnotationType::Context) {
+        if (op->ann_type == AnnotationType::Context) {
             forall_bounds = bounds;
         } else if (op->ann_type == AnnotationType::Ensure) {
             forall_bounds = through_out_bounds;
+        } else if (op->ann_type == AnnotationType::Require){
+            forall_bounds = up_to_bounds;
         } else {
             user_error << "Wrong annotation type passed to a function: " << op;
         }
@@ -248,7 +259,9 @@ public:
         bounds = And::make(LE::make(loop_min, forall), LT::make(forall, Add::make(loop_min, ext)));
         loop_bound = AnnExpr::make(AnnotationType::LoopInvariant, And::make(
             LE::make(loop_min, for_loop), LE::make(for_loop, Add::make(loop_min, ext))));
-        through_out_bounds = And::make(bounds, LT::make(forall, for_loop));
+        through_out_bounds = And::make(LE::make(loop_min, forall), LT::make(forall, for_loop));
+
+        up_to_bounds = And::make(LE::make(for_loop, forall), LT::make(forall, Add::make(loop_min, ext)));
     }
     
 };
@@ -279,7 +292,8 @@ Stmt build_loop_nest(
     int start_fuse,
     const Function &func,
     const Definition &def,
-    bool is_update) {
+    bool is_update,
+    LoopAnnotationMap &optional_loop_annotations) {
     const auto &dims = func.args();
     const auto &func_s = func.schedule();
     const auto &stage_s = def.schedule();
@@ -467,38 +481,37 @@ Stmt build_loop_nest(
         }
     }
 
-    vector<Annotation> curr_ann = qualify(prefix, def.annotations());
+    vector<Annotation> cur_anns = qualify(prefix, def.annotations());   
 
     // Rewrap the statement in the containing lets and fors.
     for (int i = (int)nest.size() - 1; i >= 0; i--) {
         if (nest[i].type == Container::Let) {
             internal_assert(nest[i].value.defined());
             stmt = LetStmt::make(nest[i].name, nest[i].value, stmt);
-            curr_ann = substitute(nest[i].name, nest[i].value, curr_ann);
+
+            cur_anns = substitute(nest[i].name, nest[i].value, cur_anns);
         } else if ((nest[i].type == Container::If) || (nest[i].type == Container::IfInner)) {
             internal_assert(nest[i].value.defined());
             stmt = IfThenElse::make(nest[i].value, stmt, Stmt());
 
-            vector<Annotation> new_anns;
-            for (const auto &a : curr_ann)
-                new_anns.emplace_back(add_antecedent(nest[i].value, a));
-
-            curr_ann = new_anns;
+            cur_anns = add_antecedent(nest[i].value, cur_anns);
         } else {
             internal_assert(nest[i].type == Container::For);
             const Dim &dim = stage_s.dims()[nest[i].dim_idx];
             Expr min = Variable::make(Int(32), nest[i].name + ".loop_min");
             Expr extent = Variable::make(Int(32), nest[i].name + ".loop_extent");
-            std::vector<Annotation> loop_invariants, outside_anns;
-            std::tie(loop_invariants, outside_anns) = loop_invariants_annotations(curr_ann, nest[i].name, min, extent);
+            vector<Annotation> loop_invariants, outside_anns;
+            std::tie(loop_invariants, outside_anns) = loop_invariants_annotations(cur_anns, nest[i].name, min, extent);
+
+            map<string, map<string,vector<Annotation>>>  test;
             if(dim.for_type == ForType::GPUBlock){
                 stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt);   
             } else if(dim.for_type == ForType::Serial) {
                 stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, loop_invariants);
             } else {
-                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, curr_ann);
+                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, cur_anns);
             }
-            curr_ann = outside_anns;
+            cur_anns = outside_anns;
         }
     }
 
@@ -554,7 +567,9 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
                              const Function &func,
                              const Definition &def,
                              int start_fuse,
-                             bool is_update) {
+                             bool is_update,
+                             LoopAnnotationMap &optional_loop_annotations
+                             ) {
 
     internal_assert(!is_update == def.is_init());
 
@@ -598,7 +613,7 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
     }
 
     // Default schedule/values if there is no specialization
-    Stmt stmt = build_loop_nest(body, prefix, start_fuse, func, def, is_update);
+    Stmt stmt = build_loop_nest(body, prefix, start_fuse, func, def, is_update, optional_loop_annotations);
     stmt = inject_placeholder_prefetch(stmt, env, prefix, def.schedule().prefetches());
 
     // Make any specialized copies
@@ -606,7 +621,7 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
     for (size_t i = specializations.size(); i > 0; i--) {
         const Specialization &s = specializations[i - 1];
         if (s.failure_message.empty()) {
-            Stmt then_case = build_provide_loop_nest(env, prefix, func, s.definition, start_fuse, is_update);
+            Stmt then_case = build_provide_loop_nest(env, prefix, func, s.definition, start_fuse, is_update, optional_loop_annotations);
             stmt = IfThenElse::make(s.condition, then_case, stmt);
         } else {
             internal_assert(equal(s.condition, const_true()));
@@ -632,7 +647,7 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
 // which it should be realized. It will compute at least those
 // bounds (depending on splits, it may compute more). This loop
 // won't do any allocation.
-Stmt build_extern_produce(const map<string, Function> &env, Function f, const Target &target) {
+Stmt build_extern_produce(const map<string, Function> &env, Function f, const Target &target,  LoopAnnotationMap &optional_loop_annotations) {
     // Call the external function
 
     // Build an argument list
@@ -928,7 +943,7 @@ Stmt build_extern_produce(const map<string, Function> &env, Function f, const Ta
 
     Definition f_def_no_pred = f.definition().get_copy();
     f_def_no_pred.predicate() = const_true();
-    return build_loop_nest(check, f.name() + ".s0.", -1, f, f_def_no_pred, false);
+    return build_loop_nest(check, f.name() + ".s0.", -1, f, f_def_no_pred, false, optional_loop_annotations);
 }
 
 // A schedule may include explicit bounds on some dimension. This
@@ -1226,16 +1241,81 @@ struct PlaceholderPrefetch {
     }
 };
 
+class InjectProvenAnnotations : public IRMutator {
+public:
+    InjectProvenAnnotations(vector<Function> functions) {
+        for(auto &f: functions){
+            add_function_proves(f);
+        }
+    }
+
+protected:
+    vector<Annotation> proven_annotations;
+
+    using IRMutator::visit;
+
+    Stmt visit(const For *for_loop) override {
+        vector<Annotation> new_annotations = proven_annotations;
+        new_annotations.insert(new_annotations.end(), for_loop->annotations.begin(), for_loop->annotations.end() );
+
+        Stmt body = mutate(for_loop->body);
+
+        return For::make(for_loop->name,
+                             for_loop->min,
+                             for_loop->extent,
+                             for_loop->for_type,
+                             for_loop->device_api,
+                             body,
+                             new_annotations);
+    }
+
+    void add_function_proves(const Function &func){
+        const string &name = func.name();
+
+        const vector<string> &func_args = func.args();
+        vector<Expr> args;
+        Expr bound;
+        for (int i = 0; i < func.dimensions(); i++) {
+            const string &arg = func_args[i];
+            Expr min = Variable::make(Int(32), name + "." + arg + ".min_realized");
+            Expr extent = Variable::make(Int(32), name + "." + arg + ".extent_realized");
+            Expr var = Variable::make(Int(32), arg);
+            args.emplace_back(var);
+            Expr new_bound = And::make(
+                LE::make(min, var),
+                LT::make(var, Add::make(min, extent))
+            );
+            if(i==0)
+                bound = new_bound;
+            else
+                bound = And::make(bound, new_bound);
+        }
+
+        proven_annotations.emplace_back(Permission::make(AnnotationType::LoopInvariant, bound, Call::make(func, args) ,ReadPerm::make(), func_args));
+        for(const auto& ann :func.func_annotations()){
+            if (const auto *ann_expr = ann.as<AnnExpr>()){
+                if(ann_expr->ann_type == AnnotationType::Ensure || ann_expr->ann_type == AnnotationType::Context 
+                    || ann_expr->ann_type == AnnotationType::ContextEverywhere){
+                    proven_annotations.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, Forall::make(func_args, bound, ann_expr->condition)));
+                }
+            }
+        }
+    }
+
+};
+
 class InjectFunctionRealization : public IRMutator {
 public:
     InjectFunctionRealization(const vector<Function> &funcs,
                               const vector<bool> &is_output_list,
                               const Target &target,
-                              const map<string, Function> &env)
+                              const map<string, Function> &env,
+                              LoopAnnotationMap &optional_loop_annotations)
         : funcs(funcs),
           is_output_list(is_output_list),
           target(target),
           env(env),
+          optional_loop_annotations(optional_loop_annotations),
           compute_level(funcs[0].schedule().compute_level()) {
     }
 
@@ -1350,8 +1430,24 @@ protected:
                                   body);
         }
 
+        vector<Annotation> new_annotations = for_loop->annotations;
+        bool same_anns = true;
+        for (size_t i = 0; i < funcs.size(); i++){
+            if(_found_store_levels_for_funcs.find(funcs[i].name()) == _found_store_levels_for_funcs.end()){
+                vector<Annotation> additional_anns = optional_loop_annotations[for_loop->name][funcs[i].name()];
+                if(!additional_anns.empty()){
+                    new_annotations.insert(
+                        new_annotations.end(),
+                        std::make_move_iterator(additional_anns.begin()),
+                        std::make_move_iterator(additional_anns.end())
+                    );
+                    same_anns = false;
+                }
+            }
+        }
+
         // Skips pointless allocation
-        if (body.same_as(for_loop->body)) {
+        if (body.same_as(for_loop->body) && same_anns) {
             return for_loop;
         } else {
             return For::make(for_loop->name,
@@ -1360,7 +1456,7 @@ protected:
                              for_loop->for_type,
                              for_loop->device_api,
                              body,
-                             for_loop->annotations);
+                             new_annotations);
         }
     }
 
@@ -1397,6 +1493,7 @@ private:
     const vector<bool> &is_output_list;
     const Target &target;
     const map<string, Function> &env;
+    LoopAnnotationMap &optional_loop_annotations;
     const LoopLevel &compute_level;
 
     Stmt build_realize(Stmt s, const Function &func, bool is_output) {
@@ -1571,7 +1668,7 @@ private:
             }
         }
 
-        Stmt produce = build_provide_loop_nest(env, prefix, f, def, (int)(start_fuse), is_update);
+        Stmt produce = build_provide_loop_nest(env, prefix, f, def, (int)(start_fuse), is_update, optional_loop_annotations);
 
         // Strip off the containing lets. The bounds of the parent fused loop
         // (i.e. the union bounds) might refer to them, so we need to move them
@@ -1823,7 +1920,7 @@ private:
             const auto &f = func_stage.first;
 
             if (f.has_extern_definition() && (func_stage.second == 0)) {
-                const Stmt &produceDef = Internal::build_extern_produce(env, f, target);
+                const Stmt &produceDef = Internal::build_extern_produce(env, f, target, optional_loop_annotations);
                 producer = inject_stmt(producer, produceDef, LoopLevel::inlined().lock());
                 continue;
             }
@@ -1882,6 +1979,9 @@ private:
                 consumer = ProducerConsumer::make_consume(funcs[i].name(), consumer);
             }
         }
+
+        InjectProvenAnnotations injectProves(funcs);
+        consumer = injectProves.mutate(consumer);
 
         if (is_no_op(consumer)) {
             // For the very first output to be scheduled, the consumer
@@ -2521,6 +2621,19 @@ Stmt schedule_functions(const vector<Function> &outputs,
 
     any_memoized = false;
 
+    /* When functions are scheduled inbetween inline and compute root, we need annotatios at some inner
+       Loop levels (e.g. )
+         f(x,y) = x + y;
+         f.ensures( f(x,y) == x + y);
+         g(x,y) = f(x,y)*2;
+         f.schedule_at(g,y);
+         we need the ensures annotation of f in g. But only below the y-loop (thus the x loop).
+        
+       But g is first scheduled, without knowing where f will end up. So we store any optional annotations per function here
+       and we only insert them if the storage for f is 
+    */ 
+    LoopAnnotationMap optional_loop_annotations;
+
     validate_fused_groups_schedule(fused_groups, env);
 
     for (size_t i = fused_groups.size(); i > 0; --i) {
@@ -2558,7 +2671,7 @@ Stmt schedule_functions(const vector<Function> &outputs,
             s = inline_function(s, funcs[0]);
         } else {
             debug(1) << "Injecting realization of " << funcs << "\n";
-            InjectFunctionRealization injector(funcs, is_output_list, target, env);
+            InjectFunctionRealization injector(funcs, is_output_list, target, env, optional_loop_annotations);
             s = injector.mutate(s);
             internal_assert(injector.found_store_level() && injector.found_compute_level());
         }

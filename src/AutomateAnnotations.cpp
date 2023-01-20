@@ -31,7 +31,7 @@ class FindFunctionCalls : public IRVisitor {
     using IRVisitor::visit;
 
     void visit(const Call *op) override {
-        // We don't care if we the function was not user defined
+        // We don't care if the function was not user defined
         if (op->call_type != Call::Halide) {
             IRVisitor::visit(op);
             return;
@@ -110,14 +110,20 @@ public:
     }
 };
 
-class AnnExprToRequire : public IRMutator {
+class AnnExprTo : public IRMutator {
     using IRMutator::visit;
 
+    AnnotationType t;
+
     Annotation visit(const AnnExpr *op) override {
-        return AnnExpr::make(AnnotationType::Require, op->condition);
+        return AnnExpr::make(t, op->condition);
     }
+
+public:
+    AnnExprTo(AnnotationType t = AnnotationType::Require) : t(t) {}
 };
 
+// Replace calls in annotations with 'func' to 'new_func'
 class ReplaceEnsureFunctionCall : public IRMutator {
     const string &func;
     const string &new_func;
@@ -175,15 +181,17 @@ class AutomaticAnnotations {
            ensures f(x,y) % 2 == 1;
           f_update_0:
            context Perm(f(x,y), write);
+           requires f(x,y) % 2 == 1;
            ensures f(x,y) % 2 == 0;
           f_update_1:
            context Perm(f(x,x), write);
+           requires f(x,y) % 2 == 0;
            ensures f(x,x) == 0;
           f_total
            ensures y==x ==> f(x,y) == 0;
            ensures y!=x ==> f(x,y) % 2 == 0;
 
-          We do that by getting information from the f_total (annotations that are attachted to the Function not the Definitions)
+          We do that by getting information from the f_total (annotations that are attached to the Function not the Definitions)
           for each definition, adding the correct requires concerning the previous definition and afterwards updating the f_total
           for what it proves now.
         */
@@ -251,7 +259,7 @@ class AutomaticAnnotations {
                     replacer[var->name] = self_ref[i];
                     i++;
                 }
-                Annotation new_ann = AnnExprToRequire().mutate(substitute(replacer, ann));
+                Annotation new_ann = AnnExprTo().mutate(substitute(replacer, ann));
                 if(has_rvar) new_ann = add_antecedent(rvar_condition, new_ann);
                 new_ann = simplify(new_ann);
 
@@ -267,7 +275,6 @@ class AutomaticAnnotations {
     }
 
     void add_definition_annotations(Function func, Definition def, vector<tuple<Function, bool, vector<Expr>>> called_funcs, bool inlined){
-        
         vector<Expr> pure_args = func.definition().args();
         vector<Expr> def_args = def.args();
          
@@ -293,47 +300,6 @@ class AutomaticAnnotations {
         } else {
             // Clear all the annotations added, since we use the definition of inline functions, so we don't have to prove things
             def.annotations().clear();
-        }
-
-        // Now check all called functions in our definitions
-        for (auto const &called_func : called_funcs) {
-            Function called;
-            vector<Expr> args;
-            bool inlined_called;
-            std::tie(called, inlined_called, args) = called_func;
-            debug(3) << "Function '" << func.name() << "' calls '" << called.name() << "'\n";
-
-            //Add read permissions for array accesses
-            if(!inlined_called){
-                Expr read_call = Call::make(called, args);
-                def.add_annotation(Permission::make(AnnotationType::Context, make_bool(true), read_call, ReadPerm::make(), {}));
-            }
-
-            // Check the annotations, which we can turn into require annotations.
-            for (auto const &ann : called.func_annotations()) {
-                // We need to replace the definition arguments, with the called arguments.
-                std::map<string, Expr> replacer;
-                int i = 0;
-                for(auto const &a : called.definition().args()){
-                    const Variable* var = a.as<Variable>();
-                    internal_assert(var);
-                    replacer[var->name] = args[i];
-                    i++;
-                }
-
-                Annotation new_ann = simplify(AnnExprToRequire().mutate(substitute(replacer, ann)));
-                debug(4) << "Old annotation '" << ann << "'\n";
-                debug(4) << "New annotation '" << new_ann << "'\n";
-                const AnnExpr* ae = new_ann.as<AnnExpr>();
-                if(ae){
-                    if(!is_const_true(ae->condition))
-                        def.add_annotation(new_ann);
-                }
-                else {
-                    // A permission annotation
-                    def.add_annotation(new_ann);
-                }
-            }
         }
 
         // Just add all the requirements we gathered
@@ -435,19 +401,42 @@ class AutomaticAnnotations {
         }
 
         const Call *wrapper = func.is_wrapper();
-        if(wrapper != nullptr){
+        // TODO (Lars): Look into when this is needed, I think it had to do something with "compute_at"
+        // with shared memory where I tried to do this correctly
+        if(false && wrapper != nullptr){
+            if(wrapper->call_type == Call::CallType::Image){
+                AnnExprTo annTo(AnnotationType::Ensure);
+                for(auto &ann: wrapper->param.annotations()){
+                    func.add_func_annotation(annTo.mutate(ann));
+                }
+                busy_processing.erase(name);
+                processed_functions.emplace(name);
+                // func.sort_annotations();
+                debug(2) << "Processed non-function " << func.name() << "\n"
+                    << func << "\n";
+                return;
+            } else if(wrapper->call_type != Call::CallType::Halide){
+                busy_processing.erase(name);
+                processed_functions.emplace(name);
+                // func.sort_annotations();
+                debug(2) << "Processed non-function " << func.name() << "\n"
+                    << func << "\n";
+                return;
+            }
+
+
             //The function was a wrapper, first visit the called function
             map<string, Function>::iterator called_func_it = env.find(wrapper->name);
             if (called_func_it == env.end())
-                internal_error << "Function " << wrapper->name << "was called, but could not find a definition for it";
+                internal_error << "Function " << wrapper->name << " was called, but could not find a definition for it.";
             Function called_func = called_func_it->second;
 
             //TODO: maybe this is allowed.
             if (inlined)
                 internal_error << "Function " << func.name() << "was called as wrapper function, but is inlined, which we do not support";
             
-            if (called_func.schedule().compute_level().is_inlined() && called_func.can_be_inlined())
-                internal_error << "Function " << called_func.name() << "was called as wrapped function, but is inlined, which we do not support";
+            // if (called_func.schedule().compute_level().is_inlined() && called_func.can_be_inlined())
+            //     internal_error << "Function " << called_func.name() << " was called as wrapped function, but is inlined, which we do not support";
 
             add_function_annotations(called_func);
             // Now add the correct definitions
@@ -467,7 +456,7 @@ class AutomaticAnnotations {
             busy_processing.erase(name);
             processed_functions.emplace(name);
             func.sort_annotations();
-            debug(3) << "Processed function " << func.name() << "\n"
+            debug(2) << "Processed function " << func.name() << "\n"
               << func << "\n";
             return;
         }
@@ -484,14 +473,14 @@ class AutomaticAnnotations {
             FindFunctionCalls calls = FindFunctionCalls(name, env);
             update.accept(&calls);
             for(auto &called_f: calls.called_funcs) add_function_annotations(std::get<0>(called_f));
-            add_self_reference_annotations(func, update, calls.self_references);
-            add_definition_annotations(func, update, calls.called_funcs, inlined);
+                add_self_reference_annotations(func, update, calls.self_references);
+                add_definition_annotations(func, update, calls.called_funcs, inlined);
         }
 
         busy_processing.erase(name);
         processed_functions.emplace(name);
         func.sort_annotations();
-        debug(3) << "Processed function " << func.name() << "\n"
+        debug(2) << "Processed function " << func.name() << "\n"
                  << func << "\n";
     }
     

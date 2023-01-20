@@ -1046,12 +1046,44 @@ void Function::add_annotation(Annotation ann){
     }
 }
 
+namespace {
+
+class SubstituteArgs : public IRMutator {
+    using IRMutator::visit;
+
+    map<string, Var> substitutions;
+
+    Expr visit(const Variable *v) override {
+        auto found = substitutions.find(v->name);
+        if(found != substitutions.end()){
+            return substitutions[v->name];
+        }
+        
+        return IRMutator::visit(v);
+    }
+
+public:
+    SubstituteArgs(vector<string> args){
+        int i = 0;
+        for(const auto &a: args){
+            substitutions[a] = Var::implicit(i);
+            i++;
+        }
+    }
+};
+}
+
 void Function::add_func_annotation(Annotation ann){
     contents->func_annotations.emplace_back(ann);
+    user_assert(contents->output_buffers.size() == 1) << "We only support functions with a single valued output: " << contents->name;
+    Annotation new_ann = SubstituteArgs(contents->args).mutate(ann);
+    contents->output_buffers.front().add_annotation(new_ann);
 }
 
 void Function::clear_func_annotations(){
     contents->func_annotations.clear();
+    user_assert(contents->output_buffers.size() == 1) << "We only support functions with a single valued output: " << contents->name;
+    contents->output_buffers.front().annotations().clear();
 }
 
 void Function::add_permission(AnnotationType type, const Expr &antecedent, const Expr &variable, const Expr &permission){

@@ -170,6 +170,22 @@ public:
 
     void store_in(MemoryType memory_type);
     MemoryType memory_type() const;
+
+    /** Add the condition to the pre-conditions of the Parameter. */
+    void requires(const Expr &condition);
+
+    /** Add the condition to the post-conditions of the Parameter. */
+    void ensures(const Expr &condition);
+
+    /** Add the condition to the pre- and post-conditions of the Parameter. */
+    void context(const Expr &condition);
+
+    /** Add the condition to the pre and post-conditions everywhere in the program. */
+    void context_everywhere(const Expr &condition);
+
+    std::vector<Annotation> annotations() const;
+    
+    void add_annotation(Annotation annotation);
 };
 
 /** Validate arguments to a call to a func, image or imageparam. */

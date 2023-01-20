@@ -1181,6 +1181,15 @@ Annotation add_antecedent(Expr const &left_hand_side, Annotation const &ann) {
     return result;
 }
 
+std::vector<Annotation> add_antecedent(Expr const &left_hand_side, std::vector<Annotation> const &ann) {
+    std::vector<Annotation> results;
+    for(const Annotation &a : ann){
+        results.emplace_back(add_antecedent(left_hand_side, a));
+    }
+    
+    return results;
+}
+
 }  // namespace Internal
 
 Expr fast_log(const Expr &x) {
@@ -1358,6 +1367,33 @@ Expr saturating_cast(Type t, Expr e) {
         }
     }
     return e;
+}
+
+Expr implies(Expr a, Expr b){
+    user_assert(a.defined() && b.defined()) << "Implies of undefined condition.\n";
+    user_assert(a.type().is_bool() && b.type().is_bool()) << "Implies arguments must be of a boolean type.\n";
+    return Internal::Implies::make(a,b);
+}
+
+Expr forall(Expr x, Expr select, Expr main){
+    std::vector<Expr> xs;
+    xs.emplace_back(x);
+    return forall(xs, select, main);
+}
+
+Expr forall(const std::vector<Expr> &xs, Expr select, Expr main){
+    std::vector<std::string> vars;
+    for(auto &x: xs){
+        user_assert(x.defined()) << "Variable where we quantify over must be defined\n";
+        user_assert(x.as<Internal::Variable>() != nullptr) << "We must quantify over variables\n";
+        vars.emplace_back(x.as<Internal::Variable>()->name);
+    }
+
+    user_assert(select.defined()) << "Forall of undefined select.\n";
+    user_assert(main.defined()) << "Forall of undefined main.\n";
+    user_assert(select.type().is_bool() && main.type().is_bool()) << "Forall arguments must be of a boolean type.\n";
+
+    return Internal::Forall::make(vars, select, main);
 }
 
 Expr select(Expr condition, Expr true_value, Expr false_value) {

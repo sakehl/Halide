@@ -938,6 +938,9 @@ public:
                       const std::string &fn_name = "",
                       const Target &target = get_target_from_environment());
 
+    void translate_to_pvl(const std::string &filename,
+                      const std::vector<Argument> &);
+
     void compile_to_pvl(const std::string &filename,
                       const std::vector<Argument> &,
                       const std::string &fn_name = "",
@@ -2453,10 +2456,10 @@ public:
     }
 
     /** Add the condition to the pre-conditions of the function. */
-    Func &require(const Expr &condition);
+    Func &requires(const Expr &condition);
 
     /** Add the condition to the post-conditions of the function. */
-    Func &ensure(const Expr &condition);
+    Func &ensures(const Expr &condition);
 
     /** Add the condition to the pre- and post-conditions of the function. */
     Func &context(const Expr &condition);
@@ -2468,16 +2471,16 @@ public:
     Func &loop_invariant(const Expr &condition);
 
     /** Require a `permission` to a specific variable. */
-    Func &require_perm(const Expr &variable, const Expr &permission);
+    Func &requires_perm(const Expr &variable, const Expr &permission);
 
     /** If 'antecedent' then require a`permission` to a specific variable. */
-    Func &require_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
+    Func &requires_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
 
     /** Ensure a `permission` to a specific variable. */
-    Func &ensure_perm(const Expr &variable, const Expr &permission);
+    Func &ensures_perm(const Expr &variable, const Expr &permission);
 
     /** If 'antecedent' then ensure a `permission` to a specific variable. */
-    Func &ensure_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
+    Func &ensures_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
 
     /** Require and ensure a `permission` to a specific variable. */
     Func &context_perm(const Expr &variable, const Expr &permission);

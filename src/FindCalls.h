@@ -15,6 +15,7 @@ namespace Halide {
 namespace Internal {
 
 class Function;
+class Parameter;
 
 /** Construct a map from name to Function definition object for all Halide
  *  functions called directly in the definition of the Function f, including
@@ -34,6 +35,10 @@ std::map<std::string, Function> find_transitive_calls(Function f);
 /** Find all Functions transitively referenced by f in any way and add
  * them to the given map. */
 void populate_environment(Function f, std::map<std::string, Function> &env);
+
+/** Find all Functions and parameters transitively referenced by f in any way and add
+ * them to the given maps. */
+void find_parameter_and_function_calls(Function f, std::map<std::string, Function> &env, std::map<std::string, Parameter> &par_res);
 
 }  // namespace Internal
 }  // namespace Halide

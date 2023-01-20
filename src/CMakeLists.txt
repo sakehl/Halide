@@ -116,6 +116,7 @@ set(HEADER_FILES
     Prefetch.h
     Profiling.h
     PurifyIndexMath.h
+    PVLPrinter.h
     PythonExtensionGen.h
     Qualify.h
     Random.h
@@ -166,6 +167,7 @@ set(HEADER_FILES
 set(SOURCE_FILES
     AddAtomicMutex.cpp
     AddImageChecks.cpp
+    AddParameterAnnotations.cpp
     AddParameterChecks.cpp
     AlignLoads.cpp
     AllocationBoundsInference.cpp
@@ -273,6 +275,7 @@ set(SOURCE_FILES
     PrintLoopNest.cpp
     Profiling.cpp
     PurifyIndexMath.cpp
+    PVLPrinter.cpp
     PythonExtensionGen.cpp
     Qualify.cpp
     Random.cpp

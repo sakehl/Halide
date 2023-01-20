@@ -8,6 +8,7 @@
 
 #include "AddAtomicMutex.h"
 #include "AddImageChecks.h"
+#include "AddParameterAnnotations.h"
 #include "AddParameterChecks.h"
 #include "AllocationBoundsInference.h"
 #include "AsyncProducers.h"
@@ -467,11 +468,14 @@ Module lower(const vector<Function> &output_funcs,
     }
 
     vector<Argument> public_args = args;
+    vector<Parameter> output_buffers;
+    vector<Parameter> input_buffers;
     for (const auto &out : outputs) {
         for (const Parameter &buf : out.output_buffers()) {
             public_args.emplace_back(buf.name(),
                                      Argument::OutputBuffer,
                                      buf.type(), buf.dimensions(), buf.get_argument_estimates());
+            output_buffers.emplace_back(buf);
         }
     }
 
@@ -488,6 +492,10 @@ Module lower(const vector<Function> &output_funcs,
         bool found = false;
         for (const Argument &a : args) {
             found |= (a.name == arg.arg.name);
+        }
+
+        if(found && arg.param.defined()){
+            input_buffers.emplace_back(arg.param);
         }
 
         if (arg.buffer.defined() && !found) {
@@ -518,6 +526,8 @@ Module lower(const vector<Function> &output_funcs,
             user_error << err.str();
         }
     }
+    vector<Annotation> top_level_annotations;
+    std::tie(s, top_level_annotations) = add_parameter_annotations(s, input_buffers, output_buffers);
 
     // We're about to drop the environment and outputs vector, which
     // contain the only strong refs to Functions that may still be
@@ -540,7 +550,7 @@ Module lower(const vector<Function> &output_funcs,
     };
     s = StrengthenRefs().mutate(s);
 
-    LoweredFunc main_func(pipeline_name, public_args, s, linkage_type);
+    LoweredFunc main_func(pipeline_name, public_args, s, linkage_type, NameMangling::Default, top_level_annotations);
 
     // If we're in debug mode, add code that prints the args.
     if (t.has_feature(Target::Debug)) {

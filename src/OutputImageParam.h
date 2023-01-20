@@ -119,6 +119,18 @@ public:
     /** Set the desired storage type for this parameter.  Only useful
      * for MemoryType::GPUTexture at present */
     OutputImageParam &store_in(MemoryType type);
+
+    /** Add the condition to the pre-conditions of the Parameter. */
+    void requires(const Expr &condition){param.requires(condition);}
+
+    /** Add the condition to the post-conditions of the Parameter. */
+    void ensures(const Expr &condition){param.ensures(condition);}
+
+    /** Add the condition to the pre- and post-conditions of the Parameter. */
+    void context(const Expr &condition){param.context(condition);}
+
+    /** Add the condition to the pre and post-conditions everywhere in the program. */
+    void context_everywhere(const Expr &condition){param.context_everywhere(condition);}
 };
 
 }  // namespace Halide

@@ -369,6 +369,8 @@ Expr rounding_halving_sub(Expr a, Expr b);
 
 Annotation add_antecedent(Expr const &left_hand_side, Annotation const &ann);
 
+std::vector<Annotation> add_antecedent(Expr const &left_hand_side, std::vector<Annotation> const &ann);
+
 }  // namespace Internal
 
 /** Cast an expression to the halide type corresponding to the C++ type T. */
@@ -793,6 +795,20 @@ Expr abs(Expr a);
  * gotchas and don't always compile to good code, so use this
  * instead. */
 Expr absd(Expr a, Expr b);
+
+/** A logical construct where expression a implies b, used in annotations
+ */
+Expr implies(Expr a, Expr b);
+
+/** A logical construct we quantify over variable x, constrained by `cond`
+ * for the main part. Used in annotations
+ */
+Expr forall(Expr x, Expr select, Expr main);
+
+/** A logical construct we quantify over variables xs, constrained by `cond`
+ * for the main part. Used in annotations
+ */
+Expr forall(const std::vector<Expr> &xs, Expr select, Expr main);
 
 /** Returns an expression similar to the ternary operator in C, except
  * that it always evaluates all arguments. If the first argument is
