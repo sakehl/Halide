@@ -1163,7 +1163,7 @@ Annotation add_antecedent(Expr const &left_hand_side, Annotation const &ann) {
     Annotation result;
 
     if (const AnnExpr *i = ann.as<AnnExpr>()) {
-        Expr new_condition = Implies::make(left_hand_side, i->condition);
+        Expr new_condition = implies(left_hand_side, i->condition);
         result = AnnExpr::make(i->ann_type, new_condition);
     } else if (const Permission *i = ann.as<Permission>()) {
         Expr new_antecedent;
@@ -1372,6 +1372,21 @@ Expr saturating_cast(Type t, Expr e) {
 Expr implies(Expr a, Expr b){
     user_assert(a.defined() && b.defined()) << "Implies of undefined condition.\n";
     user_assert(a.type().is_bool() && b.type().is_bool()) << "Implies arguments must be of a boolean type.\n";
+    
+    const Internal::Forall *forall = b.as<Internal::Forall>();
+    if(forall){
+        Expr new_select;
+        if(Internal::is_const_true(forall->select))
+            new_select = a;
+        else 
+            new_select = Internal::And::make(a, forall->select);
+        return Internal::Forall::make(forall->vars, new_select, forall->main);
+    }
+    const Internal::Implies *implies = b.as<Internal::Implies>();
+    if(implies){
+        return Internal::Implies::make(Internal::And::make(a, implies->a), implies->b);
+    }
+
     return Internal::Implies::make(a,b);
 }
 
@@ -1393,7 +1408,11 @@ Expr forall(const std::vector<Expr> &xs, Expr select, Expr main){
     user_assert(main.defined()) << "Forall of undefined main.\n";
     user_assert(select.type().is_bool() && main.type().is_bool()) << "Forall arguments must be of a boolean type.\n";
 
-    return Internal::Forall::make(vars, select, main);
+    if(vars.empty()){
+        return implies(select, main);
+    } else {
+        return Internal::Forall::make(vars, select, main);
+    }
 }
 
 Expr select(Expr condition, Expr true_value, Expr false_value) {

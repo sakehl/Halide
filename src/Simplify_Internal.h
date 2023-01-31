@@ -356,6 +356,53 @@ public:
     Annotation visit(const Permission *op);
 };
 
+class GetForallBounds {
+public:
+    std::map<std::string, Simplify::ExprInfo> var_info;
+    GetForallBounds(std::vector<std::string> vars_v, Simplify *simplifier) : simplifier(*simplifier) {
+        vars= std::set<std::string>(vars_v.begin(), vars_v.end());
+    }
+
+    Expr simplify_antecedent_and_push(const Expr e);
+
+    void pop();
+private:
+    std::set<std::string> vars;
+    Simplify &simplifier;
+    std::vector<Expr> simplified_bounds;
+    std::vector<Expr> remaining;
+
+    void visit_e(const Expr *op);
+
+    void push();
+
+    bool visit_bound(const LT *op){
+        return getBoundsLesser(op->a, op->b, false);
+    }
+
+    bool visit_bound(const LE *op){
+        return getBoundsLesser(op->a, op->b, true);
+    }
+
+    bool visit_bound(const GT *op){
+        return getBoundsLesser(op->b, op->a, false);
+    }
+
+    bool visit_bound(const GE *op){
+        return getBoundsLesser(op->b, op->a, true);
+    }
+
+    bool visit_bound(const EQ *op);
+
+    void updateMax(Simplify::ExprInfo &info, const Simplify::ExprInfo &other);
+
+    void updateMin(Simplify::ExprInfo &info, const Simplify::ExprInfo &other);
+
+    // x < 5
+    // or 0 < x
+    bool getBoundsLesser(Expr left, Expr right, bool equal);
+};
+
 }  // namespace Internal
 }  // namespace Halide
 

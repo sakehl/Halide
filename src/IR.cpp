@@ -74,7 +74,7 @@ Expr Frac::make(Expr a, Expr b) {
     internal_assert(a.type().is_int_or_uint()) << "Frac should work on int or uint";
 
     Frac *node = new Frac;
-    node->type = Type(a.type().code(), a.type().bits(), 2*a.type().lanes());
+    node->type = a.type();//Type(a.type().code(), a.type().bits(), 2*a.type().lanes());
     node->a = std::move(a);
     node->b = std::move(b);
     return node;

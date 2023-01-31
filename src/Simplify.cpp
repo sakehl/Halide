@@ -453,5 +453,162 @@ bool can_prove(Expr e, const Scope<Interval> &bounds) {
     return is_const_one(e);
 }
 
+Expr GetForallBounds::simplify_antecedent_and_push(const Expr e){
+    visit_e(&e);
+    // Push the gathered information
+    push();
+    Expr result;
+    for(const auto &bound : simplified_bounds) { 
+        if(!is_const_true(bound)){
+            if(result.defined()){
+                result = And::make(result, bound);
+            } else {
+                result = bound;
+            }
+        }
+    }
+    for(const auto &rem_bound : remaining) {
+        Expr bound = simplifier.mutate(rem_bound, nullptr);
+        if(!is_const_true(bound)){
+            if(result.defined()){
+                result = And::make(result, bound);
+            } else {
+                result = bound;
+            }
+        }
+    }
+
+    if(!result.defined()){
+        result = const_true();
+    }
+
+    return result;
+}
+
+void GetForallBounds::visit_e(const Expr *op){
+    bool used = false;
+    if(const And *e = op->as<And>()){
+        visit_e(&e->a);
+        visit_e(&e->b);
+        used = true;
+    } else if(const LT *e = op->as<LT>()){
+        used = visit_bound(e);
+    } else if(const GT *e = op->as<GT>()){
+        used = visit_bound(e);
+    } else if(const LE *e = op->as<LE>()){
+        used = visit_bound(e);
+    } else if(const GE *e = op->as<GE>()){
+        used = visit_bound(e);
+    } else if(const EQ *e = op->as<EQ>()){
+        used = visit_bound(e);
+    }
+    
+    if(!used){
+        remaining.emplace_back(*op);
+    }
+}
+
+void GetForallBounds::push() {
+    for(auto &pair : var_info){
+        simplifier.bounds_and_alignment_info.push(pair.first, pair.second);
+    }
+}
+
+void GetForallBounds::pop() {
+    for(auto &pair : var_info){
+        simplifier.bounds_and_alignment_info.pop(pair.first);
+    }
+}
+
+bool GetForallBounds::visit_bound(const EQ *op){
+    bool used = false;
+    if(const Variable *v = op->a.as<Variable>()){
+        if(vars.count(v->name) != 0){
+            Simplify::ExprInfo bound;
+            Expr b = simplifier.mutate(op->b, &bound);
+            var_info[v->name].intersect(bound);
+
+            simplified_bounds.emplace_back(EQ::make(op->a, b));
+            used = true;
+        }
+    }
+
+    if(const Variable *v = op->b.as<Variable>()){
+        if(!used && vars.count(v->name) != 0){
+            Simplify::ExprInfo bound;
+            Expr a = simplifier.mutate(op->a, &bound);
+            var_info[v->name].intersect(bound);
+
+            simplified_bounds.emplace_back(EQ::make(a, op->b));
+            used = true;
+        }
+    }
+    return used;
+}
+
+void GetForallBounds::updateMax(Simplify::ExprInfo &info, const Simplify::ExprInfo &other){
+    if(other.max_defined){
+        if(info.max_defined){
+            info.max = std::min(info.max, other.max);
+        } else {
+            info.max_defined = true;
+            info.max = other.max;
+        }
+    }
+}
+
+void GetForallBounds::updateMin(Simplify::ExprInfo &info, const Simplify::ExprInfo &other){
+    if(other.min_defined){
+        if(info.min_defined){
+            info.min = std::max(info.min, other.min);
+        } else {
+            info.min_defined = true;
+            info.min = other.min;
+        }
+    }
+}
+
+// x < 5
+// or 0 < x
+bool GetForallBounds::getBoundsLesser(Expr left, Expr right, bool equal){
+    bool used;
+    // x <= [0,4] means that x is maximally 4
+    if(const Variable *v = left.as<Variable>()){
+        if(vars.count(v->name) != 0){
+            Simplify::ExprInfo bound;
+            Expr b = simplifier.mutate(right, &bound);
+            if(!equal)
+                bound.max--;
+            updateMax(var_info[v->name], bound);
+            
+            if(equal){
+                simplified_bounds.emplace_back(LE::make(left, b));
+            } else {
+                simplified_bounds.emplace_back(LT::make(left, b));
+            }
+            used = true;
+        }
+    }
+    
+    // [0,4] < x means that x is minimally 1
+    if(const Variable *v = right.as<Variable>()){
+        if(vars.count(v->name) != 0){
+            Simplify::ExprInfo bound;
+            Expr a = simplifier.mutate(left, &bound);
+            if(!equal)
+                bound.min++;
+            updateMin(var_info[v->name], bound);
+            if(equal){
+                simplified_bounds.emplace_back(LE::make(a, right));
+            } else {
+                simplified_bounds.emplace_back(LT::make(a, right));
+            }
+            used = true;
+        }
+    }
+
+    return used;
+}
+
 }  // namespace Internal
 }  // namespace Halide

@@ -28,6 +28,33 @@ class QualifyExpr : public IRMutator {
         return Let::make(prefix + op->name, value, body);
     }
 
+    Expr visit(const Forall *op) override {
+        Expr select = mutate(op->select);
+        Expr main = mutate(op->main);
+        vector<string> new_vars;
+        for(const string &v: op->vars){
+            new_vars.emplace_back(prefix + v);
+        }
+    
+        return Forall::make(new_vars, std::move(select), std::move(main));
+    }
+
+    Annotation visit(const Permission *op) override {
+        Expr variable = mutate(op->variable);
+        Expr antecedent = mutate(op->antecedent);
+        Expr permission = mutate(op->permission);
+        vector<string> new_vars;
+        for(const string &v: op->forall_vars){
+            new_vars.emplace_back(prefix + v);
+        }
+
+        return Permission::make(op->ann_type,
+                                std::move(antecedent),
+                                std::move(variable),
+                                std::move(permission),
+                                new_vars);
+    }
+
 public:
     QualifyExpr(const string &p)
         : prefix(p) {

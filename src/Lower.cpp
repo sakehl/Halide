@@ -179,10 +179,12 @@ Module lower(const vector<Function> &output_funcs,
     debug(2) << "Lowering after removing extern loops:\n"
              << s << "\n";
 
-    debug(1) << "Performing sliding window optimization...\n";
-    s = sliding_window(s, env);
-    debug(2) << "Lowering after sliding window:\n"
-             << s << "\n";
+    // TODO: Fix sliding window optimization (with annotations)
+    // debug(1) << "Performing sliding window optimization...\n";
+    // s = sliding_window(s, env);
+    // debug(2) << "Lowering after sliding window:\n"
+    //          << s << "\n";
+    debug(1) << "Disabled sliding window optimization...\n";
 
     // This uniquifies the variable names, so we're good to simplify
     // after this point. This lets later passes assume syntactic
@@ -223,10 +225,12 @@ Module lower(const vector<Function> &output_funcs,
     debug(2) << "Lowering after removing code that depends on undef values:\n"
              << s << "\n\n";
 
-    debug(1) << "Performing storage folding optimization...\n";
-    s = storage_folding(s, env);
-    debug(2) << "Lowering after storage folding:\n"
-             << s << "\n";
+    // TODO: Fix storage folding (with annotations)
+    // debug(1) << "Performing storage folding optimization...\n";
+    // s = storage_folding(s, env);
+    // debug(2) << "Lowering after storage folding:\n"
+    //          << s << "\n";
+    debug(1) << "Disabled storage folding optimization...\n";
 
     debug(1) << "Injecting debug_to_file calls...\n";
     s = debug_to_file(s, outputs, env);

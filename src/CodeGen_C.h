@@ -171,6 +171,9 @@ protected:
     /** Track the types of allocations to avoid unnecessary casts. */
     Scope<Allocation> allocations;
 
+    /** Track the types of buffer parameters. */
+    Scope<Allocation> buffer_types;
+
     /** Track which allocations actually went on the heap. */
     Scope<> heap_allocations;
 
@@ -288,6 +291,16 @@ protected:
     void visit(const Exists *op) override;
 
     void visit(const Permission *op) override;
+
+    void visit(const Let *op) override;
+
+    void visit(const Call *op) override;
+
+    void visit(const UIntImm *op) override;
+    
+    void visit(const FloatImm *op) override;
+
+    void visit(const Cast *op) override;
 };
 
 }  // namespace Internal

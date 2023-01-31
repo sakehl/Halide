@@ -170,12 +170,32 @@ Stmt Simplify::visit(const For *op) {
     ExprInfo min_bounds, extent_bounds;
     Expr new_min = mutate(op->min, &min_bounds);
     Expr new_extent = mutate(op->extent, &extent_bounds);
-    vector<Annotation> new_ann = mutate(op->annotations);
+    
 
     ScopedValue<bool> old_in_vector_loop(in_vector_loop,
                                          (in_vector_loop ||
                                           op->for_type == ForType::Vectorized));
 
+    bool bounds_tracked = false;
+    ExprInfo annotation_bounds;
+    ExprInfo body_bounds;
+    if (min_bounds.min_defined || (min_bounds.max_defined && extent_bounds.max_defined)) {
+        min_bounds.max += extent_bounds.max - 1;
+        min_bounds.max_defined &= extent_bounds.max_defined;
+        min_bounds.alignment = ModulusRemainder{};
+        bounds_tracked = true;
+        body_bounds = min_bounds;
+        annotation_bounds = min_bounds;
+        // For annotations, we have loop invariants where for(i in [i_min, i_max), where i == i_max is 'valid'
+        // since it expresses the state after the loop has concluded. Thus we need to increase the bound by one
+        if(op->for_type == ForType::Serial && annotation_bounds.max_defined){
+            annotation_bounds.max++;
+        }
+    }
+
+    // For annotations 
+    bounds_and_alignment_info.push(op->name, annotation_bounds);
+    vector<Annotation> new_ann = mutate(op->annotations);
     bool same_ann = true;
     if(new_ann.size() == op->annotations.size()){
         for(size_t i = 0; i < new_ann.size(); i++){
@@ -184,15 +204,8 @@ Stmt Simplify::visit(const For *op) {
     } else{
         same_ann = false;
     }
-
-    bool bounds_tracked = false;
-    if (min_bounds.min_defined || (min_bounds.max_defined && extent_bounds.max_defined)) {
-        min_bounds.max += extent_bounds.max - 1;
-        min_bounds.max_defined &= extent_bounds.max_defined;
-        min_bounds.alignment = ModulusRemainder{};
-        bounds_tracked = true;
-        bounds_and_alignment_info.push(op->name, min_bounds);
-    }
+    bounds_and_alignment_info.pop(op->name);
+    bounds_and_alignment_info.push(op->name, body_bounds);
 
     Stmt new_body = mutate(op->body);
 
@@ -644,9 +657,12 @@ Annotation Simplify::visit(const AnnExpr *op) {
 
 
 Annotation Simplify::visit(const Permission *op) {
-    Expr antecedent = mutate(op->antecedent, nullptr);
+    GetForallBounds gfb(op->forall_vars, this);
+    Expr antecedent = gfb.simplify_antecedent_and_push(op->antecedent);
+
     Expr variable = mutate(op->variable, nullptr);
     Expr permission = mutate(op->permission, nullptr);
+    gfb.pop();
 
     if (antecedent.same_as(op->antecedent) && variable.same_as(op->variable) && permission.same_as(op->permission)) {
         return op;

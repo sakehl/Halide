@@ -17,7 +17,7 @@ using std::vector;
 
 namespace {
 
-void buffer_annotations(const Parameter &buf, vector<Annotation> &res){
+void get_buffer_annotations(const Parameter &buf, vector<Annotation> &res){
     int dim = buf.dimensions();
     Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), buf.name() + ".buffer");
     for(int i=0; i<dim; i++){
@@ -43,6 +43,43 @@ class UpdateBufferAnnotations: public IRMutator {
 
     map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints;
 
+    Expr visit(const Variable *op) override {
+        if(!top_level)
+            return op;
+            
+        string name = op->name;
+        int num = -1;
+        string prop = "";
+
+        if(ends_with(name, ".0")){
+            num = 0;
+        } else if(ends_with(name, ".1")) {
+            num = 1;
+        } else if(ends_with(name, ".2")) {
+            num = 2;
+        }
+        
+        if(num >= 0){
+            name.erase(name.length()-2);
+            if(ends_with(name, ".min")){
+                prop = Call::buffer_get_min;
+                name.erase(name.length()-4);
+            } else if(ends_with(name, ".extent")){
+                prop = Call::buffer_get_extent;
+                name.erase(name.length()-7);
+            } else if(ends_with(name, ".stride")){
+                prop = Call::buffer_get_stride;
+                name.erase(name.length()-7);
+            }
+            if(name != ""){
+                Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), name + ".buffer");
+                return Call::make(Int(32), prop,{buffer, num}, Call::Extern);
+            }
+        }
+
+        return op;
+    }
+
     Expr visit(const Call *call) override {
         if(call->is_extern() || call->is_intrinsic()){
             return IRMutator::visit(call);
@@ -53,7 +90,8 @@ class UpdateBufferAnnotations: public IRMutator {
         size_t dimensions;
         
         if(call->call_type == Call::CallType::Halide){
-            // Ugly, but calls to images get inlined to some sort of function ending on _im, which are removed elsewhere in the pipeline, but not here yet
+            // Ugly, but calls to images get inlined to some sort of function ending on _im, 
+            // which are removed elsewhere in the pipeline, but not here yet
             if(ends_with(name, "_im"))
                 name.erase(name.length()-3);
 
@@ -64,7 +102,7 @@ class UpdateBufferAnnotations: public IRMutator {
             Function f(call->func);
             user_assert(f.outputs() == 1)
                 << "Function " << name << "has zero or more than one outputs, which we do not yet support";
-            type = f.output_types().front();\
+            type = f.output_types().front();
             dimensions = f.dimensions();
         } else {
             user_assert(call->call_type == Call::CallType::Image) 
@@ -76,7 +114,8 @@ class UpdateBufferAnnotations: public IRMutator {
         Expr index;
         // Mutate the args
         user_assert(dimensions == call->args.size()) 
-            << "Annotations for images contain a call to an image with "<< call->args.size() << " arguments, but the dimensionality of: \"" << call->name << "\" is " << dimensions;
+            << "Annotations for images contain a call to an image with "<< call->args.size() 
+            << " arguments, but the dimensionality of: \"" << call->name << "\" is " << dimensions;
         
         vector<Expr> new_args(dimensions);
         for (size_t i = 0; i < dimensions; i++) {
@@ -97,6 +136,8 @@ class UpdateBufferAnnotations: public IRMutator {
                 index = Add::make(index, added_dimension);
         }
 
+        index = mutate(index);
+
         if(top_level){
             name = name + ".buffer.host";
         }
@@ -104,13 +145,57 @@ class UpdateBufferAnnotations: public IRMutator {
     }
 
 public:
-    UpdateBufferAnnotations(map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints, bool top_level) : buffer_constraints(buffer_constraints), top_level(top_level) {}
+    UpdateBufferAnnotations(map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints, bool top_level) 
+      : buffer_constraints(buffer_constraints), top_level(top_level) {}
 
     bool top_level;
 };
 
+class AnnotationMaker{
+    AnnotationType originalType;
+    bool is_permission;
+    tuple<Expr, Expr, Expr, vector<string>> perm;
+    Expr condition;
+public:
+    AnnotationMaker(AnnotationType originalType, Expr bound, Expr location, Expr permis, vector<string> forall) :
+        originalType(originalType), is_permission(true), perm(tie(bound, location, permis, forall)) { }
+
+    AnnotationMaker(AnnotationType originalType, Expr condition) :
+        originalType(originalType), is_permission(false), condition(condition) { }
+
+    Annotation create_annotation(bool is_parallel) const {
+        AnnotationType anntype = is_parallel ? originalType : AnnotationType::LoopInvariant;
+
+        if(is_permission){
+            return Permission::make(anntype, std::get<0>(perm), std::get<1>(perm), std::get<2>(perm), std::get<3>(perm));
+        } else {
+            return AnnExpr::make(anntype, condition);
+        }
+    }
+
+    void update(UpdateBufferAnnotations &uba){
+        if(is_permission){
+            Expr bound = simplify(uba.mutate(std::get<0>(perm)));
+            Expr location = simplify(uba.mutate(std::get<1>(perm)));
+            Expr permis = simplify(uba.mutate(std::get<2>(perm)));
+            perm = tie(bound, location, permis, std::get<3>(perm));
+        }
+        else {
+            condition = simplify(uba.mutate(condition));
+        }
+    }
+};
+
+vector<Annotation> create_annotations(vector<AnnotationMaker> anns, bool is_parallel){
+    vector<Annotation> res;
+    for(const auto &a: anns){
+        res.emplace_back(a.create_annotation(is_parallel));
+    }
+    return res;
+}
+
 class AddParameterAnnotations : public IRMutator {
-    vector<Annotation> proven_annotations;
+    vector<AnnotationMaker> proven_annotations;
     map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints;
 
 
@@ -120,7 +205,7 @@ class AddParameterAnnotations : public IRMutator {
         if(proven_annotations.empty())
             return for_loop;
         
-        vector<Annotation> new_annotations = proven_annotations;
+        vector<Annotation> new_annotations = create_annotations(proven_annotations, for_loop->is_parallel());
         new_annotations.insert(new_annotations.end(), for_loop->annotations.begin(), for_loop->annotations.end() );
 
         Stmt body = mutate(for_loop->body);
@@ -195,50 +280,49 @@ class AddParameterAnnotations : public IRMutator {
     }
 
     void get_output_annotations(const Parameter &par){
-        if(par.is_buffer()){
-            buffer_annotations(par, top_level);
+        if(!par.is_buffer()){
+            return;
+        }
 
-            BufferInfo info = process_dimensions(par);
+        get_buffer_annotations(par, top_level);
+        BufferInfo info = process_dimensions(par);
 
-            Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index,Buffer<>(), par,const_true(),ModulusRemainder());
-            top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(1,1), info.forall_vars));
+        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index,Buffer<>(), par,const_true(),ModulusRemainder());
+        top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(1,1), info.forall_vars));
 
-            for(const auto& ann :par.annotations()){
-                if (const auto *ann_expr = ann.as<AnnExpr>()){
-                    if(ann_expr->ann_type == AnnotationType::Ensure){
-                        top_level.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(info.forall_vars, info.bound, ann_expr->condition)));
-                    }
-                }
-            }
+        for(const auto& ann :par.annotations()){
+            const auto *ann_expr = ann.as<AnnExpr>();
+            user_assert(ann_expr) << "No permission annotations allowed";
+            user_assert(ann_expr->ann_type == AnnotationType::Ensure) << "Only ensure annotations allowed concerning top level";
+            top_level.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(info.forall_vars, info.bound, ann_expr->condition)));
         }
     }
 
     void get_input_annotations(const Parameter &par){
-        if(par.is_buffer()){
-            buffer_annotations(par, top_level);
+        if(!par.is_buffer())
+            return;
+    
+        get_buffer_annotations(par, top_level);
+        BufferInfo info = process_dimensions(par);
 
-            BufferInfo info = process_dimensions(par);
+        // Expr call = Call::make(par, forall_vars_expr);
+        Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder());
+        proven_annotations.emplace_back(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars);
 
-            
-            
-            // Expr call = Call::make(par, forall_vars_expr);
-            Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder());
-            proven_annotations.emplace_back(Permission::make(AnnotationType::LoopInvariant, info.bound, load, ReadPerm::make(), info.forall_vars));
+        load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder());
+        top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars));
 
-            load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder());
-            top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars));
+        for(const auto& ann :par.annotations()){
+            const auto *ann_expr = ann.as<AnnExpr>();
+            user_assert(ann_expr) << "No permission annotations allowed";
 
-            for(const auto& ann :par.annotations()){
-                if (const auto *ann_expr = ann.as<AnnExpr>()){
-                    if(ann_expr->ann_type == AnnotationType::Require || ann_expr->ann_type == AnnotationType::Context 
-                        || ann_expr->ann_type == AnnotationType::ContextEverywhere){
-                        proven_annotations.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, Forall::make(info.forall_vars, info.bound, ann_expr->condition)));
-                        
-                        AnnotationType top = ann_expr->ann_type == AnnotationType::ContextEverywhere ? AnnotationType::Context : ann_expr->ann_type;
-                        top_level.emplace_back(AnnExpr::make(top, Forall::make(info.forall_vars, info.bound, ann_expr->condition)));
-                    }
-                }
-            }
+            AnnotationType annt = ann_expr->ann_type == AnnotationType::ContextEverywhere ? AnnotationType::Context : ann_expr->ann_type;
+            user_assert(ann_expr->ann_type == AnnotationType::Require || ann_expr->ann_type == AnnotationType::Context)
+                << "Annotation type should re require or context is not allowed.";
+
+            proven_annotations.emplace_back(annt, Forall::make(info.forall_vars, info.bound, ann_expr->condition));
+                    
+            top_level.emplace_back(AnnExpr::make(annt, Forall::make(info.forall_vars, info.bound, ann_expr->condition)));
         }
     }
 
@@ -262,7 +346,7 @@ public:
         uba.top_level = false;
 
         for(size_t i=0; i<proven_annotations.size(); i++)
-            proven_annotations[i] = simplify(uba.mutate(proven_annotations[i]));
+            proven_annotations[i].update(uba);
     }
 };
 
@@ -270,9 +354,6 @@ public:
 }  // namespace
 
 pair<Stmt, vector<Annotation>> add_parameter_annotations(const Stmt &stmt, vector<Parameter> input, vector<Parameter> output) {
-    // Limit the scope of atomic nodes to just the necessary stuff.
-    // TODO: Should this be an earlier pass? It's probably a good idea
-    // for non-vectorizing stuff too.
     AddParameterAnnotations apa(input, output);
     Stmt s = apa.mutate(stmt);
     return pair<Stmt, vector<Annotation>>(s, apa.top_level);
