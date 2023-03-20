@@ -1,5 +1,6 @@
 #include "IRMutator.h"
 #include "IROperator.h"
+#include "IRVisitor.h"
 #include "Simplify.h"
 #include "Var.h"
 #include "VectorizeLoops.h"
@@ -21,19 +22,38 @@ void get_buffer_annotations(const Parameter &buf, vector<Annotation> &res){
     int dim = buf.dimensions();
     Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), buf.name() + ".buffer");
     for(int i=0; i<dim; i++){
+        Expr constraint;
         if(buf.min_constraint(i).defined()){
             Expr min_val = Call::make(Int(32), Call::buffer_get_min, {buffer, i}, Call::Extern);
-            res.emplace_back(AnnExpr::make(AnnotationType::ContextEverywhere, EQ::make(min_val, buf.min_constraint(i))));
+            Expr new_constraint = min_val == buf.min_constraint(i);
+            if(constraint.defined()){
+                constraint = constraint && new_constraint;
+            } else {
+                constraint = new_constraint;
+            }
         }
             
         if(buf.extent_constraint(i).defined()){
             Expr extent_val = Call::make(Int(32), Call::buffer_get_extent, {buffer, i}, Call::Extern);
-            res.emplace_back(AnnExpr::make(AnnotationType::ContextEverywhere, EQ::make(extent_val, buf.extent_constraint(i))));
+            Expr new_constraint = extent_val == buf.extent_constraint(i);
+            if(constraint.defined()){
+                constraint = constraint && new_constraint;
+            } else {
+                constraint = new_constraint;
+            }
         }
 
         if(buf.stride_constraint(i).defined()){
             Expr stride_val = Call::make(Int(32), Call::buffer_get_stride, {buffer, i}, Call::Extern);
-            res.emplace_back(AnnExpr::make(AnnotationType::ContextEverywhere, EQ::make(stride_val, buf.stride_constraint(i))));
+            Expr new_constraint = stride_val == buf.stride_constraint(i);
+            if(constraint.defined()){
+                constraint = constraint && new_constraint;
+            } else {
+                constraint = new_constraint;
+            }
+        }
+        if(constraint.defined()){
+            res.emplace_back(AnnExpr::make(AnnotationType::Context, constraint));
         }
     }
 }
@@ -129,7 +149,9 @@ class UpdateBufferAnnotations: public IRMutator {
             << "Annotations for buffers contain a call to an image, which is not in the input: \"" << call->name << "\"";
 
         for(size_t i=0; i < dimensions;i++){
-            Expr added_dimension = new_args[i] * std::get<2>(constraints->second[i]);
+            Expr min = std::get<0>(constraints->second[i]);
+            Expr extent = std::get<2>(constraints->second[i]);
+            Expr added_dimension = (new_args[i] - min) * extent;
             if(i==0)
                 index = added_dimension;
             else
@@ -194,19 +216,65 @@ vector<Annotation> create_annotations(vector<AnnotationMaker> anns, bool is_para
     return res;
 }
 
+class ContainsFunctionCall: public IRVisitor {
+public:
+    ContainsFunctionCall(string function) : contains_call(false), function(function) { }
+
+    bool contains_call;
+private:
+    string function;
+    
+    using IRVisitor::visit;
+
+    void visit(const Load *load) override {
+        IRVisitor::visit(load);
+
+        if(load->name == function){
+            contains_call = true;
+        }
+    }
+
+    // Evaluate is to annotate GPU barriers
+    void visit(const Evaluate *op) override {
+        op->value.accept(this);
+        // Gpu barriers may say something about permissions
+        for(const Annotation &a : op->annotations){
+            a.accept(this);
+        }
+    }
+
+    void visit(const For *op) override {
+        op->min.accept(this);
+        op->extent.accept(this);
+        op->body.accept(this);
+        // We should visit annotations now, since if they refer to a function, the annotation information is needed.
+        for(const Annotation &a : op->annotations){
+            a.accept(this);
+        }
+    }
+};
+
 class AddParameterAnnotations : public IRMutator {
-    vector<AnnotationMaker> proven_annotations;
+    map<string,vector<AnnotationMaker>> proven_annotations;
     map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints;
 
 
     using IRMutator::visit;
 
     Stmt visit(const For *for_loop) override {
-        if(proven_annotations.empty())
-            return for_loop;
-        
-        vector<Annotation> new_annotations = create_annotations(proven_annotations, for_loop->is_parallel());
-        new_annotations.insert(new_annotations.end(), for_loop->annotations.begin(), for_loop->annotations.end() );
+
+        vector<Annotation> loop_annotations;
+        for(auto &it: proven_annotations){
+            string name = it.first;
+            ContainsFunctionCall cfc(name);
+            for_loop->accept(&cfc);
+            if(cfc.contains_call){
+                vector<Annotation> new_annotations = create_annotations(it.second, for_loop->is_parallel());
+                loop_annotations.insert(loop_annotations.end(), new_annotations.begin(), new_annotations.end());
+            }
+        }
+
+        loop_annotations.insert(loop_annotations.end(), for_loop->annotations.begin(), for_loop->annotations.end() );
 
         Stmt body = mutate(for_loop->body);
 
@@ -216,7 +284,7 @@ class AddParameterAnnotations : public IRMutator {
                              for_loop->for_type,
                              for_loop->device_api,
                              body,
-                             new_annotations);
+                             loop_annotations);
     }
 
     struct BufferInfo {
@@ -255,16 +323,14 @@ class AddParameterAnnotations : public IRMutator {
                 Var var = Var::implicit(i);
                 forall_vars_expr.emplace_back(var);
                 forall_vars.emplace_back(var.name());
-                Expr new_bound = And::make(
-                    LE::make(min, var),
-                    LT::make(var, Add::make(min, extent)));
-                Expr new_index = Mul::make(var, stride);
+                Expr new_bound = min <= var && var < min + extent;
+                Expr new_index = (var - min) * stride;
                 if(i==0){
                     bound = new_bound;
                     index = new_index;
                 } else {
-                    bound = And::make(bound, new_bound);
-                    index = Add::make(new_index, index);
+                    bound = bound && new_bound;
+                    index = index + new_index;
                 }
             }
 
@@ -287,7 +353,7 @@ class AddParameterAnnotations : public IRMutator {
         get_buffer_annotations(par, top_level);
         BufferInfo info = process_dimensions(par);
 
-        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index,Buffer<>(), par,const_true(),ModulusRemainder());
+        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(),ModulusRemainder());
         top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(1,1), info.forall_vars));
 
         for(const auto& ann :par.annotations()){
@@ -307,7 +373,7 @@ class AddParameterAnnotations : public IRMutator {
 
         // Expr call = Call::make(par, forall_vars_expr);
         Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder());
-        proven_annotations.emplace_back(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars);
+        proven_annotations[par.name()].emplace_back(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars);
 
         load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder());
         top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars));
@@ -320,7 +386,7 @@ class AddParameterAnnotations : public IRMutator {
             user_assert(ann_expr->ann_type == AnnotationType::Require || ann_expr->ann_type == AnnotationType::Context)
                 << "Annotation type should re require or context is not allowed.";
 
-            proven_annotations.emplace_back(annt, Forall::make(info.forall_vars, info.bound, ann_expr->condition));
+            proven_annotations[par.name()].emplace_back(annt, Forall::make(info.forall_vars, info.bound, ann_expr->condition));
                     
             top_level.emplace_back(AnnExpr::make(annt, Forall::make(info.forall_vars, info.bound, ann_expr->condition)));
         }
@@ -345,8 +411,12 @@ public:
 
         uba.top_level = false;
 
-        for(size_t i=0; i<proven_annotations.size(); i++)
-            proven_annotations[i].update(uba);
+
+        for(auto &it: proven_annotations){
+            for(size_t i=0; i<it.second.size(); i++){
+                it.second[i].update(uba);
+            }
+        }
     }
 };
 

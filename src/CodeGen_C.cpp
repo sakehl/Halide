@@ -252,37 +252,43 @@ string buffer_header(string type){
     << "    int min_0;\n"
     << "    int min_1;\n"
     << "    int min_2;\n"
+    << "    int min_3;\n"
     << "\n"
     << "    int extent_0;\n"
     << "    int extent_1;\n"
     << "    int extent_2;\n"
+    << "    int extent_3;\n"
     << "\n"
     << "    int stride_0;\n"
     << "    int stride_1;\n"
     << "    int stride_2;\n"
+    << "    int stride_3;\n"
     << "}\n"
     << "\n"
     << "requires Perm(b.host, read);\n"
     << "pure " << type << "[] _halide_buffer_get_host(halide_buffer_" << type << " b) = b.host;\n"
     << "\n"
-    << "requires 0 <= dim && dim < 3;\n"
+    << "requires 0 <= dim && dim < 4;\n"
     << "requires dim == 0 ==> Perm(b.min_0, read);\n"
     << "requires dim == 1 ==> Perm(b.min_1, read);\n"
     << "requires dim == 2 ==> Perm(b.min_2, read);\n"
-    << "pure int _halide_buffer_get_min(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.min_0 : (dim == 1 ? b.min_1 : b.min_2);\n"
+    << "requires dim == 3 ==> Perm(b.min_3, read);\n"
+    << "pure int _halide_buffer_get_min(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.min_0 : (dim == 1 ? b.min_1 : (dim == 2 ? b.min_2 : b.min_3));\n"
     << "\n"
     << "\n"
-    << "requires 0 <= dim && dim < 3;\n"
+    << "requires 0 <= dim && dim < 4;\n"
     << "requires dim == 0 ==> Perm(b.stride_0, read);\n"
     << "requires dim == 1 ==> Perm(b.stride_1, read);\n"
     << "requires dim == 2 ==> Perm(b.stride_2, read);\n"
-    << "pure int _halide_buffer_get_stride(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.stride_0 : (dim == 1 ? b.stride_1 : b.stride_2);\n"
+    << "requires dim == 3 ==> Perm(b.stride_3, read);\n"
+    << "pure int _halide_buffer_get_stride(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.stride_0 : (dim == 1 ? b.stride_1 : (dim == 2 ? b.stride_2 : b.stride_3));\n"
     << "\n"
-    << "requires 0 <= dim && dim < 3;\n"
+    << "requires 0 <= dim && dim < 4;\n"
     << "requires dim == 0 ==> Perm(b.extent_0, read);\n"
     << "requires dim == 1 ==> Perm(b.extent_1, read);\n"
     << "requires dim == 2 ==> Perm(b.extent_2, read);\n"
-    << "pure int _halide_buffer_get_extent(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.extent_0 : (dim == 1 ? b.extent_1 : b.extent_2);\n"
+    << "requires dim == 3 ==> Perm(b.extent_3, read);\n"
+    << "pure int _halide_buffer_get_extent(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.extent_0 : (dim == 1 ? b.extent_1 : (dim == 2 ? b.extent_2 : b.extent_3));\n"
     << "\n";
 
     return ss.str();
@@ -299,12 +305,12 @@ string buffer_annotations(string buffer_name, int dimensions, Indentation indent
     // }
     // string min_val = min_val_s.str();
 
-    o << indent << "context_everywhere Perm(" << buffer_name << ".host, read) ** " << buffer_name << ".host != null;\n";
+    o << indent << "context Perm(" << buffer_name << ".host, read) ** " << buffer_name << ".host != null;\n";
     for(int i =0; i< dimensions; i++){
-        o << indent << "context_everywhere Perm(" << buffer_name << ".min_" << i <<", read) ** Perm(" << buffer_name << ".stride_" << i << ", read) ** Perm(" << buffer_name << ".extent_" << i << ", read);\n";
+        o << indent << "context Perm(" << buffer_name << ".min_" << i <<", read) ** Perm(" << buffer_name << ".stride_" << i << ", read) ** Perm(" << buffer_name << ".extent_" << i << ", read);\n";
     }
-    o << indent << "context_everywhere Perm(" << buffer_name << ".host, read) ** " << buffer_name << ".host != null;\n"; 
-    o << indent << "context_everywhere " << buffer_name << ".host.length == 1 ";
+    o << indent << "context Perm(" << buffer_name << ".host, read) ** " << buffer_name << ".host != null;\n"; 
+    o << indent << "context " << buffer_name << ".host.length == 1 ";
     for(int i =0; i< dimensions; i++){
         o << " + abs(" << buffer_name << ".stride_" << i << ") * (" << buffer_name << ".extent_" << i << " - 1)";
     }
@@ -2094,11 +2100,15 @@ void CodeGen_C::visit(const And *op) {
 }
 
 void CodeGen_C::visit(const Not *op) {
-    print_assignment(op->type, "!(" + print_expr(op->a) + ")");
+    if(is_pvl()){
+        id = "!(" + print_expr(op->a) + ")";
+    } else {
+        print_assignment(op->type, "!(" + print_expr(op->a) + ")");
+    }
 }
 
 void CodeGen_C::visit(const IntImm *op) {
-    if (op->type == Int(32)) {
+    if (op->type == Int(32) || is_pvl()) {
         id = std::to_string(op->value);
     } else {
         static const char *const suffixes[3] = {
@@ -2488,7 +2498,11 @@ void CodeGen_C::visit(const Call *op) {
         // Make an innocuous assignment value for our caller (probably an Evaluate node) to ignore.
         print_assignment(op->type, "0");
     } else {
-        print_assignment(op->type, rhs.str());
+        if(is_pvl()){
+            id = rhs.str();
+        } else {
+            print_assignment(op->type, rhs.str());
+        }
     }
 }
 
@@ -2565,7 +2579,11 @@ void CodeGen_C::visit(const Load *op) {
         }
         rhs << "[" << id_index << "]";
     }
-    print_assignment(t, rhs.str());
+    if(is_pvl()){
+        id = rhs.str();
+    } else {
+        print_assignment(t, rhs.str());
+    }
 }
 
 void CodeGen_C::visit(const Store *op) {
@@ -2663,7 +2681,11 @@ void CodeGen_C::visit(const Select *op) {
     } else {
         rhs << type << "_ops::select(" << cond << ", " << true_val << ", " << false_val << ")";
     }
-    print_assignment(op->type, rhs.str());
+    if(is_pvl()){
+        id = rhs.str();
+    } else {
+        print_assignment(op->type, rhs.str());
+    }
 }
 
 void CodeGen_C::visit(const LetStmt *op) {
@@ -2883,8 +2905,7 @@ void CodeGen_C::visit(const Allocate *op) {
             // Make the code a little less cluttered for two-dimensional case
             string new_size_id_rhs;
             string next_extent = print_expr(op->extents[i]);
-            new_size_id_rhs = size_id + " * " + next_extent;
-            size_id = print_assignment(Int(64), new_size_id_rhs);
+            size_id = size_id + " * " + next_extent;
         }
 
         stream << get_indent() << type_no_space;

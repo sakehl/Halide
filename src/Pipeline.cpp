@@ -318,25 +318,55 @@ void Pipeline::compile_to_c(const string &filename,
 void Pipeline::compile_to_pvl(const string &filename,
                             const vector<Argument> &args,
                             const string &fn_name,
+                            const vector<Annotation> &pipeline_anns,
                             const Target &target) {
     Module m = compile_to_module(args, fn_name, target);
     m.compile(single_output(filename, m, Output::pvl));
 }
 
+void get_pipeline_annotations(Function f, vector<Annotation> &pipeline_anns){
+    int last = f.updates().size();
+    Definition last_def;
+    if(last == 0){
+        last_def = f.definition();
+    } else {
+        last_def = f.updates()[last-1];
+    }
+    Expr bounds = const_true();
+    for(int i=0; i< (int)f.args().size(); i++){
+        Expr v = Variable::make(Int(32), f.args()[i]);
+        Expr mine = Variable::make(Int(32), f.name() + "." + "min." + std::to_string(i));
+        Expr maxe = Variable::make(Int(32), f.name() + "." + "max." + std::to_string(i));
+        bounds = bounds && (mine <= i && i < maxe);
+    }
+
+
+    for(const auto &ann: last_def.annotations()){
+        const AnnExpr *ae = ann.as<AnnExpr>();
+        user_assert(ae) << "No permission annotations allowed";
+        user_assert(ae->ann_type == AnnotationType::Ensure) << "Only ensure annotations allowed";
+        pipeline_anns.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(f.args(), bounds, ae->condition)));
+    }
+
+}
+
 void Pipeline::translate_to_pvl(const string &filename,
-                            const vector<Argument> &args) {
+                            const vector<Argument> &args, const vector<Annotation> &pipeline_anns) {
     user_assert(defined()) << "Can't compile undefined Pipeline.\n";
 
     for (const Function &f : contents->outputs) {
         user_assert(f.has_pure_definition() || f.has_extern_definition())
             << "Can't compile Pipeline with undefined output Func: " << f.name() << ".\n";
     }
-
+    vector<Annotation> new_pipeline_anns = pipeline_anns;
     // Compute an environment
     std::map<string, Function> env;
     std::map<string, Parameter> par_env;
+    vector<Parameter> buffers;
     for (const Function &f : contents->outputs) {
         find_parameter_and_function_calls(f, env, par_env);
+        get_pipeline_annotations(f, new_pipeline_anns);
+        buffers.emplace_back(f.output_buffers()[0]);
     }
 
     // Create a deep-copy of the entire graph of Funcs.
@@ -346,20 +376,27 @@ void Pipeline::translate_to_pvl(const string &filename,
     // Unsure if needed?
     // Substitute in wrapper Funcs
     // env = wrap_func_calls(env);
+    
 
     debug(1) << "Translating input buffers to PVL...\n";
     std::ofstream file(filename);
     PVLPrinter printer(file);
     for (auto &iter : par_env) {
-        if(iter.second.is_buffer())
+        if(iter.second.is_buffer()){
             printer.print_buffer(iter.second);
+            buffers.emplace_back(iter.second);
+        }
     }
 
     debug(1) << "Translating functions to PVL...\n";
     for (auto &iter : env) {
         printer.print_func(iter.second);
     }
+
+    printer.print_pipeline(new_pipeline_anns, buffers);
 }
+
+
 
 void Pipeline::print_loop_nest() {
     user_assert(defined()) << "Can't print loop nest of undefined Pipeline.\n";

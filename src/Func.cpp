@@ -3222,13 +3222,13 @@ void Func::compile_to_c(const string &filename, const vector<Argument> &args,
     pipeline().compile_to_c(filename, args, fn_name, target);
 }
 
-void Func::compile_to_pvl(const string &filename, const vector<Argument> &args,
+void Func::compile_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,
                         const string &fn_name, const Target &target) {
-    pipeline().compile_to_pvl(filename, args, fn_name, target);
+    pipeline().compile_to_pvl(filename, args, fn_name, pipeline_anns, target);
 }
 
-void Func::translate_to_pvl(const string &filename, const vector<Argument> &args) {
-    pipeline().translate_to_pvl(filename, args);
+void Func::translate_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns) {
+    pipeline().translate_to_pvl(filename, args, pipeline_anns);
 }
 
 void Func::compile_to_lowered_stmt(const string &filename,

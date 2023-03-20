@@ -251,6 +251,7 @@ class LoopInvariantMaker : public IRMutator{
     Expr bounds;
     Expr through_out_bounds;
     Expr up_to_bounds;
+    const Dim &dim;
     Expr extent;
     std::map<string, Expr> replacer;
     bool static_ann;
@@ -261,13 +262,13 @@ class LoopInvariantMaker : public IRMutator{
     Annotation visit(const AnnExpr *op) override {
         if(static_ann){
             Expr antecedent = GT::make(extent, make_zero(extent.type()));
-            outside_ann = add_antecedent(antecedent, AnnExpr::make(op->ann_type, op->condition));
+            outside_anns.emplace_back(add_antecedent(antecedent, AnnExpr::make(op->ann_type, op->condition)));
             return add_antecedent(antecedent, AnnExpr::make(AnnotationType::LoopInvariant, op->condition));
         }
 
         Expr condition = substitute(replacer, op->condition);
         Expr outside_forall = make_forall({forall_var}, bounds, condition);
-        outside_ann = AnnExpr::make(op->ann_type, outside_forall);
+        outside_anns.emplace_back(AnnExpr::make(op->ann_type, outside_forall));
 
         Expr forall_bounds;
         if (op->ann_type == AnnotationType::Context) {
@@ -287,7 +288,7 @@ class LoopInvariantMaker : public IRMutator{
     Annotation visit(const Permission *op) override {
         if(static_ann){
             Expr antecedent = And::make(GT::make(extent, make_zero(extent.type())), op->antecedent);
-            outside_ann = Permission::make(op->ann_type, antecedent, op->variable, op->permission, op->forall_vars);
+            outside_anns.emplace_back(Permission::make(op->ann_type, antecedent, op->variable, op->permission, op->forall_vars));
             return Permission::make(AnnotationType::LoopInvariant, antecedent, op->variable, op->permission, op->forall_vars);
         }
         
@@ -298,7 +299,7 @@ class LoopInvariantMaker : public IRMutator{
         Expr outside_antecedent = And::make(bounds, new_antecedent);
         vector<string> new_forall_vars = op->forall_vars;
         new_forall_vars.emplace_back(forall_var);
-        outside_ann = Permission::make(op->ann_type, outside_antecedent, new_variable, new_permission, new_forall_vars);
+        outside_anns.emplace_back(Permission::make(op->ann_type, outside_antecedent, new_variable, new_permission, new_forall_vars));
 
         Expr forall_bounds;
         if (op->ann_type == AnnotationType::Require || op->ann_type == AnnotationType::Context) {
@@ -317,11 +318,21 @@ public:
     Annotation mutate(const Annotation &a) override {
         if(!a.defined()){
             return Annotation();
+        }  
+
+        // TODO; we should allow reordering and splitting of rvars, but we don't now.
+        const AnnExpr *ae = a.as<AnnExpr>();
+        if(dim.is_rvar() && ae && a.type() != AnnotationType::LoopInvariant){
+            outside_anns.emplace_back(a);
+            return Annotation();
         }
 
         if(a.type() == AnnotationType::LoopInvariant){
             // Keep it as it is, and don't return an outside annotation
-            outside_ann = nullptr;
+            // outside_ann = nullptr;
+            
+            // internal_assert(ae);
+            // outside_anns.emplace_back()
             return a;
         }
 
@@ -337,11 +348,12 @@ public:
         return a.get()->mutate_ann(this);
     }
 
-    Annotation outside_ann;
+    vector<Annotation> outside_anns;
+    Annotation loopinvariant_anns;
 
 
-    LoopInvariantMaker(string for_loop_v, Expr loop_min, Expr ext)
-       : for_loop_var(for_loop_v), extent(ext)
+    LoopInvariantMaker(string for_loop_v, const Dim &dim, Expr loop_min, Expr ext)
+       : for_loop_var(for_loop_v), dim(dim), extent(ext)
     {   
         forall_var = for_loop_v +".forall";
 
@@ -359,18 +371,21 @@ public:
 };
 
 pair<vector<Annotation>, vector<Annotation>> loop_invariants_annotations(const vector<Annotation> &anns,
- string for_loop_var, Expr loop_min, Expr extent){
+ string for_loop_var, const Dim &dim, Expr loop_min, Expr extent){
     vector<Annotation> loop_invariants;
     vector<Annotation> outside_anns;
     
-    LoopInvariantMaker lim = LoopInvariantMaker(for_loop_var, loop_min, extent);
+    LoopInvariantMaker lim = LoopInvariantMaker(for_loop_var, dim, loop_min, extent);
 
     for(auto const &ann : anns){
         Annotation loop_inv = lim.mutate(ann);
-        loop_invariants.emplace_back(loop_inv);
-        if(lim.outside_ann.get() != nullptr){
-            outside_anns.emplace_back(lim.outside_ann);
+        if(loop_inv.defined()){
+            loop_invariants.emplace_back(loop_inv);
         }
+        if(lim.outside_anns.size() > 0){
+            outside_anns.insert(outside_anns.end(), lim.outside_anns.begin(), lim.outside_anns.end());
+        }
+        lim.outside_anns.clear();
     }
 
     return std::make_pair(loop_invariants, outside_anns);
@@ -602,7 +617,7 @@ Stmt build_loop_nest(
             Expr min = Variable::make(Int(32), nest[i].name + ".loop_min");
             Expr extent = Variable::make(Int(32), nest[i].name + ".loop_extent");
             vector<Annotation> loop_invariants, outside_anns;
-            std::tie(loop_invariants, outside_anns) = loop_invariants_annotations(cur_anns, nest[i].name, min, extent);
+            std::tie(loop_invariants, outside_anns) = loop_invariants_annotations(cur_anns, nest[i].name, dim, min, extent);
 
             if(dim.for_type == ForType::GPUBlock){
                 stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt);   
@@ -1374,6 +1389,35 @@ public:
     }
 };
 
+class ContainsFunctionCall: public IRVisitor {
+public:
+    ContainsFunctionCall(string function) : contains_call(false), function(function) { }
+
+    bool contains_call;
+private:
+    string function;
+    
+    using IRVisitor::visit;
+
+    void visit(const Call *call) override {
+        IRVisitor::visit(call);
+
+        if(call->name == function){
+            contains_call = true;
+        }
+    }
+
+    void visit(const For *op) override {
+        op->min.accept(this);
+        op->extent.accept(this);
+        op->body.accept(this);
+        // We should visit annotations now, since if they refer to a function, the annotation information is needed.
+        for(const Annotation &a : op->annotations){
+            a.accept(this);
+        }
+    }
+};
+
 /*
 This should be called immediately after the storage has been found for a function
 * Before finding produce nodes, we give enough permission to write towards the array, and after one iteration,
@@ -1424,6 +1468,12 @@ protected:
     }
 
     Stmt visit(const For *for_loop) override {
+        ContainsFunctionCall cfc(function);
+        for_loop->accept(&cfc);
+        if(!cfc.contains_call){
+            return for_loop;
+        }
+
         if(for_loop->for_type == ForType::Unrolled){
             return IRMutator::visit(for_loop);
         }

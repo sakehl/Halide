@@ -9,6 +9,7 @@
 #include "Inline.h"
 #include "Scope.h"
 #include "Simplify.h"
+#include "Substitute.h"
 
 #include <algorithm>
 #include <iterator>
@@ -1256,6 +1257,124 @@ public:
 
 }  // namespace
 
+// Annotations need to be able to deal with the sliding window optimiztion
+// Thus if something is computed upwards, some values are not recomputed,
+// Thus we need the exact bounds for this, before we slide a window
+class FixAnnotationBounds : public IRMutator{
+    map<string, string> bounds_to_be_found;
+    map<string, int> searching_bounds;
+    map<string, pair<string,Expr>> bounds_value;
+    map<string, vector<pair<string, Expr>>> let_pairs;
+
+    set<string> in_produce;
+
+    const map<string, Function> &env;
+
+public:
+    FixAnnotationBounds(const map<string, Function> &env) : env(env) { }
+
+    using IRMutator::visit;
+
+    Stmt visit(const Realize *op) override {
+        // We want the bounds of the function that is realized here.
+        string f_name = op->name;
+        Function func = env.find(f_name)->second;
+        int last_stage = func.updates().size();
+        // We are only interested in the bounds of the last stage, since that's what's actually used in the consume part
+        string prefix = f_name + ".s" + std::to_string(last_stage) + ".";
+
+        for (const std::string &i : func.args()) {
+            bounds_to_be_found[prefix + i + ".max"] = f_name;
+            bounds_to_be_found[prefix + i + ".min"] = f_name;
+        }
+        
+        // We denote how many bounds we need to find for this function, so we know when to stop collecting information
+        searching_bounds[f_name] = func.args().size()*2;
+
+        // Recurse
+        Stmt body = mutate(op->body);
+
+        return Realize::make(op->name, op->types, op->memory_type, op->bounds,
+                         op->condition, std::move(body));
+
+    }
+
+    Stmt visit(const LetStmt *op) override {
+        auto it = bounds_to_be_found.find(op->name);
+        if(it != bounds_to_be_found.end()){
+            // We found the bound, we named the variable similar but with '.ann' appended for annotations (during the scheduling)
+            bounds_value[op->name + ".ann"] = std::make_pair(it->second, inline_lets(it->second, op->value));
+            bounds_to_be_found.erase(it);
+            searching_bounds[op->name]--;
+        }
+        
+        // For any function that we still need to collect bounds for, we collect the lets we passed, so we can inline them
+        for(const auto &it: searching_bounds){
+            if(it.second != 0){
+                let_pairs[it.first].emplace_back(op->name, op->value);
+            }
+        }
+
+        Stmt body = mutate(op->body);
+        if (body.same_as(op->body)) {
+            return op;
+        }
+        return LetStmt::make(op->name, op->value, std::move(body));
+    }
+
+    Stmt visit(const For *op) override {
+        // Store for which functions we passed a produce node, we need to do special things to
+        // for loops, for which we are above a produce node
+        set<string> current_in_produce = in_produce;
+
+        // Recurse first, because we need information below
+        Stmt body = mutate(op->body);
+
+        Expr i_min_one = Variable::make(Int(32), op->name) - 1;
+        map<string, Expr> substitute_map;
+        for(auto &bounds_pair: bounds_value){
+            string func = bounds_pair.second.first;
+            string key = bounds_pair.first;
+            Expr replacement = bounds_pair.second.second;
+            // This for loop is above the produce node
+            if(current_in_produce.count(func) == 0){
+                substitute_map[key] = substitute(op->name, i_min_one, replacement);
+            } else {
+                substitute_map[key] = replacement;
+            }
+        }
+
+        bool same = true;
+        vector<Annotation> annotations;
+        for(const Annotation &a : op->annotations){
+            Annotation new_a = substitute(substitute_map, a);
+            same = same && new_a.same_as(a);
+            annotations.emplace_back(std::move(new_a));
+        }
+
+        if (body.same_as(op->body) && same) {
+            return op;
+        }
+        return For::make(op->name, op->min, op->extent,
+                        op->for_type, op->device_api, std::move(body), std::move(annotations));
+    }
+
+    Stmt visit(const ProducerConsumer *op) override {
+        if(op->is_producer)
+            in_produce.insert(op->name);
+        return IRMutator::visit(op);
+    }
+
+    Expr inline_lets(string f, Expr e){
+        vector<pair<string, Expr>> lets = let_pairs[f];
+        Expr res = e;
+        for(int i = lets.size()-1; i>=0; i--){
+            res = substitute(lets[i].first, lets[i].second, res);
+        }
+        return res;
+    }
+};
+
 Stmt bounds_inference(Stmt s,
                       const vector<Function> &outputs,
                       const vector<string> &order,
@@ -1312,6 +1431,7 @@ Stmt bounds_inference(Stmt s,
     s = BoundsInference(funcs, fused_func_groups, fused_pairs_in_groups,
                         outputs, func_bounds, target)
             .mutate(s);
+    s = FixAnnotationBounds(env).mutate(s);
     return s.as<For>()->body;
 }
 

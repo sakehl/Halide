@@ -939,10 +939,12 @@ public:
                       const Target &target = get_target_from_environment());
 
     void translate_to_pvl(const std::string &filename,
-                      const std::vector<Argument> &);
+                      const std::vector<Argument> &args,
+                      const std::vector<Internal::Annotation> &pipeline_anns);
 
     void compile_to_pvl(const std::string &filename,
-                      const std::vector<Argument> &,
+                      const std::vector<Argument> &args,
+                      const std::vector<Internal::Annotation> &pipeline_anns,
                       const std::string &fn_name = "",
                       const Target &target = get_target_from_environment());
 

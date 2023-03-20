@@ -250,15 +250,15 @@ class AutomaticAnnotations {
 
         vector<Annotation> new_def_annotations;
 
-        // Reductions
-        if(!def.schedule().rvars().empty()){
+        if(has_rvar){
+            // Reduction, just give all write permissions, since loops are serial anyway
             Expr call = Call::make(func, call_args);
             new_def_annotations.emplace_back(Permission::make(AnnotationType::Context, bounds, call, Frac::make(1, 1), forall_vars));
         } else {
-            // Add our own write permission
+            // Non-reduction case: Add our own write permission
             Expr call = Call::make(func, def_args);
             new_def_annotations.emplace_back(Permission::make(AnnotationType::Context, make_bool(true), call, Frac::make(1, 1), {}));
-            // Add read permission for everything else
+            // Add read permission for everything else (update definitions)
             if(!forall_vars.empty()){
                 new_def_annotations.emplace_back(
                     Permission::make(AnnotationType::Context, bounds && not_def_bounds, call, ReadPerm::make(), forall_vars));
@@ -282,8 +282,9 @@ class AutomaticAnnotations {
                 } else {
                     user_assert(ae->ann_type == AnnotationType::Ensure) 
                         << "Only ensure or invariant annotations are allowed for reduction functions";
-                    new_ann_type = AnnotationType::LoopInvariant;
-                    new_condition = implies(rvar_condition_after, new_condition);
+                    new_ann_type = AnnotationType::Ensure;
+                    // new_ann_type = AnnotationType::LoopInvariant;
+                    // new_condition = implies(rvar_condition_after, new_condition);
                 }
             } else {
                 user_assert(ae->ann_type == AnnotationType::Ensure) << "Only ensure annotations are allowed for normal functions";
@@ -307,8 +308,10 @@ class AutomaticAnnotations {
 
             if(!is_const_true(new_cond)){
                 if(has_rvar){
-                    new_cond = implies(rvar_condition_before, new_cond);
-                     new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, new_cond));
+                    // new_cond = implies(rvar_condition_before, new_cond);
+                    // Since it is an rvar, make it loop invariant directly
+                    // new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, new_cond));
+                    new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Require, new_cond));
                 } else {
                     new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Require, new_cond));
                 }
@@ -329,7 +332,6 @@ class AutomaticAnnotations {
 
         def.annotations().clear();
         def.annotations() = new_def_annotations;
-
     }
 
     void add_function_annotations(Function func){

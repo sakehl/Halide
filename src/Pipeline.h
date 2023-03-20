@@ -278,10 +278,12 @@ public:
     void compile_to_pvl(const std::string &filename,
                       const std::vector<Argument> &,
                       const std::string &fn_name,
+                      const std::vector<Internal::Annotation> &pipeline_anns,
                       const Target &target = get_target_from_environment());
 
     void translate_to_pvl(const std::string &filename,
-                      const std::vector<Argument> &);
+                      const std::vector<Argument> &args,
+                      const std::vector<Internal::Annotation> &pipeline_anns);
 
     /** Write out an internal representation of lowered code. Useful
      * for analyzing and debugging scheduling. Can emit html or plain

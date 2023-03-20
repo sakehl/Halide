@@ -737,8 +737,12 @@ void IRPrinter::visit(const Not *op) {
 
 void IRPrinter::visit(const Forall *op) {
     stream << "(\\forall";
-    for(auto & var: op->vars)
-        stream << " int " << var;
+    for(size_t i= 0; i<op->vars.size(); i++){
+        stream << " int " << op->vars[i];
+        if (i < op->vars.size() - 1) {
+            stream << ", ";
+        }
+    }
     stream << "; ";
 
     print_no_parens(op->select);
@@ -749,9 +753,12 @@ void IRPrinter::visit(const Forall *op) {
 
 void IRPrinter::visit(const Exists *op) {
     stream << "(\\exists";
-    for(auto & var: op->vars)
-        stream << " int " << var;
-    stream << "; ";
+    for(size_t i= 0; i<op->vars.size(); i++){
+        stream << " int " << op->vars[i];
+        if (i < op->vars.size() - 1) {
+            stream << ", ";
+        }
+    }
 
     print_no_parens(op->select);
     stream << "; ";

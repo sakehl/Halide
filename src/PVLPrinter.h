@@ -7,6 +7,7 @@
  */
 
 #include "IRPrinter.h"
+#include "OutputImageParam.h"
 
 namespace Halide {
 
@@ -16,7 +17,7 @@ using std::string;
 using std::vector;
 
 /** This class emits PVL code equivalent to the halide algorithm language (Front-End).
- * It's mostly the same as an IRPrinter, but we have the hande functios differently
+ * It's mostly the same as an IRPrinter, but we have the hande functions differently
  */
 class PVLPrinter : public IRPrinter {
 public:
@@ -24,6 +25,8 @@ public:
     /** Initialize a PVL code generator pointing at a particular output
      * stream (e.g. a file, or std::cout) */
     PVLPrinter(std::ostream &dest);
+
+    void print_pipeline(const vector<Annotation> &anns, const vector<Parameter>& buffers);
 
     void print_func(Function f);
 
@@ -47,9 +50,12 @@ private:
     using IRPrinter::visit;
 
     void visit(const Call *) override;
+    void visit(const Let *) override;
     void visit(const Forall *) override;
     void visit(const Exists *) override;
     void visit(const Variable *) override;
+    void visit(const UIntImm * ) override;
+    void visit(const Select * ) override;
 
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
@@ -63,9 +69,9 @@ private:
     void print_red_func(Definition def, vector<string> original_args, vector<Expr> different_args, vector<Type> output_types,
         string func_name, string old_func_name);
 
-    void print_ann(vector<Annotation> anns, bool has_reduction = false);
+    void print_ann(const vector<Annotation> &anns, bool has_reduction = false);
 
-    void print_reduction_ann(vector<Annotation> anns);
+    void print_reduction_ann(const vector<Annotation> &anns);
 
     void print_type(const Type &type);
 
