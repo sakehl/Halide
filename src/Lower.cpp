@@ -341,11 +341,11 @@ Module lower(const vector<Function> &output_funcs,
     debug(2) << "Lowering after unrolling:\n"
              << s << "\n\n";
 
-    // debug(1) << "Vectorizing...\n";
-    // s = vectorize_loops(s, env, t);
-    // s = simplify(s);
-    // debug(2) << "Lowering after vectorizing:\n"
-    //          << s << "\n\n";
+    debug(1) << "Vectorizing...\n";
+    s = vectorize_loops(s, env, t);
+    s = simplify(s);
+    debug(2) << "Lowering after vectorizing:\n"
+             << s << "\n\n";
 
     if (t.has_gpu_feature() ||
         t.has_feature(Target::OpenGLCompute)) {
