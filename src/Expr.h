@@ -430,6 +430,34 @@ enum class MemoryType {
     VTCM,
 };
 
+/** A reference-counted handle to an annotation node. */
+struct Annotation : public Internal::IRHandle {
+    Annotation() = default;
+    Annotation(const Internal::BaseAnnNode *n)
+        : IRHandle(n) {
+    }
+
+    /** Override get() to return a BaseAnnNode * instead of an IRNode * */
+    HALIDE_ALWAYS_INLINE
+    const Internal::BaseAnnNode *get() const {
+        return (const Internal::BaseAnnNode *)ptr;
+    }
+
+    /** This lets you use a Annotation as a key in a map of the form
+     * map<Annotation, Foo, Annotation::Compare> */
+    struct Compare {
+        bool operator()(const Annotation &a, const Annotation &b) const {
+            return a.ptr < b.ptr;
+        }
+    };
+
+    /** Get the annotation type of this node */
+    HALIDE_ALWAYS_INLINE
+    Internal::AnnotationType type() const {
+        return get()->ann_type;
+    }
+};
+
 namespace Internal {
 
 /** An enum describing a type of loop traversal. Used in schedules,
@@ -478,36 +506,6 @@ struct Stmt : public IRHandle {
             return a.ptr < b.ptr;
         }
     };
-};
-
-
-
-/** A reference-counted handle to an annotation node. */
-struct Annotation : public IRHandle {
-    Annotation() = default;
-    Annotation(const BaseAnnNode *n)
-        : IRHandle(n) {
-    }
-
-    /** Override get() to return a BaseAnnNode * instead of an IRNode * */
-    HALIDE_ALWAYS_INLINE
-    const BaseAnnNode *get() const {
-        return (const Internal::BaseAnnNode *)ptr;
-    }
-
-    /** This lets you use a Annotation as a key in a map of the form
-     * map<Annotation, Foo, Annotation::Compare> */
-    struct Compare {
-        bool operator()(const Annotation &a, const Annotation &b) const {
-            return a.ptr < b.ptr;
-        }
-    };
-
-    /** Get the annotation type of this node */
-    HALIDE_ALWAYS_INLINE
-    AnnotationType type() const {
-        return get()->ann_type;
-    }
 };
 
 }  // namespace Internal

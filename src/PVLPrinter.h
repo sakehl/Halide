@@ -71,7 +71,7 @@ private:
 
     void print_ann(const vector<Annotation> &anns, bool has_reduction = false);
 
-    void print_reduction_ann(const vector<Annotation> &anns);
+    void print_reduction_ann(const vector<Annotation> &anns, const vector<ReductionVariable> &rvars);
 
     void print_type(const Type &type);
 

@@ -1672,6 +1672,21 @@ void CodeGen_C::compile(const LoweredFunc &f) {
                 stream << buffer_annotations(print_name(args[i].name) + "_buffer", args[i].dimensions, get_indent());
             }
         }
+
+        // Needed for VerCors, otherwise it cannot always instantiate that buffers must be different 
+        // Strictly speaking different input buffers can be the same, but we don't allow that here
+        for (size_t i = 0; i < args.size(); i++) {
+            if (args[i].is_buffer()) {
+                for( size_t j = 0; j<i; j++){
+                    if(args[j].is_buffer()){
+                        stream << get_indent() << "requires " 
+                            << print_name(args[i].name) << "_buffer.host != "
+                            << print_name(args[j].name) << "_buffer.host;\n";
+                    }
+                }
+            }
+        }
+
         AnnotationPrinter ap(stream);
         for (const Annotation &a : f.annotations) {
             stream << get_indent();

@@ -344,6 +344,9 @@ void get_pipeline_annotations(Function f, vector<Annotation> &pipeline_anns){
     for(const auto &ann: last_def.annotations()){
         const AnnExpr *ae = ann.as<AnnExpr>();
         user_assert(ae) << "No permission annotations allowed";
+        if(ae->ann_type == AnnotationType::LoopInvariant){
+            continue;
+        }
         user_assert(ae->ann_type == AnnotationType::Ensure) << "Only ensure annotations allowed";
         pipeline_anns.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(f.args(), bounds, ae->condition)));
     }

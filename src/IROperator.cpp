@@ -1415,6 +1415,25 @@ Expr forall(const std::vector<Expr> &xs, Expr select, Expr main){
     }
 }
 
+Annotation make_ann(Internal::AnnotationType t, Expr cond){
+    user_assert(cond.defined()) << "Undefined condition.\n";
+    user_assert(cond.type().is_bool()) << "Condition must be of a boolean type.\n";
+
+    return Internal::AnnExpr::make(t, cond);
+}
+
+Annotation requires(Expr cond){
+    return make_ann(Internal::AnnotationType::Require, cond);
+}
+
+Annotation ensures(Expr cond){
+    return make_ann(Internal::AnnotationType::Ensure, cond);
+}
+
+Annotation context(Expr cond){
+    return make_ann(Internal::AnnotationType::Context, cond);
+}
+
 Expr select(Expr condition, Expr true_value, Expr false_value) {
     if (as_const_int(condition)) {
         // Why are you doing this? We'll preserve the select node until constant folding for you.

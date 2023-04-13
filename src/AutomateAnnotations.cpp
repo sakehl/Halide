@@ -155,7 +155,8 @@ class AutomaticAnnotations {
     set<string> processed_functions;
     // Functions that are being processed, we can check this to make sure there are no cycles in the call graph
     set<string> busy_processing;
-    map<string, Function> env;
+    map<string, Function> &env;
+    vector<Function> &output_funcs;
 
     void fix_annotations(Function func, Definition def, vector<Expr> &def_args){
         std::vector<pair<string, Expr>> lets;
@@ -173,6 +174,14 @@ class AutomaticAnnotations {
         }
     }
 
+    bool is_output(Function func){
+        for(const auto &f :output_funcs){
+            if(f.same_as(func))
+                return true;
+        }
+        return false;
+    }
+
     void get_forall_bounds(Function func, vector<Expr> def_args, vector<string> &forall_vars, vector<Expr> &call_args,
             Expr &bounds, Expr &not_def_bound, map<string, Expr> &replacement){
         vector<Expr> pure_args = func.definition().args();
@@ -184,8 +193,17 @@ class AutomaticAnnotations {
                 Expr forall_v = Variable::make(Int(32), forall_var);
                 forall_vars.emplace_back(forall_var);
                 string prefix = func.name() + ".s0." + dim;
-                Expr min = Variable::make(Int(32), dim + ".min_realized");
-                Expr upper = min + Variable::make(Int(32), dim + ".extent_realized");
+                // For output functions, we can just take the loop min/max 
+                Expr min, upper;
+                if(is_output(func)){
+                    min = Variable::make(Int(32), dim + ".loop_min");
+                    upper = min + Variable::make(Int(32), dim + ".loop_extent");
+                } else {
+                    // Here we fill in this realized after bounds inferencing, since of compute_with scheduling directive
+                    // Makes the loops not say everything
+                    min = Variable::make(Int(32), dim + ".min_realized");
+                    upper = min + Variable::make(Int(32), dim + ".extent_realized");
+                }
                 Expr new_bound = min <= forall_v && forall_v < upper;
                 Expr new_not_def_bound = forall_v != def_args[i];
                 replacement[func.args()[i]] = forall_v;
@@ -246,8 +264,6 @@ class AutomaticAnnotations {
             }
         }
 
-        // hist_rows.s1.r15$x == input.extent.0.constrained
-
         vector<Annotation> new_def_annotations;
 
         if(has_rvar){
@@ -260,8 +276,9 @@ class AutomaticAnnotations {
             new_def_annotations.emplace_back(Permission::make(AnnotationType::Context, make_bool(true), call, Frac::make(1, 1), {}));
             // Add read permission for everything else (update definitions)
             if(!forall_vars.empty()){
+                call = Call::make(func, call_args);
                 new_def_annotations.emplace_back(
-                    Permission::make(AnnotationType::Context, bounds && not_def_bounds, call, ReadPerm::make(), forall_vars));
+                    Permission::make(AnnotationType::Context, bounds && not_def_bounds, call, Frac::make(1, 2), forall_vars));
             }
         }
 
@@ -446,12 +463,12 @@ public:
         }
     }
 
-    AutomaticAnnotations(map<string, Function> &e) : env(e) {};
+    AutomaticAnnotations(map<string, Function> &e, vector<Function> &output_funcs) : env(e), output_funcs(output_funcs) {};
     
 };
 
-void add_automatic_annotations(map<string, Function> &env) {
-    AutomaticAnnotations aa = AutomaticAnnotations(env);
+void add_automatic_annotations(map<string, Function> &env, vector<Function> &output_funcs) {
+    AutomaticAnnotations aa = AutomaticAnnotations(env, output_funcs);
     aa.add_automatic_annotations();
 }
 

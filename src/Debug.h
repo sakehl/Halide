@@ -13,6 +13,7 @@ namespace Halide {
 
 struct Expr;
 struct Type;
+struct Annotation;
 // Forward declare some things from IRPrinter, which we can't include yet.
 std::ostream &operator<<(std::ostream &stream, const Expr &);
 std::ostream &operator<<(std::ostream &stream, const Type &);
@@ -27,7 +28,6 @@ std::ostream &operator<<(std::ostream &stream, const Target &);
 namespace Internal {
 
 struct Stmt;
-struct Annotation;
 std::ostream &operator<<(std::ostream &stream, const Stmt &);
 std::ostream &operator<<(std::ostream &stream, const Annotation &);
 

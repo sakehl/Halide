@@ -134,7 +134,7 @@ Module lower(const vector<Function> &output_funcs,
     simplify_specializations(env);
 
     // Add automatic annotations for functions these are:
-    add_automatic_annotations(env);
+    add_automatic_annotations(env, outputs);
 
     debug(1) << "Creating initial loop nests...\n";
     bool any_memoized = false;

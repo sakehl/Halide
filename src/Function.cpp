@@ -1083,7 +1083,7 @@ void Function::add_func_annotation(Annotation ann){
 void Function::clear_func_annotations(){
     contents->func_annotations.clear();
     user_assert(contents->output_buffers.size() == 1) << "We only support functions with a single valued output: " << contents->name;
-    contents->output_buffers.front().annotations().clear();
+    contents->output_buffers.front().clear_annotations();
 }
 
 void Function::add_permission(AnnotationType type, const Expr &antecedent, const Expr &variable, const Expr &permission){

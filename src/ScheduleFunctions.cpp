@@ -237,10 +237,12 @@ public:
     * Place everything in in between foralls
     * Permissions are available in the whole invariant:
        loop_invariant (\forall* int i_forall; i_min <= i_forall && i_forall < i_min+extent; Perm(a[i_forall], write) ); )
-    * Requires/contexts are valid the whole loop invariant:
+    * Ensures become valid throughout the loop invariant:
+       loop_invariant (\forall int i_forall; i_min <= i_forall && i_forall < i; a[i_forall] > 0 ); )
+    * Requires fases out validity:
+       loop_invariant (\forall int i_forall; i <= i_forall && i_forall < i_min+extent; b[i_forall] > 0 ); )
+    * Contexts are valid the whole loop invariant:
        loop_invariant (\forall int i_forall; i_min <= i_forall && i_forall < i_min+extent; b[i_forall] > 0 ); )
-    * Ensures become valide throughout the loop invariant:
-       loop_invariant (\forall int i_forall; i_min <= i_forall && i_forall < i_min+extent && i_forall<i; a[i_forall] > 0 ); )
 
     * For the outside of the loop, we also need annotations. Here we do something similar, but we keep the annotation type (requires/ensures)
     * and they are always completely (not depending on i anymore)
@@ -253,6 +255,7 @@ class LoopInvariantMaker : public IRMutator{
     Expr up_to_bounds;
     const Dim &dim;
     Expr extent;
+    Expr loop_min;
     std::map<string, Expr> replacer;
     bool static_ann;
 
@@ -291,6 +294,9 @@ class LoopInvariantMaker : public IRMutator{
             outside_anns.emplace_back(Permission::make(op->ann_type, antecedent, op->variable, op->permission, op->forall_vars));
             return Permission::make(AnnotationType::LoopInvariant, antecedent, op->variable, op->permission, op->forall_vars);
         }
+
+        // TODO: Unsure about GPU blocks and redistribution of barriers
+        user_assert(op->ann_type == AnnotationType::Context) << "Permission annotations should always be context: " << op;
         
         Expr new_antecedent = substitute(replacer, op->antecedent);
         Expr new_variable = substitute(replacer, op->variable);
@@ -301,16 +307,7 @@ class LoopInvariantMaker : public IRMutator{
         new_forall_vars.emplace_back(forall_var);
         outside_anns.emplace_back(Permission::make(op->ann_type, outside_antecedent, new_variable, new_permission, new_forall_vars));
 
-        Expr forall_bounds;
-        if (op->ann_type == AnnotationType::Require || op->ann_type == AnnotationType::Context) {
-            forall_bounds = bounds;
-        } else if (op->ann_type == AnnotationType::Ensure) {
-            forall_bounds = through_out_bounds;
-        } else {
-            user_error << "Wrong annotation type passed to a function: " << op;
-        }
-
-        Expr antecedent = And::make(forall_bounds, new_antecedent);
+        Expr antecedent = And::make(bounds, new_antecedent);
         return Permission::make(AnnotationType::LoopInvariant, antecedent, new_variable, new_permission, new_forall_vars);
     }
 
@@ -322,17 +319,22 @@ public:
 
         // TODO; we should allow reordering and splitting of rvars, but we don't now.
         const AnnExpr *ae = a.as<AnnExpr>();
+        // These annotations expressions do not concern the reduction, so should only be used outside the reduction loops
         if(dim.is_rvar() && ae && a.type() != AnnotationType::LoopInvariant){
             outside_anns.emplace_back(a);
             return Annotation();
         }
 
-        if(a.type() == AnnotationType::LoopInvariant){
-            // Keep it as it is, and don't return an outside annotation
-            // outside_ann = nullptr;
-            
-            // internal_assert(ae);
-            // outside_anns.emplace_back()
+        if(!dim.is_rvar() && a.type() == AnnotationType::LoopInvariant){
+            // TODO: This is wrong when we reorder rvars with regular vars, so need to think about this.
+            outside_anns.emplace_back(a);
+            return Annotation();
+        }
+
+        // This is reduction dimension loop, so keep as is, but for outside replace the reduction by its min
+        // So we can handle multi-dimensional reductions
+        if(dim.is_rvar() && ae && a.type() == AnnotationType::LoopInvariant){
+            outside_anns.emplace_back(substitute(for_loop_var, loop_min, a));
             return a;
         }
 
@@ -353,7 +355,7 @@ public:
 
 
     LoopInvariantMaker(string for_loop_v, const Dim &dim, Expr loop_min, Expr ext)
-       : for_loop_var(for_loop_v), dim(dim), extent(ext)
+       : for_loop_var(for_loop_v), dim(dim), extent(ext), loop_min(loop_min)
     {   
         forall_var = for_loop_v +".forall";
 

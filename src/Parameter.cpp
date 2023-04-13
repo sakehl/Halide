@@ -379,6 +379,10 @@ void Parameter::add_annotation(Annotation annotation) {
     contents->annotations.emplace_back(annotation);
 }
 
+void Parameter::clear_annotations() {
+    contents->annotations.clear();
+}
+
 
 void check_call_arg_types(const std::string &name, std::vector<Expr> *args, int dims) {
     user_assert(args->size() == (size_t)dims)

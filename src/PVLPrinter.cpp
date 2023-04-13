@@ -199,19 +199,25 @@ void PVLPrinter::visit(const Select * op) {
 void PVLPrinter::visit(const AnnExpr *op) {
     switch(op->ann_type) {
         case AnnotationType::Require:
-            if(!buffer_annotation)
-                user_error << "Require annotation is only allowed for image parameters: " << op << "\n";
+            if(buffer_annotation){
+                // user_error << "Require annotation is only allowed for image parameters: " << op << "\n";
+                stream << "ensures ";
+            } else {
+                stream << "requires ";
+            }
         break;
     case AnnotationType::LoopInvariant:
         user_error << "Incorrect annotation type: " << op << "\n";
         break;
     case AnnotationType::Ensure:
+        stream << "ensures ";
+        break;
     case AnnotationType::Context:
     case AnnotationType::ContextEverywhere:
+        stream << "context ";
         break;
     }
 
-    stream << "ensures ";
     print_no_parens(op->condition);
 }
 
@@ -348,13 +354,20 @@ void PVLPrinter::print_ann(const vector<Annotation> &anns, bool has_reduction){
     indent--;
 }
 
-void PVLPrinter::print_reduction_ann(const vector<Annotation> &anns){
+void PVLPrinter::print_reduction_ann(const vector<Annotation> &anns, const vector<ReductionVariable> &rvars){
     indent++;
+
+    for(const auto &r: rvars){
+        stream << get_indent() << "requires " << r.min << " <= " << c_print_name(r.var)
+            << " && " << c_print_name(r.var) << " <= " << r.min << " + " << r.extent << ";\n";
+    }
+
+
     for(const auto &ann: anns){
         // Do not error on loop invariants for reductions
         if(ann.type() != AnnotationType::LoopInvariant) continue;
         internal_assert(ann.as<AnnExpr>() != nullptr) << "Only expression annotations allowed here";
-        stream << "ensures ";
+        stream << get_indent() << "ensures ";
         print(ann.as<AnnExpr>()->condition);
         stream << ";\n";
     }
@@ -469,17 +482,20 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
     vector<string> new_args = original_args;
     for (size_t i = 0; i < rvars.size(); i++) {
         print(rvars[i].min);
-        stream << " + ";
-        print(rvars[i].extent);
-        new_args.emplace_back(rvars[i].var);
-        this->rvars.emplace_back(rvars[i].var);
-        if (i + 1 < rvars.size()) {
+        if(i + 1 == rvars.size()){
+            stream << " + ";
+            print(rvars[i].extent);
+        } else {
             stream << ", ";
         }
+        
+        new_args.emplace_back(rvars[i].var);
+        this->rvars.emplace_back(rvars[i].var);
     }
+
     stream << ");\n\n";
     in_annotations = true;
-    print_reduction_ann(def.annotations());
+    print_reduction_ann(def.annotations(), rvars);
     in_annotations = false;
 
     print_lhs_def(new_args, output_types, reduction_func);
@@ -501,8 +517,6 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
         }
     }
     stream << ") : ";
-    // Todo, a sort of recursion when there is more than one reduction variable
-    // user_assert(rvars.size() == 1) << "Not yet implemented multiple reduction variables";
 
     // We go from the last rvar to the first
     for(int i = (int)rvars.size()-1; i>0; i--){
@@ -519,13 +533,18 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
         // Print normal arguments
         for (int k = 0; k < (int)original_args.size(); k++)
             stream << c_print_name(original_args[k]) << ", ";
-        // Reset variables r_0 to r_{i-1} to maximum
+        // Reset variables r_0 to r_{i-2} to minimum
+        // and variables r_{i-1} to the maximum 
         for(int j = 0; j<i; j++){
             print(rvars[j].min);
-            stream << " + ";
-            print(rvars[j].extent);
+            if(j+1 == i){
+                stream << " + ";
+                print(rvars[j].extent);
+            }
             stream << ", ";
         }
+        
+
         // Substract one from r_i
         stream << c_print_name(rvars[i].var) << " - 1";
         // The remaining reduction variables are placed as is

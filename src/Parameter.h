@@ -186,6 +186,8 @@ public:
     std::vector<Annotation> annotations() const;
     
     void add_annotation(Annotation annotation);
+
+    void clear_annotations();
 };
 
 /** Validate arguments to a call to a func, image or imageparam. */

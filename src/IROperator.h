@@ -810,6 +810,12 @@ Expr forall(Expr x, Expr select, Expr main);
  */
 Expr forall(const std::vector<Expr> &xs, Expr select, Expr main);
 
+Annotation requires(Expr cond);
+
+Annotation ensures(Expr cond);
+
+Annotation context(Expr cond);
+
 /** Returns an expression similar to the ternary operator in C, except
  * that it always evaluates all arguments. If the first argument is
  * true, then return the second, else return the third. Typically
