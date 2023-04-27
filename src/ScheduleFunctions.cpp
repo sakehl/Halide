@@ -29,6 +29,7 @@ using std::pair;
 using std::set;
 using std::string;
 using std::vector;
+using std::tuple;
 
 namespace {
 
@@ -222,7 +223,6 @@ public:
     }
 };
 
-
 /* Make the correct annotations for a normal serial loop
  Example:
      context Perm(a[i], write);
@@ -247,115 +247,72 @@ public:
     * For the outside of the loop, we also need annotations. Here we do something similar, but we keep the annotation type (requires/ensures)
     * and they are always completely (not depending on i anymore)
 */
-class LoopInvariantMaker : public IRMutator{
+class LoopInvariantMaker {
     string for_loop_var;
     string forall_var;
     Expr bounds;
     Expr through_out_bounds;
     Expr up_to_bounds;
-    const Dim &dim;
-    Expr extent;
-    Expr loop_min;
+    Expr static_bound;
+
     std::map<string, Expr> replacer;
-    bool static_ann;
 
-    using IRMutator::visit;
-    using IRMutator::mutate;
-
-    Annotation visit(const AnnExpr *op) override {
-        if(static_ann){
-            Expr antecedent = GT::make(extent, make_zero(extent.type()));
-            outside_anns.emplace_back(add_antecedent(antecedent, AnnExpr::make(op->ann_type, op->condition)));
-            return add_antecedent(antecedent, AnnExpr::make(AnnotationType::LoopInvariant, op->condition));
-        }
-
-        Expr condition = substitute(replacer, op->condition);
-        Expr outside_forall = make_forall({forall_var}, bounds, condition);
-        outside_anns.emplace_back(AnnExpr::make(op->ann_type, outside_forall));
-
-        Expr forall_bounds;
-        if (op->ann_type == AnnotationType::Context) {
-            forall_bounds = bounds;
-        } else if (op->ann_type == AnnotationType::Ensure) {
-            forall_bounds = through_out_bounds;
-        } else if (op->ann_type == AnnotationType::Require){
-            forall_bounds = up_to_bounds;
-        } else {
-            user_error << "Wrong annotation type passed to a function: " << op;
-        }
-        
-        Expr forall = make_forall({forall_var}, forall_bounds, condition);
-        return AnnExpr::make(AnnotationType::LoopInvariant, forall);
-    }
-
-    Annotation visit(const Permission *op) override {
-        if(static_ann){
-            Expr antecedent = And::make(GT::make(extent, make_zero(extent.type())), op->antecedent);
-            outside_anns.emplace_back(Permission::make(op->ann_type, antecedent, op->variable, op->permission, op->forall_vars));
-            return Permission::make(AnnotationType::LoopInvariant, antecedent, op->variable, op->permission, op->forall_vars);
-        }
-
-        // TODO: Unsure about GPU blocks and redistribution of barriers
-        user_assert(op->ann_type == AnnotationType::Context) << "Permission annotations should always be context: " << op;
-        
-        Expr new_antecedent = substitute(replacer, op->antecedent);
-        Expr new_variable = substitute(replacer, op->variable);
-        Expr new_permission = substitute(replacer, op->permission);
-
-        Expr outside_antecedent = And::make(bounds, new_antecedent);
-        vector<string> new_forall_vars = op->forall_vars;
-        new_forall_vars.emplace_back(forall_var);
-        outside_anns.emplace_back(Permission::make(op->ann_type, outside_antecedent, new_variable, new_permission, new_forall_vars));
-
-        Expr antecedent = And::make(bounds, new_antecedent);
-        return Permission::make(AnnotationType::LoopInvariant, antecedent, new_variable, new_permission, new_forall_vars);
+    bool is_static(const Internal::IRHandle &a){
+        FindFreeVars finder = FindFreeVars();
+        a.accept(&finder);
+        return !finder.free_vars.contains(for_loop_var);
     }
 
 public:
-    Annotation mutate(const Annotation &a) override {
-        if(!a.defined()){
-            return Annotation();
-        }  
-
-        // TODO; we should allow reordering and splitting of rvars, but we don't now.
-        const AnnExpr *ae = a.as<AnnExpr>();
-        // These annotations expressions do not concern the reduction, so should only be used outside the reduction loops
-        if(dim.is_rvar() && ae && a.type() != AnnotationType::LoopInvariant){
-            outside_anns.emplace_back(a);
-            return Annotation();
+    Annotation update_perm(const Annotation &a) {
+        const Permission *p = a.as<Permission>();
+        internal_assert(p);
+        if(is_static(a)){
+            Expr antecedent = And::make(static_bound, p->antecedent);
+            return Permission::make(AnnotationType::Context, antecedent, p->variable, p->permission, p->forall_vars);
         }
 
-        if(!dim.is_rvar() && a.type() == AnnotationType::LoopInvariant){
-            // TODO: This is wrong when we reorder rvars with regular vars, so need to think about this.
-            outside_anns.emplace_back(a);
-            return Annotation();
-        }
+        user_assert(p->ann_type == AnnotationType::Context) << "Permission annotations should always be context: " << a;
+        
+        Expr new_antecedent = substitute(replacer, p->antecedent);
+        Expr new_variable = substitute(replacer, p->variable);
+        Expr new_permission = substitute(replacer, p->permission);
+        Expr antecedent = And::make(bounds, new_antecedent);
 
-        // This is reduction dimension loop, so keep as is, but for outside replace the reduction by its min
-        // So we can handle multi-dimensional reductions
-        if(dim.is_rvar() && ae && a.type() == AnnotationType::LoopInvariant){
-            outside_anns.emplace_back(substitute(for_loop_var, loop_min, a));
-            return a;
-        }
+        vector<string> new_forall_vars = p->forall_vars;
+        new_forall_vars.emplace_back(forall_var);
 
-        static_ann = false;
-        FindFreeVars finder = FindFreeVars();
-        a.accept(&finder);
-        if(!finder.free_vars.contains(for_loop_var)){
-            // If it doesn't contain the for_loop var, we don't want to repeat for instance a write permissions
-            // a number of times (that is incorrect). We just require that the extent is more than 0.
-            static_ann = true;
-        }
-
-        return a.get()->mutate_ann(this);
+        return Permission::make(AnnotationType::Context, antecedent, new_variable, new_permission, new_forall_vars);
     }
 
-    vector<Annotation> outside_anns;
-    Annotation loopinvariant_anns;
+    Expr outside_ann(Expr cond){
+        if(is_static(cond)){
+            return implies(static_bound, cond);
+        }
 
+        Expr condition = substitute(replacer, cond);
+        return make_forall({forall_var}, through_out_bounds, condition);
+    }
 
-    LoopInvariantMaker(string for_loop_v, const Dim &dim, Expr loop_min, Expr ext)
-       : for_loop_var(for_loop_v), dim(dim), extent(ext), loop_min(loop_min)
+    Annotation inside_loop_ann(Expr cond, AnnotationType ann_type){
+        Expr forall_bounds;
+        if (ann_type == AnnotationType::Context) {
+            forall_bounds = bounds;
+        } else if (ann_type == AnnotationType::Ensure) {
+            forall_bounds = through_out_bounds;
+        } else if (ann_type == AnnotationType::Require){
+            forall_bounds = up_to_bounds;
+        } else {
+            internal_error << "Wrong annotation type: " << ann_type << "\n";
+        }
+
+        Expr condition = substitute(replacer, cond);
+        Expr inside_forall = make_forall({forall_var}, forall_bounds, condition);
+        return AnnExpr::make(ann_type, inside_forall);
+    }
+
+    LoopInvariantMaker(string for_loop_v, Expr loop_min, Expr extent)
+       : for_loop_var(for_loop_v)
     {   
         forall_var = for_loop_v +".forall";
 
@@ -364,34 +321,173 @@ public:
 
         replacer[for_loop_v] = forall;
 
-        bounds = And::make(LE::make(loop_min, forall), LT::make(forall, Add::make(loop_min, ext)));
+        bounds = And::make(LE::make(loop_min, forall), LT::make(forall, Add::make(loop_min, extent)));
         through_out_bounds = And::make(LE::make(loop_min, forall), LT::make(forall, for_loop));
 
-        up_to_bounds = And::make(LE::make(for_loop, forall), LT::make(forall, Add::make(loop_min, ext)));
-    }
-    
+        up_to_bounds = And::make(LE::make(for_loop, forall), LT::make(forall, Add::make(loop_min, extent)));
+        static_bound = GT::make(extent, make_zero(extent.type()));
+    }   
 };
 
-pair<vector<Annotation>, vector<Annotation>> loop_invariants_annotations(const vector<Annotation> &anns,
- string for_loop_var, const Dim &dim, Expr loop_min, Expr extent){
-    vector<Annotation> loop_invariants;
-    vector<Annotation> outside_anns;
-    
-    LoopInvariantMaker lim = LoopInvariantMaker(for_loop_var, dim, loop_min, extent);
+class NestAnnotationMaker {
+    vector<Annotation> anns;
+    vector<Annotation> perms;
+    vector<Expr> reduction_invariants;
+    vector<string> remaining_rvars;
+    bool is_reduction_nest;
+    bool first_reduction_done;
 
-    for(auto const &ann : anns){
-        Annotation loop_inv = lim.mutate(ann);
-        if(loop_inv.defined()){
-            loop_invariants.emplace_back(loop_inv);
+    tuple<string, Expr, Expr> last_reduction;
+
+public:
+    NestAnnotationMaker(vector<Annotation> &anns, vector<string> &rvars) : remaining_rvars(rvars), is_reduction_nest(!rvars.empty()){
+        // Put all the different annotations in the correct vectors
+        first_reduction_done = false;
+        for(auto const &a: anns){
+            const AnnExpr *ae = a.as<AnnExpr>();
+            const Permission *p = a.as<Permission>();
+            if(ae && ae->ann_type == AnnotationType::LoopInvariant){
+                reduction_invariants.emplace_back(ae->condition);
+            } else if(ae){
+                anns.emplace_back(a);
+            } else if(p){
+                // TODO: Unsure about GPU blocks and redistribution of barriers
+                user_assert(p->ann_type == AnnotationType::Context) << "Permission annotations should always be context: " << a;
+                perms.emplace_back(a);
+            }
         }
-        if(lim.outside_anns.size() > 0){
-            outside_anns.insert(outside_anns.end(), lim.outside_anns.begin(), lim.outside_anns.end());
-        }
-        lim.outside_anns.clear();
     }
 
-    return std::make_pair(loop_invariants, outside_anns);
-}
+    vector<Annotation> get_for_loop_annotations(string name, Dim dim, Expr min, Expr extent) {
+        LoopInvariantMaker lim = LoopInvariantMaker(name, min, extent);
+
+        if(dim.is_rvar()){
+            return make_reduction_loop(name, min, extent, lim);
+        } else {
+            return make_loop(dim.for_type == ForType::Serial, lim);
+        }
+    }
+
+    vector<Annotation> make_loop(bool is_serial, LoopInvariantMaker lim){
+        vector<Annotation> result;
+
+        for(auto &p: perms){
+            if(!is_serial){
+                result.emplace_back(p);
+            }
+            Annotation new_p = lim.update_perm(p);
+            const Permission *new_perm = new_p.as<Permission>();
+            internal_assert(new_perm);
+            p = new_p;
+            if(is_serial){
+                result.emplace_back(Permission::make(
+                    AnnotationType::LoopInvariant, new_perm->antecedent, new_perm->variable,
+                    new_perm->permission, new_perm->forall_vars));
+            }
+        }
+
+        // Just go the regular annotations
+        if(!is_reduction_nest){
+            for(auto & a: anns){
+                const AnnExpr *ae = a.as<AnnExpr>();
+                internal_assert(ae);
+                Annotation inside, outside;
+                if(is_serial){
+                    result.emplace_back(lim.inside_loop_ann(ae->condition, ae->ann_type));
+                } else {
+                    result.emplace_back(ae);
+                }
+
+                a = AnnExpr::make(ae->ann_type, lim.outside_ann(ae->condition));
+            }
+        } else {
+            for(auto & inv: reduction_invariants){
+                Annotation req, ens, outside;
+                Expr inv_before, inv_after;
+
+
+                if(first_reduction_done){
+                    string last_r;
+                    Expr last_min, last_extent;
+                    std::tie(last_r, last_min, last_extent) = last_reduction;
+                    inv_before = Internal::substitute(inv, last_r, last_min);
+                    inv_after = Internal::substitute(inv, last_r, last_min + last_extent);
+                } else {
+                    internal_assert(!remaining_rvars.empty());
+                    inv_before = inv;
+                    string next_rvar;
+                    inv_after = Internal::substitute(next_rvar, Variable::make(Int(32),next_rvar) + 1, inv);
+                }
+                result.emplace_back(lim.inside_loop_ann(inv_before, AnnotationType::Require));
+                result.emplace_back(lim.inside_loop_ann(inv_after, AnnotationType::Ensure));
+
+                inv = lim.outside_ann(inv);
+            }
+        }
+        
+        return result;
+    }
+
+    vector<Annotation> make_reduction_loop(string name, Expr min, Expr extent, LoopInvariantMaker lim){
+        vector<Annotation> result;
+
+        // Add permissions, but as loop invariants type
+        for(const auto &p: perms){
+            const Permission *perm = p.as<Permission>();
+            internal_assert(perm);
+            result.emplace_back(Permission::make(
+                AnnotationType::LoopInvariant, perm->antecedent, perm->variable,
+                perm->permission, perm->forall_vars));
+        }
+
+        // Update the last reduction invariant, by replacing its value by its min
+        if(first_reduction_done){
+            string last_r;
+            Expr last_min, last_extent;
+            std::tie(last_r, last_min, last_extent) = last_reduction;
+            for(auto &i: reduction_invariants){
+                i = Halide::Internal::substitute(last_r, last_min, i);
+            }
+        }
+
+        // Add the reduction invariants as loop invariants
+        for(auto &i: reduction_invariants){
+            result.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, i));
+        }
+        // Update this as being the last reduction
+        last_reduction = make_tuple(name, min, extent);
+        first_reduction_done = true;
+
+        internal_assert(remaining_rvars.front() == name);
+        remaining_rvars.erase(remaining_rvars.begin());
+        
+        return result;
+    }
+    
+    void substitute(string name, Expr val){
+        for(auto &a: anns){
+            a = Halide::Internal::substitute(name, val, a);
+        }
+        for(auto &p: perms){
+            p = Halide::Internal::substitute(name, val, p);
+        }
+        for(auto &i: reduction_invariants){
+            i = Halide::Internal::substitute(name, val, i);
+        }
+    }
+
+    void add_antecedent(Expr ant){
+        for(auto &a: anns){
+             a = Halide::Internal::add_antecedent(ant, a);
+        }
+        for(auto &p: perms){
+            p = Halide::Internal::add_antecedent(ant, p);
+        }
+        for(auto &i: reduction_invariants){
+            i = Halide::implies(ant, i);
+        }
+    }
+};
 
 // Build a loop nest about a provide node using a schedule
 Stmt build_loop_nest(
@@ -599,7 +695,20 @@ Stmt build_loop_nest(
     }
 
     cur_anns = substitute(reduction_bound_replacements, cur_anns);
+    // Add the annotations so we can later use them as pre-conditions for other stages
     annotationMaker.add_annotatations(cur_anns);
+
+    vector<string> reduction_dims;
+    for (int i = (int)nest.size() - 1; i >= 0; i--){
+        if (nest[i].type == Container::For){
+            const Dim &dim = stage_s.dims()[nest[i].dim_idx];
+            if(dim.is_rvar())
+                reduction_dims.emplace_back(nest[i].name);
+        }
+    }
+
+    NestAnnotationMaker nest_annotation_maker(cur_anns, reduction_dims);
+
 
     // Rewrap the statement in the containing lets and fors.
     for (int i = (int)nest.size() - 1; i >= 0; i--) {
@@ -607,28 +716,20 @@ Stmt build_loop_nest(
             internal_assert(nest[i].value.defined());
             stmt = LetStmt::make(nest[i].name, nest[i].value, stmt);
 
-            cur_anns = substitute(nest[i].name, nest[i].value, cur_anns);
+            nest_annotation_maker.substitute(nest[i].name, nest[i].value);
         } else if ((nest[i].type == Container::If) || (nest[i].type == Container::IfInner)) {
             internal_assert(nest[i].value.defined());
             stmt = IfThenElse::make(nest[i].value, stmt, Stmt());
 
-            cur_anns = add_antecedent(nest[i].value, cur_anns);
+            nest_annotation_maker.add_antecedent(nest[i].value);
         } else {
             internal_assert(nest[i].type == Container::For);
             const Dim &dim = stage_s.dims()[nest[i].dim_idx];
             Expr min = Variable::make(Int(32), nest[i].name + ".loop_min");
             Expr extent = Variable::make(Int(32), nest[i].name + ".loop_extent");
-            vector<Annotation> loop_invariants, outside_anns;
-            std::tie(loop_invariants, outside_anns) = loop_invariants_annotations(cur_anns, nest[i].name, dim, min, extent);
-
-            if(dim.for_type == ForType::GPUBlock){
-                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt);   
-            } else if(dim.for_type == ForType::Serial) {
-                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, loop_invariants);
-            } else {
-                stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, cur_anns);
-            }
-            cur_anns = outside_anns;
+            vector<Annotation> anns = nest_annotation_maker.get_for_loop_annotations(nest[i].name, dim, min, extent);
+            
+            stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, anns);
         }
     }
 

@@ -100,3 +100,5 @@ Halide-install/
 .vscode/
 
 verification-tests/Unittests/build/
+
+install/
