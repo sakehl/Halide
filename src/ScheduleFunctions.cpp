@@ -291,7 +291,7 @@ public:
         }
 
         Expr condition = substitute(replacer, cond);
-        return make_forall({forall_var}, through_out_bounds, condition);
+        return make_forall({forall_var}, bounds, condition);
     }
 
     Annotation inside_loop_ann(Expr cond, AnnotationType ann_type){
@@ -308,7 +308,7 @@ public:
 
         Expr condition = substitute(replacer, cond);
         Expr inside_forall = make_forall({forall_var}, forall_bounds, condition);
-        return AnnExpr::make(ann_type, inside_forall);
+        return AnnExpr::make(AnnotationType::LoopInvariant, inside_forall);
     }
 
     LoopInvariantMaker(string for_loop_v, Expr loop_min, Expr extent)
@@ -340,10 +340,10 @@ class NestAnnotationMaker {
     tuple<string, Expr, Expr> last_reduction;
 
 public:
-    NestAnnotationMaker(vector<Annotation> &anns, vector<string> &rvars) : remaining_rvars(rvars), is_reduction_nest(!rvars.empty()){
+    NestAnnotationMaker(vector<Annotation> &given_anns, vector<string> &rvars) : remaining_rvars(rvars), is_reduction_nest(!rvars.empty()){
         // Put all the different annotations in the correct vectors
         first_reduction_done = false;
-        for(auto const &a: anns){
+        for(auto const &a: given_anns){
             const AnnExpr *ae = a.as<AnnExpr>();
             const Permission *p = a.as<Permission>();
             if(ae && ae->ann_type == AnnotationType::LoopInvariant){
@@ -405,21 +405,25 @@ public:
                 Annotation req, ens, outside;
                 Expr inv_before, inv_after;
 
-
                 if(first_reduction_done){
                     string last_r;
                     Expr last_min, last_extent;
                     std::tie(last_r, last_min, last_extent) = last_reduction;
-                    inv_before = Internal::substitute(inv, last_r, last_min);
-                    inv_after = Internal::substitute(inv, last_r, last_min + last_extent);
+                    inv_before = Internal::substitute(last_r, last_min, inv);
+                    inv_after = Internal::substitute(last_r, last_min + last_extent, inv);
                 } else {
                     internal_assert(!remaining_rvars.empty());
                     inv_before = inv;
-                    string next_rvar;
+                    string next_rvar = remaining_rvars.front();
                     inv_after = Internal::substitute(next_rvar, Variable::make(Int(32),next_rvar) + 1, inv);
                 }
-                result.emplace_back(lim.inside_loop_ann(inv_before, AnnotationType::Require));
-                result.emplace_back(lim.inside_loop_ann(inv_after, AnnotationType::Ensure));
+                if(is_serial){
+                    result.emplace_back(lim.inside_loop_ann(inv_before, AnnotationType::Require));
+                    result.emplace_back(lim.inside_loop_ann(inv_after, AnnotationType::Ensure));
+                } else {
+                    result.emplace_back(AnnExpr::make(AnnotationType::Require, inv_before));
+                    result.emplace_back(AnnExpr::make(AnnotationType::Ensure, inv_after));
+                }
 
                 inv = lim.outside_ann(inv);
             }
