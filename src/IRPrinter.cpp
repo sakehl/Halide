@@ -450,17 +450,20 @@ std::ostream &operator<<(std::ostream &out, const DimType &t) {
 }
 
 std::string to_string(const Expr &e){
+    if(!e.defined()) return "(undefined)";
     ostringstream out;
     out << e;
     return out.str();
 }
 
 std::string to_string(const Stmt &s){
+    if(!s.defined()) return "(undefined)";
     ostringstream out;
     out << s;
     return out.str();
 }
 std::string to_string(const Annotation &a){
+    if(!a.defined()) return "(undefined)";
     ostringstream out;
     out << a;
     return out.str();

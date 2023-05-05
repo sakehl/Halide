@@ -32,7 +32,6 @@ class UnrollLoops : public IRMutator {
     using IRMutator::visit;
 
     vector<pair<std::string, Expr>> lets;
-    vector<tuple<std::string, Expr, int64_t, bool>> unrolled_vars;
 
     Stmt visit(const LetStmt *op) override {
         if (is_pure(op->value)) {
@@ -93,7 +92,6 @@ class UnrollLoops : public IRMutator {
             if (e->value == 1) {
                 user_warning << "Warning: Unrolling a for loop of extent 1: " << for_loop->name << "\n";
             }
-            unrolled_vars.emplace_back(for_loop->name, for_loop->min, e->value, use_guard);
             Stmt iters;
             for (int i = e->value - 1; i >= 0; i--) {
                 Stmt iter = substitute(for_loop->name, for_loop->min + i, body);
@@ -110,58 +108,7 @@ class UnrollLoops : public IRMutator {
             return iters;
 
         } else {
-            Stmt mutated_stmt = IRMutator::visit(for_loop);
-
-            // Although the current for loop was not unrolled, we need to unroll the annotations
-            // that were present in the for loop.
-
-            const For *new_for_loop = mutated_stmt.as<For>();
-
-            internal_assert(new_for_loop) << "The outer loop should not have been mutated.";
-
-            // Keep track if any annotations where changed
-            bool changed = false;
-
-            vector<Annotation> current_annotations = new_for_loop->annotations;
-
-            for (auto const &unrolled_var : unrolled_vars) {
-                std::string name;
-                Expr min;
-                int64_t extent;
-                bool use_guard;
-                std::tie(name, min, extent, use_guard) = unrolled_var;
-                vector<Annotation> new_annotations;
-
-                for (auto const &ann : current_annotations) {
-                    GatherVars gather;
-                    ann.accept(&gather);
-                    if (std::find(gather.vars.begin(), gather.vars.end(), name) == gather.vars.end()) {
-                        // Variable not found, continue
-                        new_annotations.emplace_back(ann);
-                        continue;
-                    }
-
-                    changed = true;
-                    // Variable found in annotation, we will unroll it.
-                    for (int i = extent - 1; i >= 0; i--) {
-                        Annotation unrolled_ann = substitute(name, min + i, ann);
-                        if (use_guard) {
-                            unrolled_ann = add_antecedent(likely_if_innermost(i < for_loop->extent), unrolled_ann);
-                        }
-                        new_annotations.emplace_back(unrolled_ann);
-                    }
-                }
-                //We update the current annotations, such that they can be unrolled for other unrolled variables.
-                current_annotations = new_annotations;
-            }
-
-            if (!changed) {
-                return mutated_stmt;
-            }
-
-            return For::make(new_for_loop->name, new_for_loop->min, new_for_loop->extent,
-                             new_for_loop->for_type, new_for_loop->device_api, new_for_loop->body,
-                             current_annotations);
+            return IRMutator::visit(for_loop);
         }
     }
     bool permit_failed_unroll = false;

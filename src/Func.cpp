@@ -2688,7 +2688,7 @@ Func &Func::context_everywhere(const Expr &condition) {
     return *this;
 }
 
-Func &Func::loop_invariant(const Expr &condition) {
+Func &Func::invariant(const Expr &condition) {
     invalidate_cache();
     func.add_annotation(AnnotationType::LoopInvariant,condition);
     return *this;
@@ -2886,7 +2886,7 @@ Stage FuncRef::operator=(const FuncRef &e) {
 
 // Inject a suitable base-case definition given an update
 // definition. This is a helper for FuncRef::operator+= and co.
-Func define_base_case(const Internal::Function &func, const vector<Expr> &a, const Tuple &e) {
+Func define_base_case(const Internal::Function &func, const vector<Expr> &a, const Tuple &e, bool add_ensures = false) {
     Func f(func);
 
     if (func.has_pure_definition()) {
@@ -2906,11 +2906,14 @@ Func define_base_case(const Internal::Function &func, const vector<Expr> &a, con
     }
 
     f(pure_args) = e;
+    if(add_ensures) {
+        f.ensures(f(pure_args) == e[0]);
+    }
     return f;
 }
 
-Func define_base_case(const Internal::Function &func, const vector<Expr> &a, const Expr &e) {
-    return define_base_case(func, a, Tuple(e));
+Func define_base_case(const Internal::Function &func, const vector<Expr> &a, const Expr &e, bool add_ensures = false) {
+    return define_base_case(func, a, Tuple(e), add_ensures);
 }
 
 template<typename BinaryOp>
@@ -2932,14 +2935,14 @@ Stage FuncRef::func_ref_update(const Tuple &e, int init_val) {
 }
 
 template<typename BinaryOp>
-Stage FuncRef::func_ref_update(Expr e, int init_val) {
+Stage FuncRef::func_ref_update(Expr e, int init_val, bool add_ensures) {
     vector<Expr> expanded_args = args_with_implicit_vars({e});
-    FuncRef self_ref = define_base_case(func, expanded_args, cast(e.type(), init_val))(expanded_args);
+    FuncRef self_ref = define_base_case(func, expanded_args, cast(e.type(), init_val), add_ensures)(expanded_args);
     return self_ref = BinaryOp()(Expr(self_ref), e);
 }
 
 Stage FuncRef::operator+=(Expr e) {
-    return func_ref_update<std::plus<Expr>>(std::move(e), 0);
+    return func_ref_update<std::plus<Expr>>(std::move(e), 0, true);
 }
 
 Stage FuncRef::operator+=(const Tuple &e) {
@@ -2959,7 +2962,7 @@ Stage FuncRef::operator+=(const FuncRef &e) {
 }
 
 Stage FuncRef::operator*=(Expr e) {
-    return func_ref_update<std::multiplies<Expr>>(std::move(e), 1);
+    return func_ref_update<std::multiplies<Expr>>(std::move(e), 1, true);
 }
 
 Stage FuncRef::operator*=(const Tuple &e) {

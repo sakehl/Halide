@@ -13,6 +13,7 @@ namespace Internal {
 using std::map;
 using std::pair;
 using std::tuple;
+using std::set;
 using std::string;
 using std::vector;
 
@@ -117,7 +118,7 @@ class UpdateBufferAnnotations: public IRMutator {
 
             auto constraints = buffer_constraints.find(name);
             user_assert(constraints != buffer_constraints.end()) 
-                << "Annotations for images contain a call to a non-image type, which is not allowed: \"" << call->name << "\"";
+                << "Annotations for images contain a call to a non-image type, which is not allowed: \"" << call->name << "\": " << name;
 
             Function f(call->func);
             user_assert(f.outputs() == 1)
@@ -373,10 +374,16 @@ class AddParameterAnnotations : public IRMutator {
 
         // Expr call = Call::make(par, forall_vars_expr);
         Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder());
+        Expr pure_call = Call::make(par.type(), "pure_" + par.name(), {info.index}, Call::Extern);
         proven_annotations[par.name()].emplace_back(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars);
+
+        proven_annotations[par.name()].emplace_back(AnnotationType::Context, 
+            Forall::make(info.forall_vars, info.bound, load == pure_call));
 
         load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder());
         top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars));
+        top_level.emplace_back(AnnExpr::make(AnnotationType::Context, 
+            Forall::make(info.forall_vars, info.bound, load == pure_call)));
 
         for(const auto& ann :par.annotations()){
             const auto *ann_expr = ann.as<AnnExpr>();
@@ -384,7 +391,7 @@ class AddParameterAnnotations : public IRMutator {
 
             AnnotationType annt = ann_expr->ann_type == AnnotationType::ContextEverywhere ? AnnotationType::Context : ann_expr->ann_type;
             user_assert(ann_expr->ann_type == AnnotationType::Require || ann_expr->ann_type == AnnotationType::Context)
-                << "Annotation type should re require or context is not allowed.";
+                << "Annotation type should be require or context.";
 
             proven_annotations[par.name()].emplace_back(annt, Forall::make(info.forall_vars, info.bound, ann_expr->condition));
                     
@@ -420,12 +427,47 @@ public:
     }
 };
 
+class UpdateInputBufferCallsToFunction: public IRMutator {
+    set<string> input;
+    bool in_annotation;
+
+    using IRMutator::visit;
+
+    Annotation visit(const AnnExpr *ann) override {
+        in_annotation = true;
+        Annotation result = IRMutator::visit(ann);
+        in_annotation = false;
+        return result;
+    }
+
+    Expr visit(const Load *op) override {
+        if(input.find(op->name) != input.end() && in_annotation){
+            internal_assert(!op->predicate.defined() || is_const_true(op->predicate)) << "Cannot have a predicate here.";
+            Expr index = mutate(op->index);
+            return Call::make(op->type, "pure_" + op->name, {index}, Call::Extern);
+        }
+
+        return IRMutator::visit(op);
+    }
+
+public:
+    UpdateInputBufferCallsToFunction(vector<Parameter> inp){
+        for(auto &i: inp){
+            if(i.is_buffer()){
+                this->input.emplace(i.name());
+            }
+        }
+    }
+};
 
 }  // namespace
 
 pair<Stmt, vector<Annotation>> add_parameter_annotations(const Stmt &stmt, vector<Parameter> input, vector<Parameter> output) {
+    UpdateInputBufferCallsToFunction uibctf(input);
+    Stmt s = uibctf.mutate(stmt);
+
     AddParameterAnnotations apa(input, output);
-    Stmt s = apa.mutate(stmt);
+    s = apa.mutate(s);
     return pair<Stmt, vector<Annotation>>(s, apa.top_level);
 }
 

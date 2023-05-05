@@ -13,6 +13,7 @@ namespace Halide {
 
 namespace Internal {
 
+using std::map;
 using std::string;
 using std::vector;
 
@@ -47,9 +48,13 @@ private:
     // The reduction variables present in the current function
     vector<string> rvars;
 
+    map<string, Parameter> parameter_map;
+
     using IRPrinter::visit;
 
     void visit(const Call *) override;
+    void visit(const Cast *) override;
+    void visit(const Div *) override;
     void visit(const Let *) override;
     void visit(const Forall *) override;
     void visit(const Exists *) override;
@@ -61,6 +66,10 @@ private:
     void visit(const Permission *) override;
 
     bool call_correct(const Call *);
+
+    bool ends_on_dimension(string name);
+
+    void print_buffer_members(Parameter p);
     
     void print_def(Definition def, vector<string> original_args, vector<Type> output_types, string func_name, string old_func_name);
 

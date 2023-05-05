@@ -237,9 +237,19 @@ pure rational min(rational x, rational y) = x > y ? y : x;
 
 pure int abs(int x) = x > 0 ? x : -x;
 
-pure rational int_to_float(int x);
+pure rational _abs(rational x) = x >= 0 ? x : -x;
 
-pure int float_to_int(rational x);
+pure rational ceil_f32(rational x) = is_int(x) ? x : int_to_rational(rational_to_int(x) + 1);
+
+pure rational ceil_f64(rational x) = is_int(x) ? x : int_to_rational(rational_to_int(x) + 1);
+
+prover_function int rational_to_int(rational r) \smtlib `(_ to_int)`;
+
+prover_function int int_to_rational(int i) \smtlib `(_ to_real)`;
+
+prover_function bool is_int(rational r) \smtlib `(_ is_int)`;
+
+prover_function rational div_rat(rational l, rational r) \smtlib `(_ /)`;
 
 )INLINE_CODE";
 
@@ -1370,8 +1380,7 @@ string CodeGen_C::print_type(Type type, AppendSpaceIfNeeded space_option) {
         } else if(type.is_float()){
             oss << "rational";
         } else {
-            //internal_error << "Type " << type << " is unsuported for PVL";
-            return type_to_c_type(type, space_option == AppendSpace);
+            internal_error << "Type " << type << " is unsuported for PVL";
         }
         if(space_option == AppendSpace){
             oss << " ";
@@ -1667,6 +1676,13 @@ void CodeGen_C::compile(const LoweredFunc &f) {
 
     if(is_pvl()){
         indent++;
+
+        for (size_t i = 0; i < args.size(); i++) {
+            if (args[i].is_buffer()) {
+                stream << "pure " << print_type(args[i].type) << " " << "pure" << print_name(args[i].name) << "(int i);\n\n";
+            }
+        }
+
         for (size_t i = 0; i < args.size(); i++) {
             if (args[i].is_buffer()) {
                 stream << buffer_annotations(print_name(args[i].name) + "_buffer", args[i].dimensions, get_indent());
@@ -1919,9 +1935,9 @@ string CodeGen_C::print_cast_expr(const Type &t, const Expr &e) {
         // internal_assert(!is_pvl()) << "Not supported by pvl";
     if(is_pvl()){
         if(e.type().is_float() && t.is_int()){
-            return "float_to_int(" + print_expr(e) + ")";
+            return "rational_to_int(" + print_expr(e) + ")";
         } else if(e.type().is_int() && t.is_float()){
-            return "int_to_float(" + print_expr(e) + ")";
+            return "int_to_rational(" + print_expr(e) + ")";
         } else {
             internal_assert(false) << "Not supported cast by pvl";
         }
@@ -2009,6 +2025,10 @@ void CodeGen_C::visit(const Div *op) {
         visit_binop(op->type, op->a, make_const(op->a.type(), bits), ">>");
     } else if (!is_pvl() && op->type.is_int()) {
         print_expr(lower_euclidean_div(op->a, op->b));
+    } else if(is_pvl() && op->a.type().is_float() && op->b.type().is_float() ){
+        string sa = print_expr(op->a);
+        string sb = print_expr(op->b);
+        id = "div_rat(" + sa + ", " + sb + ")";
     } else {
         visit_binop(op->type, op->a, op->b, "/");
     }
@@ -3429,7 +3449,9 @@ void AnnotationPrinter::visit(const Call *op) {
         print(op->args[0]);
         stream << ".stride_" << op->args[1];
     } else {
-        IRPrinter::visit(op);
+        stream << op->name << "(";
+        print_list(op->args);
+        stream << ")";
     }
     
 }
@@ -3454,11 +3476,11 @@ void AnnotationPrinter::visit(const Cast *op){
     Expr e = op->value;
     Type t = op->type;
     if(e.type().is_float() && t.is_int()){
-        stream << "float_to_int(";
+        stream << "rational_to_int(";
         print(e);
         stream << ")";
     } else if(e.type().is_int() && t.is_float()){
-        stream << "int_to_float(";
+        stream << "int_to_rational(";
         print(e);
         stream << ")";
     } else {

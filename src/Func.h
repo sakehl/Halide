@@ -486,7 +486,7 @@ class FuncRef {
      * already have a pure definition, init_val will be used as RHS in
      * the initial function definition. */
     template<typename BinaryOp>
-    Stage func_ref_update(Expr e, int init_val);
+    Stage func_ref_update(Expr e, int init_val, bool add_ensures = false);
 
 public:
     FuncRef(const Internal::Function &, const std::vector<Expr> &,
@@ -2469,8 +2469,8 @@ public:
     /** Add the condition to the pre and post-conditions everywhere in the program. */
     Func &context_everywhere(const Expr &condition);
 
-    /** Add the condition to the loop invariant, needed when using reduction domains. */
-    Func &loop_invariant(const Expr &condition);
+    /** Add the condition to the as reduction invariant, needed when using reduction domains. */
+    Func &invariant(const Expr &condition);
 
     /** Require a `permission` to a specific variable. */
     Func &requires_perm(const Expr &variable, const Expr &permission);

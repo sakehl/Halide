@@ -108,11 +108,11 @@ private:
 }  // namespace
 }  // namespace Internal
 
-Expr sum(Expr e, const std::string &name) {
-    return sum(RDom(), std::move(e), name);
+Expr sum(Expr e, const std::string &name, std::vector<std::function<Expr(Expr)>> invariants) {
+    return sum(RDom(), std::move(e), name, invariants);
 }
 
-Expr sum(const RDom &r, Expr e, const std::string &name) {
+Expr sum(const RDom &r, Expr e, const std::string &name, std::vector<std::function<Expr(Expr)>> invariants) {
     Internal::FindFreeVars v(r, name);
     e = v.mutate(common_subexpression_elimination(e));
 
@@ -120,14 +120,17 @@ Expr sum(const RDom &r, Expr e, const std::string &name) {
 
     Func f(name);
     f(v.free_vars) += e;
+    for(auto &i: invariants){
+        f.invariant(i(f(v.free_vars)));
+    }
     return f(v.call_args);
 }
 
-Expr product(Expr e, const std::string &name) {
-    return product(RDom(), std::move(e), name);
+Expr product(Expr e, const std::string &name, std::vector<std::function<Expr(Expr)>> invariants) {
+    return product(RDom(), std::move(e), name, invariants);
 }
 
-Expr product(const RDom &r, Expr e, const std::string &name) {
+Expr product(const RDom &r, Expr e, const std::string &name, std::vector<std::function<Expr(Expr)>> invariants) {
     Internal::FindFreeVars v(r, name);
     e = v.mutate(common_subexpression_elimination(e));
 
@@ -135,6 +138,9 @@ Expr product(const RDom &r, Expr e, const std::string &name) {
 
     Func f(name);
     f(v.free_vars) *= e;
+    for(auto &i: invariants){
+        f.invariant(i(f(v.free_vars)));
+    }
     return f(v.call_args);
 }
 

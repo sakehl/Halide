@@ -1,6 +1,7 @@
 #ifndef HALIDE_INLINE_REDUCTIONS_H
 #define HALIDE_INLINE_REDUCTIONS_H
 
+#include <functional>
 #include <string>
 
 #include "Expr.h"
@@ -35,8 +36,8 @@ namespace Halide {
  * scheduled innermost within g.
  */
 //@{
-Expr sum(Expr, const std::string &s = "sum");
-Expr product(Expr, const std::string &s = "product");
+Expr sum(Expr, const std::string &s = "sum", std::vector<std::function<Expr(Expr)>> invariants = {});
+Expr product(Expr, const std::string &s = "product", std::vector<std::function<Expr(Expr)>> invariants = {});
 Expr maximum(Expr, const std::string &s = "maximum");
 Expr minimum(Expr, const std::string &s = "minimum");
 //@}
@@ -51,8 +52,8 @@ Expr minimum(Expr, const std::string &s = "minimum");
  \endcode
 */
 // @{
-Expr sum(const RDom &, Expr, const std::string &s = "sum");
-Expr product(const RDom &, Expr, const std::string &s = "product");
+Expr sum(const RDom &, Expr, const std::string &s = "sum", std::vector<std::function<Expr(Expr)>> invariants = {});
+Expr product(const RDom &, Expr, const std::string &s = "product", std::vector<std::function<Expr(Expr)>> invariants = {});
 Expr maximum(const RDom &, Expr, const std::string &s = "maximum");
 Expr minimum(const RDom &, Expr, const std::string &s = "minimum");
 // @}
