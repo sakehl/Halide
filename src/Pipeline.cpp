@@ -365,11 +365,9 @@ void Pipeline::translate_to_pvl(const string &filename,
     // Compute an environment
     std::map<string, Function> env;
     std::map<string, Parameter> par_env;
-    vector<Parameter> buffers;
     for (const Function &f : contents->outputs) {
         find_parameter_and_function_calls(f, env, par_env);
         get_pipeline_annotations(f, new_pipeline_anns);
-        buffers.emplace_back(f.output_buffers()[0]);
     }
 
     // Create a deep-copy of the entire graph of Funcs.
@@ -387,7 +385,11 @@ void Pipeline::translate_to_pvl(const string &filename,
     for (auto &iter : par_env) {
         if(iter.second.is_buffer()){
             printer.print_buffer(iter.second);
-            buffers.emplace_back(iter.second);
+        }
+    }
+    for(auto &iter : outputs){
+        for(auto &buf : iter.output_buffers()){
+            printer.print_buffer(buf);
         }
     }
 
@@ -396,7 +398,7 @@ void Pipeline::translate_to_pvl(const string &filename,
         printer.print_func(iter.second);
     }
 
-    printer.print_pipeline(new_pipeline_anns, buffers);
+    printer.print_pipeline(new_pipeline_anns);
 }
 
 

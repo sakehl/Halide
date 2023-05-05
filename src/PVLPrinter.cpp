@@ -32,7 +32,10 @@ prover_function int int_to_rational(int i) \smtlib `(_ to_real)`;
 
 prover_function bool is_int(rational r) \smtlib `(_ is_int)`;
 
-prover_function rational div_rat(rational l, rational r) \smtlib `(_ /)`;
+prover_function rational div_rat_(rational l, rational r) \smtlib `(_ /)`;
+
+requires r != 0.0f;
+pure rational div_rat(rational l, rational r) = div_rat_(l, r);
 
 )INLINE_CODE";
 
@@ -77,6 +80,7 @@ void PVLPrinter::visit(const Call *op) {
     } else if(op->is_intrinsic(Call::likely) || op->is_intrinsic(Call::likely_if_innermost)) {
         internal_assert(op->args.size() == 1);
         print(op->args[0]);
+        return;
     }
 
     if(op->is_extern()){
@@ -279,16 +283,18 @@ bool PVLPrinter::call_correct(const Call *op) {
 void PVLPrinter::visit(const Cast *op){
     Expr e = op->value;
     Type t = op->type;
-    if(e.type().is_float() && t.is_int()){
+    if(e.type().is_float() && t.is_int_or_uint()){
         stream << "rational_to_int(";
         print(e);
         stream << ")";
-    } else if(e.type().is_int() && t.is_float()){
+    } else if(e.type().is_int_or_uint() && t.is_float()){
         stream << "int_to_rational(";
         print(e);
-        stream << ")";
+        stream << ")"; 
+    } else if(e.type().is_int_or_uint() && t.is_int_or_uint()){
+        print(e);
     } else {
-        internal_assert(false) << "Not supported cast by pvl";
+        internal_error << "Not supported cast by pvl";
     }
 }
 
@@ -306,7 +312,7 @@ void PVLPrinter::visit(const Div *op){
     }
 }
 
-void PVLPrinter::print_pipeline(const vector<Annotation> &anns, const vector<Parameter> &buffers){
+void PVLPrinter::print_pipeline(const vector<Annotation> &anns){
     func_name =  "";
     prev_def_name = "";
     pure_args = {};
@@ -382,6 +388,7 @@ void PVLPrinter::print_buffer_members(Parameter p){
         }
         stream << ";\n";
     }
+    stream << "\n";
 }
 
 void PVLPrinter::print_buffer(Parameter p){
@@ -683,7 +690,7 @@ void PVLPrinter::print_type(const Type &type) {
         stream << "int";
         break;
     case Type::UInt:
-        stream << "uint";
+        stream << "int";
         break;
     case Type::Float:
         stream << "rational";

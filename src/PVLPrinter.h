@@ -27,7 +27,7 @@ public:
      * stream (e.g. a file, or std::cout) */
     PVLPrinter(std::ostream &dest);
 
-    void print_pipeline(const vector<Annotation> &anns, const vector<Parameter>& buffers);
+    void print_pipeline(const vector<Annotation> &anns);
 
     void print_func(Function f);
 

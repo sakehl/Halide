@@ -249,7 +249,10 @@ prover_function int int_to_rational(int i) \smtlib `(_ to_real)`;
 
 prover_function bool is_int(rational r) \smtlib `(_ is_int)`;
 
-prover_function rational div_rat(rational l, rational r) \smtlib `(_ /)`;
+prover_function rational div_rat_(rational l, rational r) \smtlib `(_ /)`;
+
+requires r != 0.0f;
+pure rational div_rat(rational l, rational r) = div_rat_(l, r);
 
 )INLINE_CODE";
 
@@ -1934,10 +1937,12 @@ string CodeGen_C::print_expr(const Expr &e) {
 string CodeGen_C::print_cast_expr(const Type &t, const Expr &e) {
         // internal_assert(!is_pvl()) << "Not supported by pvl";
     if(is_pvl()){
-        if(e.type().is_float() && t.is_int()){
+        if(e.type().is_float() && t.is_int_or_uint()){
             return "rational_to_int(" + print_expr(e) + ")";
-        } else if(e.type().is_int() && t.is_float()){
+        } else if(e.type().is_int_or_uint() && t.is_float()){
             return "int_to_rational(" + print_expr(e) + ")";
+        } else if(e.type().is_int_or_uint() && t.is_int_or_uint()){
+            return print_expr(e);
         } else {
             internal_assert(false) << "Not supported cast by pvl";
         }
@@ -3475,14 +3480,16 @@ void AnnotationPrinter::visit(const FloatImm *op) {
 void AnnotationPrinter::visit(const Cast *op){
     Expr e = op->value;
     Type t = op->type;
-    if(e.type().is_float() && t.is_int()){
+    if(e.type().is_float() && t.is_int_or_uint()){
         stream << "rational_to_int(";
         print(e);
         stream << ")";
-    } else if(e.type().is_int() && t.is_float()){
+    } else if(e.type().is_int_or_uint() && t.is_float()){
         stream << "int_to_rational(";
         print(e);
         stream << ")";
+    } else if(e.type().is_int_or_uint() && t.is_int_or_uint()){
+        print(e);
     } else {
         internal_assert(false) << "Not supported cast by pvl";
     }

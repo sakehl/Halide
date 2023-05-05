@@ -160,7 +160,7 @@ class AutomaticAnnotations {
 
     void fix_annotations(Function func, Definition def, vector<Expr> &def_args){
         std::vector<pair<string, Expr>> lets;
-        for(const auto v: def.values()){
+        for(const auto &v: def.values()){
             Expr body = v;
             while(const auto *op = body.as<Let>()){
                 lets.emplace_back(std::make_pair(op->name, op->value));
@@ -246,21 +246,15 @@ class AutomaticAnnotations {
         get_forall_bounds(func, def_args, forall_vars, call_args, bounds, not_def_bounds, replacement);
 
         // Check if we have any reduction vars. 
-        // When the reduction variables are at its minimum, the precondition hold
-        // If they are at the maximum, the post condition should hold
-        Expr rvar_condition_before;
-        Expr rvar_condition_after;
-        bool has_rvar = false;
-        for (const ReductionVariable &rv : def.schedule().rvars()) {
-            Expr new_cond = Variable::make(Int(32), rv.var) == rv.min+rv.extent;
-            Expr new_cond_before = Variable::make(Int(32), rv.var) == rv.min;
-            if(has_rvar){
-                rvar_condition_after = rvar_condition_after && new_cond;
-                rvar_condition_before = rvar_condition_before && new_cond_before;
+        // The last rvar should be at its max and the other at the min, for the post-condition to hold
+        bool has_rvar = !def.schedule().rvars().empty();
+        map<string, Expr> rvar_replacement;
+        for(size_t i = 0; i<def.schedule().rvars().size(); i++){
+            ReductionVariable rv = def.schedule().rvars()[i];
+            if(i != def.schedule().rvars().size()-1){
+                rvar_replacement[rv.var] = rv.min;
             } else {
-                rvar_condition_after = new_cond;
-                rvar_condition_before = new_cond_before;
-                has_rvar = true;
+                rvar_replacement[rv.var] = rv.min + rv.extent;
             }
         }
 
@@ -344,6 +338,8 @@ class AutomaticAnnotations {
             if(ae && ae->ann_type == AnnotationType::Ensure){
                 user_assert(!has_reduction_var(ae->condition)) << "Ensure annotation of reduction cannot mention reduction variable";
                 func.add_func_annotation(ann);
+            } else if(ae && ae->ann_type == AnnotationType::LoopInvariant){
+                func.add_func_annotation(AnnExpr::make(AnnotationType::Ensure, substitute(rvar_replacement, ae->condition)));
             }
         }
 
