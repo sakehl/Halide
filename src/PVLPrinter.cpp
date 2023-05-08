@@ -20,7 +20,7 @@ pure rational max(rational x, rational y) = x > y ? x : y;
 
 pure rational min(rational x, rational y) = x > y ? y : x;
 
-pure int abs(int x) = x > 0 ? x : -x;
+pure int abs(int x) = x >= 0 ? x : -x;
 
 pure rational _abs(rational x) = x >= 0 ? x : -x;
 
@@ -34,8 +34,11 @@ prover_function bool is_int(rational r) \smtlib `(_ is_int)`;
 
 prover_function rational div_rat_(rational l, rational r) \smtlib `(_ /)`;
 
-requires r != 0.0f;
 pure rational div_rat(rational l, rational r) = div_rat_(l, r);
+
+pure rational fast_inverse_f32(rational x) = div_rat(1.0f, x);
+
+pure int round_f32(rational x) = is_int(x) ? rational_to_int(x) : rational_to_int(x + 0.5f);
 
 )INLINE_CODE";
 
