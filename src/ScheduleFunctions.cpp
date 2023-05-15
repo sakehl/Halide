@@ -277,12 +277,12 @@ public:
         Expr new_antecedent = substitute(replacer, p->antecedent);
         Expr new_variable = substitute(replacer, p->variable);
         Expr new_permission = substitute(replacer, p->permission);
-        Expr antecedent = And::make(bounds, new_antecedent);
+        new_antecedent = And::make(bounds, new_antecedent);
 
         vector<string> new_forall_vars = p->forall_vars;
         new_forall_vars.emplace_back(forall_var);
 
-        return Permission::make(AnnotationType::Context, antecedent, new_variable, new_permission, new_forall_vars);
+        return Permission::make(AnnotationType::Context, new_antecedent, new_variable, new_permission, new_forall_vars);
     }
 
     Expr outside_ann(Expr cond){
@@ -436,12 +436,16 @@ public:
         vector<Annotation> result;
 
         // Add permissions, but as loop invariants type
-        for(const auto &p: perms){
+        for(auto &p: perms){
             const Permission *perm = p.as<Permission>();
             internal_assert(perm);
             result.emplace_back(Permission::make(
                 AnnotationType::LoopInvariant, perm->antecedent, perm->variable,
                 perm->permission, perm->forall_vars));
+            
+            // Due to splits of rvars, permissions can have a guard depending on the original rvar, which can go out of scope
+            // So we replace it by its min here.
+            p = Halide::Internal::substitute(name, min, p);
         }
 
         // Update the last reduction invariant, by replacing its value by its min
@@ -1484,6 +1488,8 @@ public:
         : antecedent(antecedent),
           forall_vars(forall_vars),
           variable(variable) {
+            internal_assert(antecedent.defined()) << "Permission of undefined\n";
+            internal_assert(variable.defined()) << "Permission of undefined\n";
     }
 
     Annotation create(Expr factor, bool is_serial = true){
@@ -1650,7 +1656,7 @@ protected:
 
         const vector<string> &func_args = func.args();
         vector<Expr> args;
-        Expr bound;
+        Expr bound = const_true();
         for (int i = 0; i < func.dimensions(); i++) {
             const string &arg = func_args[i];
             Expr min = Variable::make(Int(32), name + "." + arg + ".min_realized");

@@ -179,6 +179,8 @@ public:
 
     const std::vector<Annotation> &update_annotations(int idx=0) const;
 
+    void clear_annotations();
+
     /** Will contain the ensure annotations of the whole function */
     const std::vector<Annotation> &func_annotations() const;
 

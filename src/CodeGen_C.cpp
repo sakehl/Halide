@@ -251,6 +251,8 @@ prover_function bool is_int(rational r) \smtlib `(_ is_int)`;
 
 prover_function rational div_rat_(rational l, rational r) \smtlib `(_ /)`;
 
+prover_function rational pow_f32(rational l, rational r) \smtlib `(_ ^)`;
+
 pure rational div_rat(rational l, rational r) = div_rat_(l, r);
 
 pure rational fast_inverse_f32(rational x) = div_rat(1.0f, x);
@@ -263,8 +265,8 @@ string buffer_header(string type){
     std::ostringstream ss;
 
     ss
-    << "    class halide_buffer_" << type << " {\n"
-    << "   " << type << "[] host;\n"
+    << "class halide_buffer_" << type << " {\n"
+    << "    " << type << "[] host;\n"
     << "    int min_0;\n"
     << "    int min_1;\n"
     << "    int min_2;\n"
@@ -290,7 +292,6 @@ string buffer_header(string type){
     << "requires dim == 2 ==> Perm(b.min_2, read);\n"
     << "requires dim == 3 ==> Perm(b.min_3, read);\n"
     << "pure int _halide_buffer_get_min(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.min_0 : (dim == 1 ? b.min_1 : (dim == 2 ? b.min_2 : b.min_3));\n"
-    << "\n"
     << "\n"
     << "requires 0 <= dim && dim < 4;\n"
     << "requires dim == 0 ==> Perm(b.stride_0, read);\n"
@@ -324,8 +325,7 @@ string buffer_annotations(string buffer_name, int dimensions, Indentation indent
     o << indent << "context Perm(" << buffer_name << ".host, read) ** " << buffer_name << ".host != null;\n";
     for(int i =0; i< dimensions; i++){
         o << indent << "context Perm(" << buffer_name << ".min_" << i <<", read) ** Perm(" << buffer_name << ".stride_" << i << ", read) ** Perm(" << buffer_name << ".extent_" << i << ", read);\n";
-    }
-    o << indent << "context Perm(" << buffer_name << ".host, read) ** " << buffer_name << ".host != null;\n"; 
+    } 
     o << indent << "context " << buffer_name << ".host.length == 1 ";
     for(int i =0; i< dimensions; i++){
         o << " + abs(" << buffer_name << ".stride_" << i << ") * (" << buffer_name << ".extent_" << i << " - 1)";
@@ -1379,7 +1379,7 @@ string CodeGen_C::print_type(Type type, AppendSpaceIfNeeded space_option) {
     } else {
         ostringstream oss;
         // For simplicity, we just emit everything as int
-        if(type.is_int_or_uint() && (type.bits() == 32 || type.bits() == 64)){
+        if(type.is_int_or_uint() && (type.bits() == 8 || type.bits() == 16 || type.bits() == 32 || type.bits() == 64)){
             oss << "int";
         } else if(type.is_bool()){
             oss << "bool";
@@ -2151,7 +2151,7 @@ void CodeGen_C::visit(const Not *op) {
 }
 
 void CodeGen_C::visit(const IntImm *op) {
-    if (op->type == Int(32) || is_pvl()) {
+    if (is_pvl()) {
         id = std::to_string(op->value);
     } else {
         static const char *const suffixes[3] = {
@@ -2174,6 +2174,7 @@ void CodeGen_C::visit(const UIntImm *op) {
         } else {
             id = std::to_string(op->value);
         }
+        return;
     }
 
     static const char *const suffixes[3] = {

@@ -119,6 +119,11 @@ Expr sum(const RDom &r, Expr e, const std::string &name, std::vector<std::functi
     user_assert(v.rdom.defined()) << "Expression passed to sum must reference a reduction domain";
 
     Func f(name);
+    f(v.free_vars) = cast(e.type(), 0);
+    if(!invariants.empty()){
+        f.ensures(f(v.free_vars) == cast(e.type(), 0));
+    }
+
     f(v.free_vars) += e;
     for(auto &i: invariants){
         f.invariant(i(f(v.free_vars)));
@@ -137,6 +142,11 @@ Expr product(const RDom &r, Expr e, const std::string &name, std::vector<std::fu
     user_assert(v.rdom.defined()) << "Expression passed to product must reference a reduction domain";
 
     Func f(name);
+    f(v.free_vars) = cast(e.type(), 1);
+    if(!invariants.empty()){
+        f.ensures(f(v.free_vars) == cast(e.type(), 1));
+    }
+    
     f(v.free_vars) *= e;
     for(auto &i: invariants){
         f.invariant(i(f(v.free_vars)));

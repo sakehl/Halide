@@ -856,6 +856,14 @@ const std::vector<Annotation> &Function::func_annotations() const {
     return contents->func_annotations;
 }
 
+void Function::clear_annotations() {
+    contents->func_annotations.clear();
+    contents->init_def.annotations().clear();
+    for(size_t i = 0; i < contents->updates.size(); i++){
+        contents->updates[i].annotations().clear();
+    }
+}
+
 bool Function::has_pure_definition() const {
     return contents->init_def.defined();
 }

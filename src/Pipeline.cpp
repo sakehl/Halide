@@ -319,8 +319,9 @@ void Pipeline::compile_to_pvl(const string &filename,
                             const vector<Argument> &args,
                             const string &fn_name,
                             const vector<Annotation> &pipeline_anns,
-                            const Target &target) {
-    Module m = compile_to_module(args, fn_name, target);
+                            const Target &target,
+                            bool check_only_memory_safety) {
+    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, check_only_memory_safety);
     m.compile(single_output(filename, m, Output::pvl));
 }
 
@@ -546,7 +547,8 @@ vector<Argument> Pipeline::infer_arguments() {
 Module Pipeline::compile_to_module(const vector<Argument> &args,
                                    const string &fn_name,
                                    const Target &target,
-                                   const LinkageType linkage_type) {
+                                   const LinkageType linkage_type,
+                                   bool remove_annotations) {
     user_assert(defined()) << "Can't compile undefined Pipeline.\n";
 
     for (const Function &f : contents->outputs) {
@@ -609,7 +611,7 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
 
         contents->module = lower(contents->outputs, new_fn_name, target, lowering_args,
                                  linkage_type, contents->requirements, contents->trace_pipeline,
-                                 custom_passes);
+                                 custom_passes, remove_annotations);
     }
 
     return contents->module;

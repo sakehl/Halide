@@ -946,7 +946,8 @@ public:
                       const std::vector<Argument> &args,
                       const std::vector<Annotation> &pipeline_anns,
                       const std::string &fn_name = "",
-                      const Target &target = get_target_from_environment());
+                      const Target &target = get_target_from_environment(),
+                      bool check_only_memory_safety = false);
 
     /** Write out an internal representation of lowered code. Useful
      * for analyzing and debugging scheduling. Can emit html or plain

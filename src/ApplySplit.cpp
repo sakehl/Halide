@@ -73,6 +73,7 @@ vector<ApplySplitResult> apply_split(const Split &split, bool is_update, const s
             result.emplace_back(cond);
 
         } else if (tail == TailStrategy::ShiftInwards) {
+            internal_error << "Shift inwards tail strategy not supported for HaliVer \n";
             // Adjust the base downwards to not compute off the
             // end of the realization.
 

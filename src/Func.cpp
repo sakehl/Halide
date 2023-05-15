@@ -2942,7 +2942,7 @@ Stage FuncRef::func_ref_update(Expr e, int init_val, bool add_ensures) {
 }
 
 Stage FuncRef::operator+=(Expr e) {
-    return func_ref_update<std::plus<Expr>>(std::move(e), 0, true);
+    return func_ref_update<std::plus<Expr>>(std::move(e), 0, false);
 }
 
 Stage FuncRef::operator+=(const Tuple &e) {
@@ -2962,7 +2962,7 @@ Stage FuncRef::operator+=(const FuncRef &e) {
 }
 
 Stage FuncRef::operator*=(Expr e) {
-    return func_ref_update<std::multiplies<Expr>>(std::move(e), 1, true);
+    return func_ref_update<std::multiplies<Expr>>(std::move(e), 1, false);
 }
 
 Stage FuncRef::operator*=(const Tuple &e) {
@@ -3226,8 +3226,8 @@ void Func::compile_to_c(const string &filename, const vector<Argument> &args,
 }
 
 void Func::compile_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,
-                        const string &fn_name, const Target &target) {
-    pipeline().compile_to_pvl(filename, args, fn_name, pipeline_anns, target);
+                        const string &fn_name, const Target &target, bool check_only_memory_safety) {
+    pipeline().compile_to_pvl(filename, args, fn_name, pipeline_anns, target, check_only_memory_safety);
 }
 
 void Func::translate_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns) {

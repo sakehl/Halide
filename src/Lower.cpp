@@ -89,7 +89,8 @@ Module lower(const vector<Function> &output_funcs,
              const LinkageType linkage_type,
              const vector<Stmt> &requirements,
              bool trace_pipeline,
-             const vector<IRMutator *> &custom_passes) {
+             const vector<IRMutator *> &custom_passes,
+             bool remove_annotations) {
     auto time_start = std::chrono::high_resolution_clock::now();
 
     std::vector<std::string> namespaces;
@@ -106,6 +107,15 @@ Module lower(const vector<Function> &output_funcs,
     // Create a deep-copy of the entire graph of Funcs.
     vector<Function> outputs;
     std::tie(outputs, env) = deep_copy(output_funcs, env);
+
+    if(remove_annotations){
+        for(Function &f: outputs){
+            f.clear_annotations();
+        }
+        for(auto &it: env){
+            it.second.clear_annotations();
+        }
+    }
 
     bool any_strict_float = strictify_float(env, t);
     result_module.set_any_strict_float(any_strict_float);
@@ -480,6 +490,9 @@ Module lower(const vector<Function> &output_funcs,
                                      Argument::OutputBuffer,
                                      buf.type(), buf.dimensions(), buf.get_argument_estimates());
             output_buffers.emplace_back(buf);
+            if(remove_annotations){
+                output_buffers.back().clear_annotations();
+            }
         }
     }
 
@@ -500,6 +513,9 @@ Module lower(const vector<Function> &output_funcs,
 
         if(found && arg.param.defined()){
             input_buffers.emplace_back(arg.param);
+            if(remove_annotations){
+                input_buffers.back().clear_annotations();
+            }
         }
 
         if (arg.buffer.defined() && !found) {
