@@ -1617,7 +1617,7 @@ void CodeGen_C::compile(const Module &input) {
     }
     stream << "\n";
 
-    if (!is_header_or_extern_decl()) {
+    if (!is_header_or_extern_decl() && !is_pvl()) {
         // Emit any external-code blobs that are C++.
         for (const ExternalCode &code_blob : input.external_code()) {
             if (code_blob.is_c_plus_plus_source()) {
