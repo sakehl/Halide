@@ -158,6 +158,10 @@ protected:
         return output_kind == PVL;
     }
 
+    void emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitted);
+
+    void emit_buffer(Type t);
+
     /** Open a new C scope (i.e. throw in a brace, increase the indent) */
     void open_scope();
 
@@ -278,8 +282,9 @@ protected:
 
 class AnnotationPrinter : public IRPrinter {
 public:
-    AnnotationPrinter(std::ostream &s);
+    AnnotationPrinter(std::ostream &s, bool is_pvl);
 protected:
+    bool is_pvl;
     using IRPrinter::visit;
 
     void visit(const Variable *op) override;
@@ -295,6 +300,8 @@ protected:
     void visit(const Let *op) override;
 
     void visit(const Call *op) override;
+
+    void visit(const Div *op) override;
 
     void visit(const UIntImm *op) override;
     

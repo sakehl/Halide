@@ -3220,9 +3220,9 @@ void Func::compile_to_header(const string &filename, const vector<Argument> &arg
     pipeline().compile_to_header(filename, args, fn_name, target);
 }
 
-void Func::compile_to_c(const string &filename, const vector<Argument> &args,
-                        const string &fn_name, const Target &target) {
-    pipeline().compile_to_c(filename, args, fn_name, target);
+void Func::compile_to_c(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,
+                        const string &fn_name, const Target &target, bool check_only_memory_safety) {
+    pipeline().compile_to_c(filename, args, fn_name, pipeline_anns, target, check_only_memory_safety);
 }
 
 void Func::compile_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,

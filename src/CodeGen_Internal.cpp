@@ -487,6 +487,7 @@ Expr lower_euclidean_div(Expr a, Expr b) {
 
         Expr zero = make_zero(a.type());
         Expr minus_one = make_const(a.type(), -1);
+        Expr plus_one = make_const(a.type(), 1);
 
         Expr a_neg = a >> make_const(UInt(a.type().bits()), (a.type().bits() - 1));
         Expr b_neg = b >> make_const(UInt(b.type().bits()), (b.type().bits() - 1));
@@ -506,21 +507,38 @@ Expr lower_euclidean_div(Expr a, Expr b) {
         } else if (can_prove(b < zero)) {
             b_neg = minus_one;
         }
+        
+        if(false){
+            // If b is zero, set it to one instead to avoid faulting
+            b -= b_zero;
+            // If a is negative, add one to it to get the rounding to work out.
+            a -= a_neg;
+            // Do the C-style division
+            q = Call::make(a.type(), Call::div_round_to_zero, {a, b}, Call::Intrinsic);
+            // If a is negative, either add or subtract one, depending on
+            // the sign of b, to fix the rounding. This can't overflow,
+            // because we move the result towards zero in either case (we
+            // add zero or one when q is negative, and subtract zero or
+            // one when it's positive).
+            q += a_neg & (~b_neg - b_neg);
+            // Set the result to zero when b is zero
+            q = q & ~b_zero;
+        } else {
+            // Version that does not use bit operators
+            // If b is zero, set it to one instead to avoid faulting
+            Expr is_zero = (b == zero);
+            b = select(is_zero, plus_one, b);
+            // If a is negative, add one to it to get the rounding to work out.
+            Expr newa = select(a < zero, a + plus_one, a);
+            q = Call::make(a.type(), Call::div_round_to_zero, {newa, b}, Call::Intrinsic);
+            // If a is negative, either add or subtract one, depending on
+            // the sign of b, to fix the rounding.
+            Expr one = select(is_zero, minus_one, plus_one);
+            q = select(a < zero, q + one, q);
 
-        // If b is zero, set it to one instead to avoid faulting
-        b -= b_zero;
-        // If a is negative, add one to it to get the rounding to work out.
-        a -= a_neg;
-        // Do the C-style division
-        q = Call::make(a.type(), Call::div_round_to_zero, {a, b}, Call::Intrinsic);
-        // If a is negative, either add or subtract one, depending on
-        // the sign of b, to fix the rounding. This can't overflow,
-        // because we move the result towards zero in either case (we
-        // add zero or one when q is negative, and subtract zero or
-        // one when it's positive).
-        q += a_neg & (~b_neg - b_neg);
-        // Set the result to zero when b is zero
-        q = q & ~b_zero;
+            // Set the result to zero when b is zero
+            q = select(is_zero, zero, q);
+        }
     }
 
     q = simplify(common_subexpression_elimination(q));
@@ -543,6 +561,7 @@ Expr lower_euclidean_mod(Expr a, Expr b) {
 
         Expr zero = make_zero(a.type());
         Expr minus_one = make_const(a.type(), -1);
+        Expr plus_one = make_const(a.type(), 1);
 
         Expr a_neg = a >> make_const(UInt(a.type().bits()), (a.type().bits() - 1));
         Expr b_neg = b >> make_const(UInt(a.type().bits()), (a.type().bits() - 1));
@@ -563,15 +582,23 @@ Expr lower_euclidean_mod(Expr a, Expr b) {
             b_neg = minus_one;
         }
 
-        // If a is negative, add one to get the rounding to work out
-        a -= a_neg;
-        // Do the mod, avoiding taking mod by zero
-        q = Call::make(a.type(), Call::mod_round_to_zero, {a, (b | b_zero)}, Call::Intrinsic);
-        // If a is negative, we either need to add b - 1 to the
-        // result, or -b - 1, depending on the sign of b.
-        q += (a_neg & ((b ^ b_neg) + ~b_neg));
-        // If b is zero, return zero by masking off the current result.
-        q = q & ~b_zero;
+        if(false){
+            // If a is negative, add one to get the rounding to work out
+            a -= a_neg;
+            // Do the mod, avoiding taking mod by zero
+            q = Call::make(a.type(), Call::mod_round_to_zero, {a, (b | b_zero)}, Call::Intrinsic);
+            // If a is negative, we either need to add b - 1 to the
+            // result, or -b - 1, depending on the sign of b.
+            q += (a_neg & ((b ^ b_neg) + ~b_neg));
+            // If b is zero, return zero by masking off the current result.
+            q = q & ~b_zero;
+        } else {
+            // A version without bit operators
+            b = select(b == zero, plus_one, b);
+            q = Call::make(a.type(), Call::mod_round_to_zero, {a, b}, Call::Intrinsic);
+            q = select((a >= zero || q==zero), q, q + Call::make(a.type(), Call::abs, {b}, Call::PureIntrinsic));
+            q = select(b==zero, zero, q);
+        }
     }
 
     q = simplify(common_subexpression_elimination(q));

@@ -310,8 +310,11 @@ void Pipeline::compile_to_assembly(const string &filename,
 void Pipeline::compile_to_c(const string &filename,
                             const vector<Argument> &args,
                             const string &fn_name,
-                            const Target &target) {
-    Module m = compile_to_module(args, fn_name, target);
+                            const vector<Annotation> &pipeline_anns,
+                            const Target &target,
+                            bool check_only_memory_safety) {
+    contents->invalidate_cache();                    
+    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, check_only_memory_safety);
     m.compile(single_output(filename, m, Output::c_source));
 }
 

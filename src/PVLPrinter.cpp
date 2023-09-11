@@ -28,7 +28,7 @@ pure rational min(rational x, rational y) = x > y ? y : x;
 pure int abs(int x) = x >= 0 ? x : -x;
 
  decreases;
-pure rational _abs(rational x) = x >= 0 ? x : -x;
+pure rational abs(rational x) = x >= 0 ? x : -x;
  
  decreases;
 pure rational ceil_f32(rational x) = is_int(x) ? x : int_to_rational(rational_to_int(x) + 1);
@@ -51,6 +51,9 @@ pure rational fast_inverse_f32(rational x) = div_rat(1.0f, x);
  
  decreases;
 pure int round_f32(rational x) = is_int(x) ? rational_to_int(x) : rational_to_int(x + 0.5f);
+
+ decreases;
+pure int hdiv(int a, int b) = b==0 ? 0 : a/b;
 
 )INLINE_CODE";
 
@@ -330,8 +333,14 @@ void PVLPrinter::visit(const Div *op){
         stream << ", ";
         print(b);
         stream << ")";
+    } else if(a.type().is_int_or_uint() && b.type().is_int_or_uint() ){
+        stream << "hdiv(";
+        print(a);
+        stream << ", ";
+        print(b);
+        stream << ")";
     } else {
-        IRPrinter::visit(op);
+        internal_error << "Not supported div by pvl";
     }
 }
 

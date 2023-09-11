@@ -935,8 +935,10 @@ public:
      * will produce serial code. */
     void compile_to_c(const std::string &filename,
                       const std::vector<Argument> &,
+                      const std::vector<Annotation> &pipeline_anns,
                       const std::string &fn_name = "",
-                      const Target &target = get_target_from_environment());
+                      const Target &target = get_target_from_environment(),
+                      bool check_only_memory_safety = false);
 
     void translate_to_pvl(const std::string &filename,
                       const std::vector<Argument> &args,
