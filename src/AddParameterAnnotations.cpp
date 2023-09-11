@@ -451,7 +451,7 @@ class UpdateInputBufferCallsToFunction: public IRMutator {
     }
 
 public:
-    UpdateInputBufferCallsToFunction(vector<Parameter> inp){
+    UpdateInputBufferCallsToFunction(vector<Parameter> inp) : in_annotation(false) {
         for(auto &i: inp){
             if(i.is_buffer()){
                 this->input.emplace(i.name());
