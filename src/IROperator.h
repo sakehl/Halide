@@ -1361,11 +1361,6 @@ inline Expr undef() {
  */
 Expr frac(Expr a, Expr b);
 
-/**
- * A read permission, the verifier will figure out a correct value for this. 
- * This read permission cannot be further divided. 
- */
-const Expr read = Internal::ReadPerm::make();
 
 /** Control the values used in the memoization cache key for memoize.
  * Normally parameters and other external dependencies are

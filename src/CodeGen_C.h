@@ -52,6 +52,10 @@ public:
         return target;
     }
 
+    struct Allocation {
+        Type type;
+    };
+
     static void test();
 
 protected:
@@ -69,6 +73,9 @@ protected:
     virtual void compile(const LoweredFunc &func);
     virtual void compile(const Buffer<> &buffer);
     // @}
+
+    // Instead of making new variables for each calculation, inline as much as possible.
+    bool inl = true;
 
     /** An ID for the most recently generated ssa variable */
     std::string id;
@@ -168,10 +175,7 @@ protected:
     /** Close a C scope (i.e. throw in an end brace, decrease the indent) */
     void close_scope(const std::string &comment);
 
-    struct Allocation {
-        Type type;
-    };
-
+    
     /** Track the types of allocations to avoid unnecessary casts. */
     Scope<Allocation> allocations;
 
@@ -282,9 +286,12 @@ protected:
 
 class AnnotationPrinter : public IRPrinter {
 public:
-    AnnotationPrinter(std::ostream &s, bool is_pvl);
+    AnnotationPrinter(std::ostream &s, bool is_pvl, Scope<CodeGen_C::Allocation> &buffer_types);
 protected:
     bool is_pvl;
+
+    /** Track the types of buffer parameters. */
+    Scope<CodeGen_C::Allocation> &buffer_types;
     using IRPrinter::visit;
 
     void visit(const Variable *op) override;

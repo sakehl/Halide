@@ -235,7 +235,7 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const For *loop) {
         if(loop->annotations.size() != 0){
             stream << get_indent() << "/*@\n";
             indent++;
-            AnnotationPrinter ap(stream, false);
+            AnnotationPrinter ap(stream, false, buffer_types);
             for (const Annotation &a : loop->annotations) {
                 stream << get_indent();
                 ap.print(a);
@@ -253,7 +253,7 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Evaluate *op) {
     if(op->annotations.size() != 0){
         stream << get_indent() << "/*@\n";
         indent++;
-        AnnotationPrinter ap(stream, false);
+        AnnotationPrinter ap(stream, false, buffer_types);
         for (const Annotation &a : op->annotations) {
             stream << get_indent();
             ap.print(a);
@@ -1088,7 +1088,7 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
     stream << get_indent();
         stream << "requires " << "shared_mem_size_1 == " << shared_mem_size <<";\n";
     //The pre and post conditions
-    AnnotationPrinter ap(stream, false);
+    AnnotationPrinter ap(stream, false, buffer_types);
     for (const Annotation &a : annotations) {
         stream << get_indent();
         ap.print(a);

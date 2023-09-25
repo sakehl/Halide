@@ -94,13 +94,42 @@ pure int hdiv(int x, int y) = y == 0 ? 0 : euclidean_div(x, y);
 pure int hmod(int x, int y) = y == 0 ? 0 : euclidean_mod(x, y);
 @*/
 
-// pure float ceil_f32(float x) = is_int(x) ? x : int_to_rational(rational_to_int(x) + 1);
+/*@
+  requires y != 0;
+  ensures \result == euclidean_div(x, y);
+@*/
+/*inline*/ int /*@ pure @*/ div_eucl(int x, int y)
+{
+    int q = x/y;
+    int r = x%y;
+    return r < 0 ? q + (y > 0 ? -1 : 1) : q;
+}
 
-// pure float ceil_f64(float x) = is_int(x) ? x : int_to_rational(rational_to_int(x) + 1);
+/*@
+  requires y != 0;
+  ensures \result == euclidean_mod(x, y);
+@*/
+/*inline*/ int /*@ pure @*/ mod_eucl(int x, int y)
+{
+    int r = x%y;
+    return (x >= 0 || r == 0) ? r : r + abs(y);
+}
 
-// pure rational fast_inverse_f32(rational x) = div_rat(1.0f, x);
+static inline float /*@ pure @*/ fast_inverse_f32(float x) {return 1.0f/x;};
+//@ given double eps;
+static inline float /*@ pure @*/ sqrt_f32(double x) {return (float)sqrt((double)x)/*@given {eps=eps}@*/;}
+static inline float /*@ pure @*/ pow_f32(float x, float y){ return (float) pow((double) x, (double) y);}
+static inline float /*@ pure @*/ floor_f32(float x){ return (float) floor((double) x); }
+static inline float /*@ pure @*/ ceil_f32(float x){ return (float) ceil((double) x); }
+static inline float /*@ pure @*/ round_f32(float x){ return (float) round((double) x); }
 
-// pure int round_f32(rational x) = is_int(x) ? rational_to_int(x) : rational_to_int(x + 0.5f);
+//@ given double eps;
+static inline double /*@ pure @*/ sqrt_f64(double x) {return sqrt(x)/*@given {eps=eps}@*/;}
+static inline double /*@ pure @*/ pow_f64(double x, double y) {return pow(x, y);}
+static inline double /*@ pure @*/ floor_f64(double x) {return floor(x);}
+static inline double /*@ pure @*/ ceil_f64(double x) {return ceil(x);}
+static inline double /*@ pure @*/ round_f64(double x){ return round(x); }
+
 )INLINE_CODE";
 
 // We now add definitions of things in the runtime which are
@@ -265,6 +294,10 @@ pure rational max(rational x, rational y) = x > y ? x : y;
 pure rational min(rational x, rational y) = x > y ? y : x;
 
 pure int abs(int x) = x >= 0 ? x : -x;
+
+pure int hdiv(int x, int y) = y == 0 ? 0 : x / y;
+
+pure int hmod(int x, int y) = y == 0 ? 0 : x % y;
 
 pure rational abs(rational x) = x >= 0 ? x : -x;
 
@@ -1667,7 +1700,7 @@ void CodeGen_C::emit_buffer(Type t) {
         << " requires buf != NULL ** Perm(buf, 1\\2);\n"
         << " requires Perm(buf->host, 1\\2);\n"
         << " @*/\n"
-        << "/*@ pure @*/ " << type << " *_halide_buffer_get_host(struct halide_buffer_" << type << " *buf) {\n"
+        << "/*@ pure @*/ " << type << " *_halide_buffer_get_host_" << type << "(struct halide_buffer_" << type << " *buf) {\n"
         << "    return buf->host;\n"
         << "}\n"
         << "\n"
@@ -1678,7 +1711,7 @@ void CodeGen_C::emit_buffer(Type t) {
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].min, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_min(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ int _halide_buffer_get_min_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].min;\n"
         << "}\n"
         << "\n"
@@ -1689,7 +1722,7 @@ void CodeGen_C::emit_buffer(Type t) {
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].min, 1\\2) ** Perm(buf->dim[d].extent, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_max(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ int _halide_buffer_get_max_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].min + buf->dim[d].extent - 1;\n"
         << "}\n"
         << "\n"
@@ -1700,7 +1733,7 @@ void CodeGen_C::emit_buffer(Type t) {
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].extent, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_extent(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ int _halide_buffer_get_extent_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].extent;\n"
         << "}\n"
         << "\n"
@@ -1711,7 +1744,7 @@ void CodeGen_C::emit_buffer(Type t) {
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].stride, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_stride(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ int _halide_buffer_get_stride_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].stride;\n"
         << "}\n"
         ;
@@ -1751,10 +1784,12 @@ struct halide_dimension_t {
 void CodeGen_C::compile(const Module &input) {
     TypeInfoGatherer type_info;
 
-    std::set<Type> buffers_emitted;
-    for (const auto &f : input.functions()) {
-        if (f.body.defined()) {
-            emit_buffers(f, &buffers_emitted);
+    if(!is_pvl()){
+        std::set<Type> buffers_emitted;
+        for (const auto &f : input.functions()) {
+            if (f.body.defined()) {
+                emit_buffers(f, &buffers_emitted);
+            }
         }
     }
 
@@ -1889,8 +1924,16 @@ void CodeGen_C::compile(const LoweredFunc &f) {
                 }
             }
         }
+
+        for (size_t i = 0; i < args.size(); i++) {
+            if (args[i].is_buffer()) {
+                Allocation alloc;
+                alloc.type = args[i].type;
+                buffer_types.push(args[i].name + ".buffer", alloc);
+            }
+        }
         
-        AnnotationPrinter ap(stream, is_pvl());
+        AnnotationPrinter ap(stream, is_pvl(), buffer_types);
         for (const Annotation &a : f.annotations) {
             stream << get_indent();
             ap.print(a);
@@ -1902,9 +1945,6 @@ void CodeGen_C::compile(const LoweredFunc &f) {
         stream << "int " << simple_name << "(";
         for (size_t i = 0; i < args.size(); i++) {
             if (args[i].is_buffer()) {
-                Allocation alloc;
-                alloc.type = args[i].type;
-                buffer_types.push(args[i].name + ".buffer", alloc);
                 stream << "halide_buffer_" << print_type(args[i].type, AppendSpace)
                     << print_name(args[i].name)
                     << "_buffer";
@@ -1953,41 +1993,39 @@ void CodeGen_C::compile(const LoweredFunc &f) {
         stream << "\n";
     }
 
-    if(!is_pvl()){
-        stream << get_indent() << "/*@\n";
-        indent++;
-        for (size_t i = 0; i < args.size(); i++) {
-            string name = print_name(args[i].name);
-            if (args[i].is_buffer()) {
-                stream << get_indent() << "context " << name << "_buffer != NULL ** Perm(" << name <<"_buffer, 1\\2);\n";
-                stream << buffer_annotations(name + "_buffer", args[i].dimensions, get_indent(), is_pvl());
-            }
+    // Annotations
+    stream << get_indent() << "/*@\n";
+    indent++;
+    for (size_t i = 0; i < args.size(); i++) {
+        string name = print_name(args[i].name);
+        if (args[i].is_buffer()) {
+            stream << get_indent() << "context " << name << "_buffer != NULL ** Perm(" << name <<"_buffer, 1\\2);\n";
+            stream << buffer_annotations(name + "_buffer", args[i].dimensions, get_indent(), is_pvl());
         }
+    }
 
-        // Needed for VerCors, otherwise it cannot always instantiate that buffers must be different 
-        // Strictly speaking different input buffers can be the same, but we don't allow that here
-        for (size_t i = 0; i < args.size(); i++) {
-            if (args[i].is_buffer()) {
-                for( size_t j = 0; j<i; j++){
-                    if(args[j].is_buffer() && compare_halide_type_codes(args[i].type.code(), args[j].type.code()) ){
-                        stream << get_indent() << "context " 
-                            << print_name(args[i].name) << "_buffer->host != "
-                            << print_name(args[j].name) << "_buffer->host;\n";
-                    }
+    // Needed for VerCors, otherwise it cannot always instantiate that buffers must be different 
+    // Strictly speaking different input buffers can be the same, but we don't allow that here
+    for (size_t i = 0; i < args.size(); i++) {
+        if (args[i].is_buffer()) {
+            for( size_t j = 0; j<i; j++){
+                if(args[j].is_buffer() && compare_halide_type_codes(args[i].type.code(), args[j].type.code()) ){
+                    stream << get_indent() << "context " 
+                        << print_name(args[i].name) << "_buffer->host != "
+                        << print_name(args[j].name) << "_buffer->host;\n";
                 }
             }
         }
-
-
-        AnnotationPrinter ap(stream, is_pvl());
-        for (const Annotation &a : f.annotations) {
-            stream << get_indent();
-            ap.print(a);
-            stream << ";\n";
-        }
-        indent--;
-        stream << get_indent() << "@*/\n";
     }
+
+    AnnotationPrinter ap(stream, is_pvl(), buffer_types);
+    for (const Annotation &a : f.annotations) {
+        stream << get_indent();
+        ap.print(a);
+        stream << ";\n";
+    }
+    indent--;
+    stream << get_indent() << "@*/\n";
 
     // Emit the function prototype
     if (f.linkage == LinkageType::Internal) {
@@ -2231,7 +2269,7 @@ void CodeGen_C::visit(const Cast *op) {
 void CodeGen_C::visit_binop(Type t, const Expr &a, const Expr &b, const char *op) {
     string sa = print_expr(a);
     string sb = print_expr(b);
-    if(is_pvl()){
+    if(inl || is_pvl()){
         id = "(" + sa + " " + op + " " + sb + ")";
     } else {
         print_assignment(t, sa + " " + op + " " + sb);
@@ -2250,27 +2288,74 @@ void CodeGen_C::visit(const Mul *op) {
     visit_binop(op->type, op->a, op->b, "*");
 }
 
+Expr lower_euclidean_div_haliver(const Expr &a, const Expr &b) {
+    if(can_prove(b != 0)) {
+        return Call::make(a.type(), "div_eucl", {a, b}, Call::Extern);
+    } else {
+        Expr newb = select(b==0, 1, b);
+        Expr div = Call::make(a.type(), "div_eucl", {a, newb}, Call::Extern);
+        return select(b==0, 0, div);
+    }
+}
+
+Expr lower_euclidean_mod_haliver(const Expr &a, const Expr &b) {
+    if(can_prove(b != 0)) {
+        return Call::make(a.type(), "mod_eucl", {a, b}, Call::Extern);
+    } else {
+        Expr newb = select(b==0, 1, b);
+        Expr div = Call::make(a.type(), "mod_eucl", {a, newb}, Call::Extern);
+        return select(b==0, 0, div);
+    }
+}
+
+
 void CodeGen_C::visit(const Div *op) {
-    int bits;
-    if (false && !is_pvl() && is_const_power_of_two_integer(op->b, &bits)) {
-        visit_binop(op->type, op->a, make_const(op->a.type(), bits), ">>");
-    } else if (!is_pvl() && op->type.is_int()) {
-        print_expr(lower_euclidean_div(op->a, op->b));
-    } else if(is_pvl() && op->a.type().is_float() && op->b.type().is_float() ){
+    if(is_pvl()){
         string sa = print_expr(op->a);
         string sb = print_expr(op->b);
-        id = "div_rat(" + sa + ", " + sb + ")";
+        if(op->type.is_int()){    
+            id = "hdiv(" + sa + ", " + sb + ")";
+        } else if(op->type.is_float()) {
+            id = "div_rat(" + sa + ", " + sb + ")";
+        } else {
+            internal_error << "Unsupported by Haliver" << op;
+            visit_binop(op->type, op->a, op->b, "/");
+        }
+        return;
+    }
+
+    int bits;
+    if (false && is_const_power_of_two_integer(op->b, &bits)) {
+        visit_binop(op->type, op->a, make_const(op->a.type(), bits), ">>");
+    } else if (op->type.is_int()) {
+         print_expr(lower_euclidean_div_haliver(op->a, op->b));
+        // print_expr(lower_euclidean_div(op->a, op->b));
     } else {
         visit_binop(op->type, op->a, op->b, "/");
     }
 }
 
 void CodeGen_C::visit(const Mod *op) {
+    if(is_pvl()){
+        string sa = print_expr(op->a);
+        string sb = print_expr(op->b);
+        if(op->type.is_int()){    
+            id = "hmod(" + sa + ", " + sb + ")";
+        } else if(op->type.is_float()) {
+            id = "fmod(" + sa + ", " + sb + ")";
+        } else {
+            internal_error << "Unsupported by Haliver" << op;
+            visit_binop(op->type, op->a, op->b, "%");
+        }
+        return;
+    }
+
     int bits;
     if (false && is_const_power_of_two_integer(op->b, &bits)) {
         visit_binop(op->type, op->a, make_const(op->a.type(), (1 << bits) - 1), "&");
-    } else if (!is_pvl() && op->type.is_int()) {
-        print_expr(lower_euclidean_mod(op->a, op->b));
+    } else if (op->type.is_int()) {
+        print_expr(lower_euclidean_mod_haliver(op->a, op->b));
+        // print_expr(lower_euclidean_mod(op->a, op->b));
     } else if (op->type.is_float()) {
         string arg0 = print_expr(op->a);
         string arg1 = print_expr(op->b);
@@ -2369,7 +2454,7 @@ void CodeGen_C::visit(const And *op) {
 }
 
 void CodeGen_C::visit(const Not *op) {
-    if(is_pvl()){
+    if(inl || is_pvl()){
         id = "!(" + print_expr(op->a) + ")";
     } else {
         print_assignment(op->type, "!(" + print_expr(op->a) + ")");
@@ -2377,7 +2462,7 @@ void CodeGen_C::visit(const Not *op) {
 }
 
 void CodeGen_C::visit(const IntImm *op) {
-    if (is_pvl()) {
+    if (inl || is_pvl()) {
         id = std::to_string(op->value);
     } else {
         // static const char *const suffixes[3] = {
@@ -2391,7 +2476,7 @@ void CodeGen_C::visit(const IntImm *op) {
 }
 
 void CodeGen_C::visit(const UIntImm *op) {
-    if(is_pvl()){
+    if(inl || is_pvl()){
         if(op->type.bits() == 1){
             if(op->value == 1){
                 id = "true";
@@ -2771,7 +2856,7 @@ void CodeGen_C::visit(const Call *op) {
         // Make an innocuous assignment value for our caller (probably an Evaluate node) to ignore.
         print_assignment(op->type, "0");
     } else {
-        if(is_pvl()){
+        if(inl || is_pvl()){
             id = rhs.str();
         } else {
             print_assignment(op->type, rhs.str());
@@ -2812,7 +2897,15 @@ string CodeGen_C::print_extern_call(const Call *op) {
     if (function_takes_user_context(op->name)) {
         args.insert(args.begin(), "_ucon");
     }
-    rhs << op->name << "(" << with_commas(args) << ")";
+    rhs << op->name;
+
+    if(starts_with(op->name, "_halide_buffer_")){
+        const Variable *v = op->args[0].as<Variable>();
+        Type t = buffer_types.get(v->name).type;
+        rhs << "_" << print_type(t);
+    }
+    
+    rhs << "(" << with_commas(args) << ")";
     return rhs.str();
 }
 
@@ -2853,7 +2946,7 @@ void CodeGen_C::visit(const Load *op) {
         }
         rhs << "[" << id_index << "]";
     }
-    if(is_pvl()){
+    if(inl || is_pvl()){
         id = rhs.str();
     } else {
         print_assignment(t, rhs.str());
@@ -2925,7 +3018,7 @@ void CodeGen_C::visit(const Store *op) {
 void CodeGen_C::visit(const Let *op) {
     string id_value = print_expr(op->value);
     Expr body = op->body;
-    if (is_pvl() || op->value.type().is_handle()) {
+    if (inl || is_pvl() || op->value.type().is_handle()) {
         // The body might contain a Load that references this directly
         // by name, so we can't rewrite the name.
         stream << get_indent() << print_type(op->value.type())
@@ -2959,7 +3052,7 @@ void CodeGen_C::visit(const Select *op) {
         internal_error << "Unsupported Select by HaliVer";
         rhs << type << "_ops::select(" << cond << ", " << true_val << ", " << false_val << ")";
     }
-    if(is_pvl()){
+    if(inl || is_pvl()){
         id = rhs.str();
     } else {
         print_assignment(op->type, rhs.str());
@@ -2969,7 +3062,6 @@ void CodeGen_C::visit(const Select *op) {
 void CodeGen_C::visit(const LetStmt *op) {
     if(is_pvl()){
         if(const Call *c = op->value.as<Call>()){
-            string copy_host("halide_copy_to_host");
             if(c->name.compare(Call::buffer_get_host) == 0){
                 
                 id = unique_name('_');
@@ -2987,12 +3079,12 @@ void CodeGen_C::visit(const LetStmt *op) {
                 return;
             }
             // Do not print this in PVL
+            string copy_host("halide_copy_to_host");
             if(c->name.compare(copy_host) == 0) return;
         }
     }
 
     if(const Call *c = op->value.as<Call>()){
-        string copy_host("halide_copy_to_host");
         if(c->name.compare(Call::buffer_get_host) == 0){
             id = unique_name('_');
 
@@ -3003,7 +3095,7 @@ void CodeGen_C::visit(const LetStmt *op) {
             const Variable *v = c->args[0].as<Variable>();
             Type t = buffer_types.get(v->name).type;
             stream << get_indent() << print_type(t) << "* " << print_name(op->name) << " = " 
-                << "_halide_buffer_get_host(" << with_commas(args) << ");\n";
+                << "_halide_buffer_get_host_" << print_type(t) << "(" << with_commas(args) << ");\n";
 
             op->body.accept(this);
             return;
@@ -3012,7 +3104,7 @@ void CodeGen_C::visit(const LetStmt *op) {
 
     string id_value = print_expr(op->value);
     Stmt body = op->body;
-    if (is_pvl() || op->value.type().is_handle()) {
+    if (inl || is_pvl() || op->value.type().is_handle()) {
         // The body might contain a Load or Store that references this
         // directly by name, so we can't rewrite the name.
         stream << get_indent() << print_type(op->value.type())
@@ -3111,8 +3203,8 @@ void CodeGen_C::visit(const Atomic *op) {
 
 class SimpleExpressionPrinter : public AnnotationPrinter {
 public:
-    SimpleExpressionPrinter(std::ostream &s, bool is_pvl)
-        : AnnotationPrinter(s, is_pvl), is_simple(true){};
+    SimpleExpressionPrinter(std::ostream &s, bool is_pvl, Scope<CodeGen_C::Allocation> &buffer_types)
+        : AnnotationPrinter(s, is_pvl, buffer_types), is_simple(true){};
     bool is_simple;
 protected:
     using IRPrinter::visit;
@@ -3130,9 +3222,9 @@ protected:
     }
 };
 
-bool print_simple_expr(const Expr &e, bool is_pvl, string &result){
+bool print_simple_expr(const Expr &e, bool is_pvl, string &result, Scope<CodeGen_C::Allocation> &buffer_types){
     ostringstream rhs;
-    SimpleExpressionPrinter sep(rhs, is_pvl);
+    SimpleExpressionPrinter sep(rhs, is_pvl, buffer_types);
     sep.print(e);
     result = rhs.str();
     return sep.is_simple;
@@ -3140,11 +3232,11 @@ bool print_simple_expr(const Expr &e, bool is_pvl, string &result){
 
 void CodeGen_C::visit(const For *op) {
     string id_min;
-    if(!print_simple_expr(op->min, is_pvl(), id_min)){
+    if(!print_simple_expr(op->min, is_pvl(), id_min, buffer_types)){
         id_min = print_expr(op->min);
     }
     string id_extent;
-    if(!print_simple_expr(op->extent, is_pvl(), id_extent)){
+    if(!print_simple_expr(op->extent, is_pvl(), id_extent, buffer_types)){
         id_min = print_expr(op->extent);
     }
 
@@ -3162,7 +3254,7 @@ void CodeGen_C::visit(const For *op) {
             stream << get_indent() << "/*@\n";
         }
         indent++;
-        AnnotationPrinter ap(stream, is_pvl());
+        AnnotationPrinter ap(stream, is_pvl(), buffer_types);
         stream << get_indent() << "loop_invariant ";
         ap.print(op->min);
         stream << " <= " << print_name(op->name) 
@@ -3201,7 +3293,7 @@ void CodeGen_C::visit(const For *op) {
             stream << get_indent() << "/*@\n";
         }
         indent++;
-        AnnotationPrinter ap(stream, is_pvl());
+        AnnotationPrinter ap(stream, is_pvl(), buffer_types);
         stream << get_indent() << "context "; 
         ap.print(op->min);
         stream << " <= " << print_name(op->name) 
@@ -3766,7 +3858,10 @@ void AnnotationPrinter::visit(const Permission *op) {
         }
     }
     
-    stream << "Perm(&";
+    stream << "Perm(";
+    if(!is_pvl){
+        stream << "&";
+    }
     print_no_parens(op->variable);
     stream << ", ";
     print_no_parens(op->permission);
@@ -3805,7 +3900,13 @@ void AnnotationPrinter::visit(const Call *op) {
     //     print_list(op->args);
     //     stream << ")";
     // }
-    stream << op->name << "(";
+    stream << op->name;
+    if(!is_pvl && starts_with(op->name, "_halide_buffer_")){
+        const Variable *v = op->args[0].as<Variable>();
+        Type t = buffer_types.get(v->name).type;
+        stream << "_" << type_to_c_type(t, false);
+    }
+    stream  << "(";
     print_list(op->args);
     stream << ")";   
 }
@@ -3860,8 +3961,8 @@ void AnnotationPrinter::visit(const Cast *op){
     }
 }
 
-AnnotationPrinter::AnnotationPrinter(std::ostream &s, bool is_pvl)
-        : IRPrinter(s), is_pvl(is_pvl){};
+AnnotationPrinter::AnnotationPrinter(std::ostream &s, bool is_pvl, Scope<CodeGen_C::Allocation> &buffer_types)
+        : IRPrinter(s), is_pvl(is_pvl), buffer_types(buffer_types) {};
 
 }  // namespace Internal
 }  // namespace Halide
