@@ -177,20 +177,31 @@ public:
 class AnnotationMaker{
     AnnotationType originalType;
     bool is_permission;
-    tuple<Expr, Expr, Expr, vector<string>> perm;
+
+    struct perm {
+        Expr bound, location;
+        bool is_read_perm; // Otherwise write permission
+        vector<string> forall;
+    } perm;
+
     Expr condition;
 public:
-    AnnotationMaker(AnnotationType originalType, Expr bound, Expr location, Expr permis, vector<string> forall) :
-        originalType(originalType), is_permission(true), perm(tie(bound, location, permis, forall)) { }
+    AnnotationMaker(AnnotationType originalType, Expr bound, Expr location, bool is_read_perm, vector<string> forall) :
+        originalType(originalType), is_permission(true) {
+            perm.bound = bound;
+            perm.location = location;
+            perm.is_read_perm = is_read_perm;
+            perm.forall = forall;
+         }
 
     AnnotationMaker(AnnotationType originalType, Expr condition) :
         originalType(originalType), is_permission(false), condition(condition) { }
 
-    Annotation create_annotation(bool is_parallel) const {
+    Annotation create_annotation(bool is_parallel, Expr readfactor) const {
         AnnotationType anntype = is_parallel ? originalType : AnnotationType::LoopInvariant;
 
         if(is_permission){
-            return Permission::make(anntype, std::get<0>(perm), std::get<1>(perm), std::get<2>(perm), std::get<3>(perm));
+            return Permission::make(anntype, perm.bound, perm.location, perm.is_read_perm ? Frac::make(1, readfactor) : Frac::make(1,1), perm.forall);
         } else {
             return AnnExpr::make(anntype, condition);
         }
@@ -198,10 +209,8 @@ public:
 
     void update(UpdateBufferAnnotations &uba){
         if(is_permission){
-            Expr bound = simplify(uba.mutate(std::get<0>(perm)));
-            Expr location = simplify(uba.mutate(std::get<1>(perm)));
-            Expr permis = simplify(uba.mutate(std::get<2>(perm)));
-            perm = tie(bound, location, permis, std::get<3>(perm));
+            perm.bound = simplify(uba.mutate(perm.bound));
+            perm.location = simplify(uba.mutate(perm.location));
         }
         else {
             condition = simplify(uba.mutate(condition));
@@ -209,10 +218,10 @@ public:
     }
 };
 
-vector<Annotation> create_annotations(vector<AnnotationMaker> anns, bool is_parallel){
+vector<Annotation> create_annotations(vector<AnnotationMaker> anns, bool is_parallel, Expr readfactor){
     vector<Annotation> res;
     for(const auto &a: anns){
-        res.emplace_back(a.create_annotation(is_parallel));
+        res.emplace_back(a.create_annotation(is_parallel, readfactor));
     }
     return res;
 }
@@ -259,10 +268,18 @@ class AddParameterAnnotations : public IRMutator {
     map<string,vector<AnnotationMaker>> proven_annotations;
     map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints;
 
+    vector<Expr> parallel_read_factor;
 
     using IRMutator::visit;
 
     Stmt visit(const For *for_loop) override {
+        if(for_loop->is_parallel()){
+            parallel_read_factor.push_back(for_loop->extent);
+        }
+        Expr currentFactor = make_const(Int(32), 2);
+        for(auto f : parallel_read_factor){
+            currentFactor = currentFactor * f;
+        }
 
         vector<Annotation> loop_annotations;
         for(auto &it: proven_annotations){
@@ -270,7 +287,7 @@ class AddParameterAnnotations : public IRMutator {
             ContainsFunctionCall cfc(name);
             for_loop->accept(&cfc);
             if(cfc.contains_call){
-                vector<Annotation> new_annotations = create_annotations(it.second, for_loop->is_parallel());
+                vector<Annotation> new_annotations = create_annotations(it.second, for_loop->is_parallel(), currentFactor);
                 loop_annotations.insert(loop_annotations.end(), new_annotations.begin(), new_annotations.end());
             }
         }
@@ -278,6 +295,10 @@ class AddParameterAnnotations : public IRMutator {
         loop_annotations.insert(loop_annotations.end(), for_loop->annotations.begin(), for_loop->annotations.end() );
 
         Stmt body = mutate(for_loop->body);
+
+        if(for_loop->is_parallel()){
+            parallel_read_factor.pop_back();
+        }
 
         return For::make(for_loop->name,
                              for_loop->min,
@@ -375,13 +396,13 @@ class AddParameterAnnotations : public IRMutator {
         // Expr call = Call::make(par, forall_vars_expr);
         Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder());
         Expr pure_call = Call::make(par.type(), "pure_" + par.name(), {info.index}, Call::Extern);
-        proven_annotations[par.name()].emplace_back(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars);
+        proven_annotations[par.name()].emplace_back(AnnotationType::Context, info.bound, load, true, info.forall_vars);
 
         proven_annotations[par.name()].emplace_back(AnnotationType::Context, 
             Forall::make(info.forall_vars, info.bound, load == pure_call));
 
         load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder());
-        top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, ReadPerm::make(), info.forall_vars));
+        top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(make_const(Int(32), 1), make_const(Int(32), 2)), info.forall_vars));
         top_level.emplace_back(AnnExpr::make(AnnotationType::Context, 
             Forall::make(info.forall_vars, info.bound, load == pure_call)));
 
