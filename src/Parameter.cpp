@@ -367,10 +367,6 @@ void Parameter::context(const Expr &condition) {
     add_annotation(AnnExpr::make(AnnotationType::Context, condition));
 }
 
-void Parameter::context_everywhere(const Expr &condition) {
-    add_annotation(AnnExpr::make(AnnotationType::ContextEverywhere, condition));
-}
-
 std::vector<Annotation> Parameter::annotations() const{
     return contents->annotations;
 }

@@ -169,14 +169,11 @@ bool PVLPrinter::ends_on_dimension(string name){
     }
     
     string begin;
-    // if (isalpha(split[0][0])) {
-    //     begin = "_";
-    // }
     for(size_t i = 0; i < split.size()-2; i++){
-        begin = begin + split[i];
+        begin = begin + c_print_name(split[i]);
         begin = begin + "_";
     }
-    begin = begin + "_";
+
     string extent_s = begin + "extent_" + std::to_string(dim) + "()";
     string min_s = begin + "min_" + std::to_string(dim) + "()";
     string stride_s = begin + "min_" + std::to_string(dim) + "()";
@@ -396,7 +393,7 @@ void PVLPrinter::print_buffer_members(Parameter p){
 
     for(int i = 0; i < p.dimensions(); i++){
         stream << " decreases;\n";
-        stream << "pure int " << p.name() << "_min_" << i << "()";
+        stream << "pure int " << c_print_name_pvl(p.name()) << "_min_" << i << "()";
         if(p.min_constraint(i).defined()){
             stream << " = ";
             print(p.min_constraint(i));
@@ -406,7 +403,7 @@ void PVLPrinter::print_buffer_members(Parameter p){
 
     for(int i = 0; i < p.dimensions(); i++){
         stream << " decreases;\n";
-        stream << "pure int " << p.name() << "_extent_" << i << "()";
+        stream << "pure int " << c_print_name_pvl(p.name()) << "_extent_" << i << "()";
         if(p.extent_constraint(i).defined()){
             stream << " = ";
             print(p.extent_constraint(i));
@@ -416,7 +413,7 @@ void PVLPrinter::print_buffer_members(Parameter p){
 
     for(int i = 0; i < p.dimensions(); i++){
         stream << " decreases;\n";
-        stream << "pure int " << p.name() << "_stride_" << i << "()";
+        stream << "pure int " << c_print_name_pvl(p.name()) << "_stride_" << i << "()";
         if(p.stride_constraint(i).defined()){
             stream << " = ";
             print(p.stride_constraint(i));

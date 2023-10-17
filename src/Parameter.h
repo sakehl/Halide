@@ -180,9 +180,6 @@ public:
     /** Add the condition to the pre- and post-conditions of the Parameter. */
     void context(const Expr &condition);
 
-    /** Add the condition to the pre and post-conditions everywhere in the program. */
-    void context_everywhere(const Expr &condition);
-
     std::vector<Annotation> annotations() const;
     
     void add_annotation(Annotation annotation);

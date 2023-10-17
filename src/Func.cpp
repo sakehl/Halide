@@ -614,6 +614,11 @@ bool apply_split_directive(const Split &s, vector<ReductionVariable> &rvars,
 
 }  // anonymous namespace
 
+Stage &Stage::annotate(const Annotation &a){
+      definition.add_annotation(a);
+      return *this;
+}
+
 Func Stage::rfactor(const RVar &r, const Var &v) {
     return rfactor({{r, v}});
 }
@@ -2036,6 +2041,12 @@ Func Func::copy_to_host() {
     return copy_to_device(DeviceAPI::Host);
 }
 
+Func &Func::annotate(const Annotation &a) {
+    invalidate_cache();
+    Stage(func, func.definition(), 0).annotate(a);
+    return *this;
+}
+
 Func &Func::split(const VarOrRVar &old, const VarOrRVar &outer, const VarOrRVar &inner, const Expr &factor, TailStrategy tail) {
     invalidate_cache();
     Stage(func, func.definition(), 0).split(old, outer, inner, factor, tail);
@@ -2682,63 +2693,9 @@ Func &Func::context(const Expr &condition) {
     return *this;
 }
 
-Func &Func::context_everywhere(const Expr &condition) {
-    invalidate_cache();
-    func.add_annotation(AnnotationType::ContextEverywhere,condition);
-    return *this;
-}
-
 Func &Func::invariant(const Expr &condition) {
     invalidate_cache();
     func.add_annotation(AnnotationType::LoopInvariant,condition);
-    return *this;
-}
-
-Func &Func::requires_perm(const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::Require, make_bool(true), variable, perm);
-    return *this;
-}
-
-Func &Func::requires_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::Require, antecedent, variable, perm);
-    return *this;
-}
-
-Func &Func::ensures_perm(const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::Ensure, make_bool(true), variable, perm);
-    return *this;
-}
-
-Func &Func::ensures_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::Ensure, antecedent, variable, perm);
-    return *this;
-}
-
-Func &Func::context_perm(const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::Context, make_bool(true), variable, perm);
-    return *this;
-}
-
-Func &Func::context_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::Context, antecedent, variable, perm);
-    return *this;
-}
-
-Func &Func::context_everywhere_perm(const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::ContextEverywhere, make_bool(true), variable, perm);
-    return *this;
-}
-
-Func &Func::context_everywhere_perm(const Expr &antecedent, const Expr &variable, const Expr &perm) {
-    invalidate_cache();
-    func.add_permission(AnnotationType::ContextEverywhere, antecedent, variable, perm);
     return *this;
 }
 
@@ -3222,7 +3179,9 @@ void Func::compile_to_header(const string &filename, const vector<Argument> &arg
 
 void Func::compile_to_c(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,
                         const string &fn_name, const Target &target, bool check_only_memory_safety) {
-    pipeline().compile_to_c(filename, args, fn_name, pipeline_anns, target, check_only_memory_safety);
+    // For HaliVer the targets must contain this
+    Target newt = target.with_feature(Halide::Target::NoAsserts).with_feature(Halide::Target::NoBoundsQuery);
+    pipeline().compile_to_c(filename, args, fn_name, pipeline_anns, newt, check_only_memory_safety);
 }
 
 void Func::compile_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,

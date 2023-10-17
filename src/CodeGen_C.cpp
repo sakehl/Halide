@@ -346,28 +346,28 @@ string buffer_header(string type){
     << "}\n"
     << "\n"
     << "requires Perm(b.host, read);\n"
-    << "pure " << type << "[] _halide_buffer_get_host(halide_buffer_" << type << " b) = b.host;\n"
+    << "pure " << type << "[] _halide_buffer_get_host_" << type << "(halide_buffer_" << type << " b) = b.host;\n"
     << "\n"
     << "requires 0 <= dim && dim < 4;\n"
     << "requires dim == 0 ==> Perm(b.min_0, read);\n"
     << "requires dim == 1 ==> Perm(b.min_1, read);\n"
     << "requires dim == 2 ==> Perm(b.min_2, read);\n"
     << "requires dim == 3 ==> Perm(b.min_3, read);\n"
-    << "pure int _halide_buffer_get_min(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.min_0 : (dim == 1 ? b.min_1 : (dim == 2 ? b.min_2 : b.min_3));\n"
+    << "pure int _halide_buffer_get_min_" << type << "(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.min_0 : (dim == 1 ? b.min_1 : (dim == 2 ? b.min_2 : b.min_3));\n"
     << "\n"
     << "requires 0 <= dim && dim < 4;\n"
     << "requires dim == 0 ==> Perm(b.stride_0, read);\n"
     << "requires dim == 1 ==> Perm(b.stride_1, read);\n"
     << "requires dim == 2 ==> Perm(b.stride_2, read);\n"
     << "requires dim == 3 ==> Perm(b.stride_3, read);\n"
-    << "pure int _halide_buffer_get_stride(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.stride_0 : (dim == 1 ? b.stride_1 : (dim == 2 ? b.stride_2 : b.stride_3));\n"
+    << "pure int _halide_buffer_get_stride_" << type << "(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.stride_0 : (dim == 1 ? b.stride_1 : (dim == 2 ? b.stride_2 : b.stride_3));\n"
     << "\n"
     << "requires 0 <= dim && dim < 4;\n"
     << "requires dim == 0 ==> Perm(b.extent_0, read);\n"
     << "requires dim == 1 ==> Perm(b.extent_1, read);\n"
     << "requires dim == 2 ==> Perm(b.extent_2, read);\n"
     << "requires dim == 3 ==> Perm(b.extent_3, read);\n"
-    << "pure int _halide_buffer_get_extent(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.extent_0 : (dim == 1 ? b.extent_1 : (dim == 2 ? b.extent_2 : b.extent_3));\n"
+    << "pure int _halide_buffer_get_extent_" << type << "(halide_buffer_" << type << " b, int dim) = dim == 0 ? b.extent_0 : (dim == 1 ? b.extent_1 : (dim == 2 ? b.extent_2 : b.extent_3));\n"
     << "\n";
 
     return ss.str();
@@ -1451,9 +1451,9 @@ void CodeGen_C::set_name_mangling_mode(NameMangling mode) {
     }
 }
 
-string CodeGen_C::print_type(Type type, AppendSpaceIfNeeded space_option) {
-    if(!is_pvl()){
-        return type_to_c_type(type, space_option == AppendSpace);
+string print_type_helper(Type type, bool is_pvl, bool include_space){
+    if(!is_pvl){
+        return type_to_c_type(type, include_space); //space_option == CodeGen_C::AppendSpace);
     } else {
         ostringstream oss;
         // For simplicity, we just emit everything as int
@@ -1466,11 +1466,15 @@ string CodeGen_C::print_type(Type type, AppendSpaceIfNeeded space_option) {
         } else {
             internal_error << "Type " << type << " is unsuported for PVL";
         }
-        if(space_option == AppendSpace){
+        if(include_space){
             oss << " ";
         }
         return oss.str();
     }
+}
+
+string CodeGen_C::print_type(Type type, AppendSpaceIfNeeded space_option){
+        return print_type_helper(type, is_pvl(), space_option == AppendSpace);
 }
 
 string CodeGen_C::print_reinterpret(Type type, const Expr &e) {
@@ -2313,12 +2317,12 @@ void CodeGen_C::visit(const Div *op) {
     if(is_pvl()){
         string sa = print_expr(op->a);
         string sb = print_expr(op->b);
-        if(op->type.is_int()){    
+        if(op->type.is_int_or_uint()){    
             id = "hdiv(" + sa + ", " + sb + ")";
         } else if(op->type.is_float()) {
             id = "div_rat(" + sa + ", " + sb + ")";
         } else {
-            internal_error << "Unsupported by Haliver" << op;
+            internal_error << "Unsupported by Haliver" << to_string(op);
             visit_binop(op->type, op->a, op->b, "/");
         }
         return;
@@ -2327,7 +2331,7 @@ void CodeGen_C::visit(const Div *op) {
     int bits;
     if (false && is_const_power_of_two_integer(op->b, &bits)) {
         visit_binop(op->type, op->a, make_const(op->a.type(), bits), ">>");
-    } else if (op->type.is_int()) {
+    } else if (op->type.is_int_or_uint()) {
          print_expr(lower_euclidean_div_haliver(op->a, op->b));
         // print_expr(lower_euclidean_div(op->a, op->b));
     } else {
@@ -2339,12 +2343,12 @@ void CodeGen_C::visit(const Mod *op) {
     if(is_pvl()){
         string sa = print_expr(op->a);
         string sb = print_expr(op->b);
-        if(op->type.is_int()){    
+        if(op->type.is_int_or_uint()){    
             id = "hmod(" + sa + ", " + sb + ")";
         } else if(op->type.is_float()) {
             id = "fmod(" + sa + ", " + sb + ")";
         } else {
-            internal_error << "Unsupported by Haliver" << op;
+            internal_error << "Unsupported by Haliver" << to_string(op);
             visit_binop(op->type, op->a, op->b, "%");
         }
         return;
@@ -2984,12 +2988,12 @@ void CodeGen_C::visit(const Store *op) {
     // If we're writing a contiguous ramp, just store the vector.
     Expr dense_ramp_base = strided_ramp_base(op->index, 1);
     if (dense_ramp_base.defined()) {
-        internal_error << "Unsupported Store by HaliVer";
+        // internal_error << "Unsupported Store by HaliVer";
         internal_assert(op->value.type().is_vector());
         string id_ramp_base = print_expr(dense_ramp_base);
         stream << get_indent() << print_type(t) + "_ops::store(" << id_value << ", " << name << ", " << id_ramp_base << ");\n";
     } else if (op->index.type().is_vector()) {
-        internal_error << "Unsupported Store by HaliVer";
+        // internal_error << "Unsupported Store by HaliVer";
         // If index is a vector, scatter vector elements.
         internal_assert(t.is_vector());
         string id_index = print_expr(op->index);
@@ -3073,7 +3077,7 @@ void CodeGen_C::visit(const LetStmt *op) {
                 const Variable *v = c->args[0].as<Variable>();
                 Type t = buffer_types.get(v->name).type;
                 stream << get_indent() << print_type(t) << "[] " << print_name(op->name) << " = " 
-                    << "_halide_buffer_get_host(" << with_commas(args) << ");\n";
+                    << "_halide_buffer_get_host_" << print_type(t) << "(" << with_commas(args) << ");\n";
 
                 op->body.accept(this);
                 return;
@@ -3883,28 +3887,11 @@ void AnnotationPrinter::visit(const Div *op) {
 }
 
 void AnnotationPrinter::visit(const Call *op) {
-    // if(op->name == Call::buffer_get_min){
-    //     internal_assert(op->args.size() == 2);
-    //     print(op->args[0]);
-    //     stream << ".min_" << op->args[1];
-    // } else if(op->name == Call::buffer_get_extent){
-    //     internal_assert(op->args.size() == 2);
-    //     print(op->args[0]);
-    //     stream << ".extent_" << op->args[1];
-    // } else if(op->name == Call::buffer_get_stride){
-    //     internal_assert(op->args.size() == 2);
-    //     print(op->args[0]);
-    //     stream << ".stride_" << op->args[1];
-    // } else {
-    //     stream << op->name << "(";
-    //     print_list(op->args);
-    //     stream << ")";
-    // }
     stream << op->name;
-    if(!is_pvl && starts_with(op->name, "_halide_buffer_")){
+    if(starts_with(op->name, "_halide_buffer_")){
         const Variable *v = op->args[0].as<Variable>();
         Type t = buffer_types.get(v->name).type;
-        stream << "_" << type_to_c_type(t, false);
+        stream << "_" << print_type_helper(t, is_pvl, false);
     }
     stream  << "(";
     print_list(op->args);

@@ -109,6 +109,8 @@ public:
         return definition.schedule();
     }
 
+    Stage &annotate(const Annotation &a);
+
     /** Return a string describing the current var list taking into
      * account all the splits, reorders, and tiles. */
     std::string dump_argument_list() const;
@@ -2469,35 +2471,11 @@ public:
     /** Add the condition to the pre- and post-conditions of the function. */
     Func &context(const Expr &condition);
 
-    /** Add the condition to the pre and post-conditions everywhere in the program. */
-    Func &context_everywhere(const Expr &condition);
-
     /** Add the condition to the as reduction invariant, needed when using reduction domains. */
     Func &invariant(const Expr &condition);
 
-    /** Require a `permission` to a specific variable. */
-    Func &requires_perm(const Expr &variable, const Expr &permission);
-
-    /** If 'antecedent' then require a`permission` to a specific variable. */
-    Func &requires_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
-
-    /** Ensure a `permission` to a specific variable. */
-    Func &ensures_perm(const Expr &variable, const Expr &permission);
-
-    /** If 'antecedent' then ensure a `permission` to a specific variable. */
-    Func &ensures_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
-
-    /** Require and ensure a `permission` to a specific variable. */
-    Func &context_perm(const Expr &variable, const Expr &permission);
-
-    /** If 'antecedent' then require and ensure a `permission` to a specific variable. */
-    Func &context_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
-
-    /** Require and ensure a `permission` to a specific variable in the whole program. */
-    Func &context_everywhere_perm(const Expr &variable, const Expr &permission);
-
-    /** If 'antecedent' then require and ensure a `permission` to a specific variable in the whole program. */
-    Func &context_everywhere_perm(const Expr &antecedent, const Expr &variable, const Expr &permission);
+    /** Allows to add annotation to pure definition */
+    Func &annotate(const Annotation &a);
 };
 
 namespace Internal {
