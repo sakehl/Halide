@@ -1937,7 +1937,7 @@ void CodeGen_C::compile(const LoweredFunc &f) {
             }
         }
         
-        AnnotationPrinter ap(stream, is_pvl(), buffer_types);
+        AnnotationPrinter ap(stream, is_pvl(), true, buffer_types);
         for (const Annotation &a : f.annotations) {
             stream << get_indent();
             ap.print(a);
@@ -2022,7 +2022,7 @@ void CodeGen_C::compile(const LoweredFunc &f) {
         }
     }
 
-    AnnotationPrinter ap(stream, is_pvl(), buffer_types);
+    AnnotationPrinter ap(stream, is_pvl(), true, buffer_types);
     for (const Annotation &a : f.annotations) {
         stream << get_indent();
         ap.print(a);
@@ -3208,7 +3208,7 @@ void CodeGen_C::visit(const Atomic *op) {
 class SimpleExpressionPrinter : public AnnotationPrinter {
 public:
     SimpleExpressionPrinter(std::ostream &s, bool is_pvl, Scope<CodeGen_C::Allocation> &buffer_types)
-        : AnnotationPrinter(s, is_pvl, buffer_types), is_simple(true){};
+        : AnnotationPrinter(s, is_pvl, false, buffer_types), is_simple(true){};
     bool is_simple;
 protected:
     using IRPrinter::visit;
@@ -3258,7 +3258,7 @@ void CodeGen_C::visit(const For *op) {
             stream << get_indent() << "/*@\n";
         }
         indent++;
-        AnnotationPrinter ap(stream, is_pvl(), buffer_types);
+        AnnotationPrinter ap(stream, is_pvl(), false, buffer_types);
         stream << get_indent() << "loop_invariant ";
         ap.print(op->min);
         stream << " <= " << print_name(op->name) 
@@ -3297,7 +3297,7 @@ void CodeGen_C::visit(const For *op) {
             stream << get_indent() << "/*@\n";
         }
         indent++;
-        AnnotationPrinter ap(stream, is_pvl(), buffer_types);
+        AnnotationPrinter ap(stream, is_pvl(), false, buffer_types);
         stream << get_indent() << "context "; 
         ap.print(op->min);
         stream << " <= " << print_name(op->name) 
@@ -3886,14 +3886,109 @@ void AnnotationPrinter::visit(const Div *op) {
     stream << ")";
 }
 
-void AnnotationPrinter::visit(const Call *op) {
-    stream << op->name;
-    if(starts_with(op->name, "_halide_buffer_")){
-        const Variable *v = op->args[0].as<Variable>();
-        Type t = buffer_types.get(v->name).type;
-        stream << "_" << print_type_helper(t, is_pvl, false);
+string get_buf(const Expr &buf){
+    const Variable *v = buf.as<Variable>();
+    internal_assert(v && ends_with(v->name, ".buffer"));
+    string output = v->name;
+    output.erase(output.length() - string(".buffer").length());
+    return  c_print_name(output);
+}
+
+void AnnotationPrinter::print_buffer_min(const Expr &buf, const Expr &dim){
+    if(false && !is_top_level){
+        stream << get_buf(buf);
+        stream << "_min_";
+        print(dim);
+        return;
     }
-    stream  << "(";
+    print(buf);
+    if(is_pvl){
+        const IntImm *dimn = dim.as<IntImm>();
+        internal_assert(dimn && dimn->value >= 0 && dimn->value<=3);
+        stream << ".min_" << dimn->value;
+         
+    } else {
+        stream << "->dim[";
+        print(dim);
+        stream << "].min";
+    }
+}
+
+void AnnotationPrinter::print_buffer_extent(const Expr &buf, const Expr &dim){
+    if(false && !is_top_level){
+        stream << get_buf(buf);
+        stream << "_extent_";
+        print(dim);
+        return;
+    }
+    print(buf);
+    if(is_pvl){
+        const IntImm *dimn = dim.as<IntImm>();
+        internal_assert(dimn && dimn->value >= 0 && dimn->value<=3);
+        stream << ".extent_" << dimn->value;
+         
+    } else {
+        stream << "->dim[";
+        print(dim);
+        stream << "].extent";
+    }
+}
+
+void AnnotationPrinter::print_buffer_stride(const Expr &buf, const Expr &dim){
+    if(false && !is_top_level){
+        stream << get_buf(buf);
+        stream << "_stride_";
+        print(dim);
+        return;
+    }
+    print(buf);
+    if(is_pvl){
+        const IntImm *dimn = dim.as<IntImm>();
+        internal_assert(dimn && dimn->value >= 0 && dimn->value<=3);
+        stream << ".stride_" << dimn->value;
+         
+    } else {
+        stream << "->dim[";
+        print(dim);
+        stream << "].stride";
+    }
+}
+
+void AnnotationPrinter::print_buffer_max(const Expr &buf, const Expr &dim){
+    print_buffer_min(buf, dim);
+    stream << " + ";
+    print_buffer_extent(buf, dim);
+    stream << " - 1";
+}
+
+void AnnotationPrinter::print_buffer_get_host(const Expr &buf){
+    stream << get_buf(buf);
+    if(is_pvl){
+        stream << ".host";
+    } else {
+        stream << "->host";
+    }
+}
+
+void AnnotationPrinter::visit(const Call *op) {
+    if(op->name == Call::buffer_get_host){
+        print_buffer_get_host(op->args[0]);
+        return;
+    } else if(op->name == Call::buffer_get_min){
+        print_buffer_min(op->args[0], op->args[1]);
+        return;
+    } else if(op->name == Call::buffer_get_extent){
+        print_buffer_extent(op->args[0], op->args[1]);
+        return;
+    } else if(op->name == Call::buffer_get_stride){
+        print_buffer_stride(op->args[0], op->args[1]);
+        return;
+    } else if(op->name == Call::buffer_get_max){
+        print_buffer_max(op->args[0], op->args[1]);
+        return;
+    }
+
+    stream << op->name << "(";
     print_list(op->args);
     stream << ")";   
 }
@@ -3948,8 +4043,18 @@ void AnnotationPrinter::visit(const Cast *op){
     }
 }
 
-AnnotationPrinter::AnnotationPrinter(std::ostream &s, bool is_pvl, Scope<CodeGen_C::Allocation> &buffer_types)
-        : IRPrinter(s), is_pvl(is_pvl), buffer_types(buffer_types) {};
+void AnnotationPrinter::visit(const Select * op) {
+        stream << "(";
+        print(op->condition);
+        stream << " ? ";
+        print(op->true_value);
+        stream << " : ";
+        print(op->false_value);
+        stream << ")";
+}
+
+AnnotationPrinter::AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level, Scope<CodeGen_C::Allocation> &buffer_types)
+        : IRPrinter(s), is_pvl(is_pvl), is_top_level(is_top_level), buffer_types(buffer_types) {};
 
 }  // namespace Internal
 }  // namespace Halide

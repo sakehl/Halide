@@ -90,7 +90,8 @@ Module lower(const vector<Function> &output_funcs,
              const vector<Stmt> &requirements,
              bool trace_pipeline,
              const vector<IRMutator *> &custom_passes,
-             bool remove_annotations) {
+             bool remove_annotations,
+             const vector<Annotation> &pipeline_anns) {
     auto time_start = std::chrono::high_resolution_clock::now();
 
     std::vector<std::string> namespaces;
@@ -547,7 +548,8 @@ Module lower(const vector<Function> &output_funcs,
         }
     }
     vector<Annotation> top_level_annotations;
-    std::tie(s, top_level_annotations) = add_parameter_annotations(s, input_buffers, output_buffers);
+    std::tie(s, top_level_annotations) = add_pipeline_annotations(s, input_buffers, output_buffers, pipeline_anns);
+    // top_level_annotations.insert(top_level_annotations.end(), pipeline_anns.begin(), pipeline_anns.end() );
 
     // We're about to drop the environment and outputs vector, which
     // contain the only strong refs to Functions that may still be

@@ -8,16 +8,13 @@
 #include "Expr.h"
 #include "Function.h"
 
-using std::pair;
-using std::vector;
-
 namespace Halide {
 
 struct Target;
 
 namespace Internal {
 
-pair<Stmt, vector<Annotation>> add_parameter_annotations(const Stmt &stmt, vector<Parameter> input, vector<Parameter> output);
+std::pair<Stmt, std::vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, std::vector<Parameter> input, std::vector<Parameter> output, std::vector<Annotation> pipeline_anns);
 
 }  // namespace Internal
 }  // namespace Halide

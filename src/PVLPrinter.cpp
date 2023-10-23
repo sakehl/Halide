@@ -55,6 +55,9 @@ pure int round_f32(rational x) = is_int(x) ? rational_to_int(x) : rational_to_in
  decreases;
 pure int hdiv(int a, int b) = b==0 ? 0 : a/b;
 
+ decreases;
+pure int hmod(int a, int b) = b==0 ? 0 : a%b;
+
 )INLINE_CODE";
 
 string c_print_name_pvl(const string &name){
@@ -170,7 +173,7 @@ bool PVLPrinter::ends_on_dimension(string name){
     
     string begin;
     for(size_t i = 0; i < split.size()-2; i++){
-        begin = begin + c_print_name(split[i]);
+        begin = begin + c_print_name_pvl(split[i]);
         begin = begin + "_";
     }
 
@@ -341,6 +344,20 @@ void PVLPrinter::visit(const Div *op){
     }
 }
 
+void PVLPrinter::visit(const Mod *op){
+    Expr a = op->a;
+    Expr b = op->b;
+    if(a.type().is_int_or_uint() && b.type().is_int_or_uint() ){
+        stream << "hmod(";
+        print(a);
+        stream << ", ";
+        print(b);
+        stream << ")";
+    } else {
+        internal_error << "Not supported mod by pvl";
+    }
+}
+
 void PVLPrinter::print_pipeline(const vector<Annotation> &anns){
     func_name =  "";
     prev_def_name = "";
@@ -351,7 +368,7 @@ void PVLPrinter::print_pipeline(const vector<Annotation> &anns){
     print_ann(anns);
     in_annotations = false;
 
-    stream << "void pipeline();\n";
+    stream << "void pipeline(){ }\n";
     
 }
 
@@ -423,7 +440,7 @@ void PVLPrinter::print_buffer_members(Parameter p){
     stream << "\n";
 }
 
-void PVLPrinter::print_buffer(Parameter p){
+void PVLPrinter::print_buffer(Parameter p, bool is_input){
     print_buffer_members(p);
 
     vector<string> implicit_args;
@@ -439,6 +456,11 @@ void PVLPrinter::print_buffer(Parameter p){
     pure_args = implicit_args;
     def_args = implicit_vars;
 
+    if(!is_input){
+        // user_assert(p.annotations().empty()) << "Output buffer " << p.name() << " should not have annotations";
+        return;
+    }
+
     in_annotations = true;
     buffer_annotation = true;
     print_ann(p.annotations());
@@ -447,7 +469,7 @@ void PVLPrinter::print_buffer(Parameter p){
 
     stream << " decreases;\n";
     print_lhs_def(implicit_args, {p.type()}, p.name());
-    stream << ";\n";
+    stream << ";\n\n";
 }
 
 void PVLPrinter::print_ann(const vector<Annotation> &anns, bool has_reduction){

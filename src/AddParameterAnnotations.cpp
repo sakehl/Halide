@@ -19,6 +19,16 @@ using std::vector;
 
 namespace {
 
+Expr add(const Expr &original, const Expr &added){
+    Expr result;
+    if(original.defined()){
+        result = original && added;
+    } else {
+        result = added;
+    }
+    return result;
+}
+
 void get_buffer_annotations(const Parameter &buf, vector<Annotation> &res){
     int dim = buf.dimensions();
     Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), buf.name() + ".buffer");
@@ -27,31 +37,19 @@ void get_buffer_annotations(const Parameter &buf, vector<Annotation> &res){
         if(buf.min_constraint(i).defined()){
             Expr min_val = Call::make(Int(32), Call::buffer_get_min, {buffer, i}, Call::Extern);
             Expr new_constraint = min_val == buf.min_constraint(i);
-            if(constraint.defined()){
-                constraint = constraint && new_constraint;
-            } else {
-                constraint = new_constraint;
-            }
+            constraint = add(constraint, new_constraint);
         }
             
         if(buf.extent_constraint(i).defined()){
             Expr extent_val = Call::make(Int(32), Call::buffer_get_extent, {buffer, i}, Call::Extern);
             Expr new_constraint = extent_val == buf.extent_constraint(i);
-            if(constraint.defined()){
-                constraint = constraint && new_constraint;
-            } else {
-                constraint = new_constraint;
-            }
+            constraint = add(constraint, new_constraint);
         }
 
         if(buf.stride_constraint(i).defined()){
             Expr stride_val = Call::make(Int(32), Call::buffer_get_stride, {buffer, i}, Call::Extern);
             Expr new_constraint = stride_val == buf.stride_constraint(i);
-            if(constraint.defined()){
-                constraint = constraint && new_constraint;
-            } else {
-                constraint = new_constraint;
-            }
+            constraint = add(constraint, new_constraint);
         }
         if(constraint.defined()){
             res.emplace_back(AnnExpr::make(AnnotationType::Context, constraint));
@@ -64,13 +62,19 @@ class UpdateBufferAnnotations: public IRMutator {
 
     map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints;
 
+    enum VarType {
+        Min,
+        Extent,
+        Stride
+    };
+
     Expr visit(const Variable *op) override {
         if(!top_level)
             return op;
             
         string name = op->name;
         int num = -1;
-        string prop = "";
+        VarType prop;
 
         if(ends_with(name, ".0")){
             num = 0;
@@ -78,23 +82,45 @@ class UpdateBufferAnnotations: public IRMutator {
             num = 1;
         } else if(ends_with(name, ".2")) {
             num = 2;
+        } else if(ends_with(name, ".3")) {
+            num = 3;
+        } else if(ends_with(name, ".4")) {
+            num = 4;
         }
+
+        
         
         if(num >= 0){
             name.erase(name.length()-2);
             if(ends_with(name, ".min")){
-                prop = Call::buffer_get_min;
+                prop = VarType::Min;
                 name.erase(name.length()-4);
             } else if(ends_with(name, ".extent")){
-                prop = Call::buffer_get_extent;
+                prop = VarType::Extent;
                 name.erase(name.length()-7);
             } else if(ends_with(name, ".stride")){
-                prop = Call::buffer_get_stride;
+                prop = VarType::Stride;
                 name.erase(name.length()-7);
+            } else {
+                return op;
             }
+
             if(name != ""){
-                Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), name + ".buffer");
-                return Call::make(Int(32), prop,{buffer, num}, Call::Extern);
+                auto constraints = buffer_constraints.find(name);
+                user_assert(constraints != buffer_constraints.end()) 
+                    << "Pipeline annotation for images contain a call to a non-image type, which is not allowed: " << name;
+                switch(prop) {
+                    case VarType::Min:
+                        return std::get<0>(constraints->second[num]);
+                    case VarType::Extent:
+                        return std::get<1>(constraints->second[num]);
+                    case VarType::Stride:
+                        return std::get<2>(constraints->second[num]);
+                }
+                
+
+                // Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), name + ".buffer");
+                // return Call::make(Int(32), prop,{buffer, num}, Call::Extern);
             }
         }
 
@@ -127,7 +153,7 @@ class UpdateBufferAnnotations: public IRMutator {
             dimensions = f.dimensions();
         } else {
             user_assert(call->call_type == Call::CallType::Image) 
-                << "Annotations for images contain a call to a non-image type, which is not allowed: \"" << call->name << "\"";
+                << "Annotawtions for images contain a call to a non-image type, which is not alloed: \"" << call->name << "\"";
             type = call->param.type();
             dimensions = call->param.dimensions();
         }
@@ -151,8 +177,8 @@ class UpdateBufferAnnotations: public IRMutator {
 
         for(size_t i=0; i < dimensions;i++){
             Expr min = std::get<0>(constraints->second[i]);
-            Expr extent = std::get<2>(constraints->second[i]);
-            Expr added_dimension = (new_args[i] - min) * extent;
+            Expr stride = std::get<2>(constraints->second[i]);
+            Expr added_dimension = (new_args[i] - min) * stride;
             if(i==0)
                 index = added_dimension;
             else
@@ -423,7 +449,7 @@ class AddParameterAnnotations : public IRMutator {
 public:
     vector<Annotation> top_level;
 
-    AddParameterAnnotations(vector<Parameter> input, vector<Parameter> output) {
+    AddParameterAnnotations(vector<Parameter> input, vector<Parameter> output, vector<Annotation> pipeline_annotations) {
         for(auto &i: input){
             get_input_annotations(i);
         }
@@ -436,6 +462,10 @@ public:
 
         for(size_t i=0; i<top_level.size(); i++)
             top_level[i] = simplify(uba.mutate(top_level[i]));
+
+        for(auto &p: pipeline_annotations){
+            top_level.emplace_back(simplify(uba.mutate(p)));
+        }
 
         uba.top_level = false;
 
@@ -483,11 +513,11 @@ public:
 
 }  // namespace
 
-pair<Stmt, vector<Annotation>> add_parameter_annotations(const Stmt &stmt, vector<Parameter> input, vector<Parameter> output) {
+pair<Stmt, vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, vector<Parameter> input, vector<Parameter> output, vector<Annotation> pipeline_anns) {
     UpdateInputBufferCallsToFunction uibctf(input);
     Stmt s = uibctf.mutate(stmt);
 
-    AddParameterAnnotations apa(input, output);
+    AddParameterAnnotations apa(input, output, pipeline_anns);
     s = apa.mutate(s);
     return pair<Stmt, vector<Annotation>>(s, apa.top_level);
 }

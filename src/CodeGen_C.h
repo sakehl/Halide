@@ -286,9 +286,10 @@ protected:
 
 class AnnotationPrinter : public IRPrinter {
 public:
-    AnnotationPrinter(std::ostream &s, bool is_pvl, Scope<CodeGen_C::Allocation> &buffer_types);
+    AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level, Scope<CodeGen_C::Allocation> &buffer_types);
 protected:
     bool is_pvl;
+    bool is_top_level;
 
     /** Track the types of buffer parameters. */
     Scope<CodeGen_C::Allocation> &buffer_types;
@@ -315,6 +316,18 @@ protected:
     void visit(const FloatImm *op) override;
 
     void visit(const Cast *op) override;
+
+    void visit(const Select * op) override;
+
+void print_buffer_min(const Expr &buf, const Expr &dim);
+
+void print_buffer_extent(const Expr &buf, const Expr &dim);
+
+void print_buffer_stride(const Expr &buf, const Expr &dim);
+
+void print_buffer_max(const Expr &buf, const Expr &dim);
+
+void print_buffer_get_host(const Expr &buf);
 };
 
 }  // namespace Internal

@@ -350,7 +350,8 @@ public:
                              const std::string &fn_name,
                              const Target &target = get_target_from_environment(),
                              LinkageType linkage_type = LinkageType::ExternalPlusMetadata,
-                             bool remove_annotations = false);
+                             bool remove_annotations = false,
+                             const std::vector<Annotation> &pipeline_anns = {});
 
     /** Eagerly jit compile the function to machine code. This
      * normally happens on the first call to realize. If you're

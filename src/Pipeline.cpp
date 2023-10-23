@@ -314,7 +314,7 @@ void Pipeline::compile_to_c(const string &filename,
                             const Target &target,
                             bool check_only_memory_safety) {
     contents->invalidate_cache();                    
-    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, check_only_memory_safety);
+    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, check_only_memory_safety, pipeline_anns);
     m.compile(single_output(filename, m, Output::c_source));
 }
 
@@ -388,12 +388,12 @@ void Pipeline::translate_to_pvl(const string &filename,
     PVLPrinter printer(file);
     for (auto &iter : par_env) {
         if(iter.second.is_buffer()){
-            printer.print_buffer(iter.second);
+            printer.print_buffer(iter.second, true);
         }
     }
     for(auto &iter : outputs){
         for(auto &buf : iter.output_buffers()){
-            printer.print_buffer(buf);
+            printer.print_buffer(buf, false);
         }
     }
 
@@ -551,7 +551,8 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
                                    const string &fn_name,
                                    const Target &target,
                                    const LinkageType linkage_type,
-                                   bool remove_annotations) {
+                                   bool remove_annotations,
+                                   const vector<Annotation> &pipeline_anns) {
     user_assert(defined()) << "Can't compile undefined Pipeline.\n";
 
     for (const Function &f : contents->outputs) {
@@ -614,7 +615,7 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
 
         contents->module = lower(contents->outputs, new_fn_name, target, lowering_args,
                                  linkage_type, contents->requirements, contents->trace_pipeline,
-                                 custom_passes, remove_annotations);
+                                 custom_passes, remove_annotations, pipeline_anns);
     }
 
     return contents->module;

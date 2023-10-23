@@ -37,7 +37,8 @@ Module lower(const std::vector<Function> &output_funcs,
              const std::vector<Stmt> &requirements = std::vector<Stmt>(),
              bool trace_pipeline = false,
              const std::vector<IRMutator *> &custom_passes = std::vector<IRMutator *>(),
-             bool remove_annotations = false);
+             bool remove_annotations = false,
+             const std::vector<Annotation> &pipeline_anns = {});
 
 /** Given a halide function with a schedule, create a statement that
  * evaluates it. Automatically pulls in all the functions f depends
