@@ -60,6 +60,16 @@ class FindBufferSymbols : public IRVisitor {
         IRVisitor::visit(op);
     }
 
+    void visit(const For *op) override {
+        op->min.accept(this);
+        op->extent.accept(this);
+        op->body.accept(this);
+        // Annotations could contain relevant information
+        for(const Annotation &a : op->annotations){
+            a.accept(this);
+        }
+    }
+
 public:
     set<string> symbols;
     map<string, BufferInfo> buffers;

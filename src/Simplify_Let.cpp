@@ -27,6 +27,16 @@ class CountVarUses : public IRVisitor {
         IRVisitor::visit(op);
     }
 
+    void visit(const For *op) override {
+        op->min.accept(this);
+        op->extent.accept(this);
+        op->body.accept(this);
+        // We do not want lets to be removed if they occur in annotations
+        for(const Annotation &a : op->annotations){
+            a.accept(this);
+        }
+    }
+
     using IRVisitor::visit;
 
 public:

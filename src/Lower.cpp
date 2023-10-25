@@ -299,6 +299,40 @@ Module lower(const vector<Function> &output_funcs,
     debug(2) << "Lowering after adding atomic mutex allocation:\n"
              << s << "\n\n";
 
+    vector<Argument> public_args = args;
+    vector<Parameter> output_buffers;
+    vector<Parameter> input_buffers;
+    for (const auto &out : outputs) {
+        for (const Parameter &buf : out.output_buffers()) {
+            public_args.emplace_back(buf.name(),
+                                     Argument::OutputBuffer,
+                                     buf.type(), buf.dimensions(), buf.get_argument_estimates());
+            output_buffers.emplace_back(buf);
+            if(remove_annotations){
+                output_buffers.back().clear_annotations();
+            }
+        }
+    }
+
+
+    vector<InferredArgument> inf_args = infer_arguments(s, outputs);
+    for (const InferredArgument &arg : inf_args) {
+        bool found = false;
+        for (const Argument &a : args) {
+            found |= (a.name == arg.arg.name);
+        }
+
+        if(found && arg.param.defined()){
+            input_buffers.emplace_back(arg.param);
+            if(remove_annotations){
+                input_buffers.back().clear_annotations();
+            }
+        }
+    }
+
+    vector<Annotation> top_level_annotations;
+    std::tie(s, top_level_annotations) = add_pipeline_annotations(s, input_buffers, output_buffers, pipeline_anns);
+
     debug(1) << "Unpacking buffer arguments...\n";
     s = unpack_buffers(s);
     debug(2) << "Lowering after unpacking buffer arguments...\n"
@@ -482,21 +516,6 @@ Module lower(const vector<Function> &output_funcs,
         debug(1) << "Skipping GPU offload...\n";
     }
 
-    vector<Argument> public_args = args;
-    vector<Parameter> output_buffers;
-    vector<Parameter> input_buffers;
-    for (const auto &out : outputs) {
-        for (const Parameter &buf : out.output_buffers()) {
-            public_args.emplace_back(buf.name(),
-                                     Argument::OutputBuffer,
-                                     buf.type(), buf.dimensions(), buf.get_argument_estimates());
-            output_buffers.emplace_back(buf);
-            if(remove_annotations){
-                output_buffers.back().clear_annotations();
-            }
-        }
-    }
-
     vector<InferredArgument> inferred_args = infer_arguments(s, outputs);
     for (const InferredArgument &arg : inferred_args) {
         if (arg.param.defined() && arg.param.name() == "__user_context") {
@@ -510,13 +529,6 @@ Module lower(const vector<Function> &output_funcs,
         bool found = false;
         for (const Argument &a : args) {
             found |= (a.name == arg.arg.name);
-        }
-
-        if(found && arg.param.defined()){
-            input_buffers.emplace_back(arg.param);
-            if(remove_annotations){
-                input_buffers.back().clear_annotations();
-            }
         }
 
         if (arg.buffer.defined() && !found) {
@@ -547,8 +559,7 @@ Module lower(const vector<Function> &output_funcs,
             user_error << err.str();
         }
     }
-    vector<Annotation> top_level_annotations;
-    std::tie(s, top_level_annotations) = add_pipeline_annotations(s, input_buffers, output_buffers, pipeline_anns);
+    
     // top_level_annotations.insert(top_level_annotations.end(), pipeline_anns.begin(), pipeline_anns.end() );
 
     // We're about to drop the environment and outputs vector, which

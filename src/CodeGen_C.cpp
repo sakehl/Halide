@@ -3075,10 +3075,10 @@ void CodeGen_C::visit(const LetStmt *op) {
                     args[i] = print_expr(c->args[i]);
                 }
                 const Variable *v = c->args[0].as<Variable>();
-                Type t = buffer_types.get(v->name).type;
+                Type t = buffer_types.get(v->name).type;  
                 stream << get_indent() << print_type(t) << "[] " << print_name(op->name) << " = " 
                     << "_halide_buffer_get_host_" << print_type(t) << "(" << with_commas(args) << ");\n";
-
+                            
                 op->body.accept(this);
                 return;
             }
@@ -3894,64 +3894,32 @@ string get_buf(const Expr &buf){
     return  c_print_name(output);
 }
 
-void AnnotationPrinter::print_buffer_min(const Expr &buf, const Expr &dim){
-    if(false && !is_top_level){
-        stream << get_buf(buf);
-        stream << "_min_";
-        print(dim);
+void AnnotationPrinter::print_buffer_helper(const Expr &buf, const Expr &dim, string content){
+    const IntImm *dimn = dim.as<IntImm>();
+    internal_assert(dimn && dimn->value >= 0);
+    if(!is_top_level){
+        stream << get_buf(buf) << "_" << content << "_" << dimn->value;
         return;
     }
     print(buf);
     if(is_pvl){
-        const IntImm *dimn = dim.as<IntImm>();
-        internal_assert(dimn && dimn->value >= 0 && dimn->value<=3);
-        stream << ".min_" << dimn->value;
-         
+        internal_assert(dimn->value<=3);
+        stream << "." << content << "_" << dimn->value;
     } else {
-        stream << "->dim[";
-        print(dim);
-        stream << "].min";
+        stream << "->dim[" << dimn->value << "]." << content << "";
     }
+}
+
+void AnnotationPrinter::print_buffer_min(const Expr &buf, const Expr &dim){
+    print_buffer_helper(buf, dim, "min");
 }
 
 void AnnotationPrinter::print_buffer_extent(const Expr &buf, const Expr &dim){
-    if(false && !is_top_level){
-        stream << get_buf(buf);
-        stream << "_extent_";
-        print(dim);
-        return;
-    }
-    print(buf);
-    if(is_pvl){
-        const IntImm *dimn = dim.as<IntImm>();
-        internal_assert(dimn && dimn->value >= 0 && dimn->value<=3);
-        stream << ".extent_" << dimn->value;
-         
-    } else {
-        stream << "->dim[";
-        print(dim);
-        stream << "].extent";
-    }
+    print_buffer_helper(buf, dim, "extent");
 }
 
 void AnnotationPrinter::print_buffer_stride(const Expr &buf, const Expr &dim){
-    if(false && !is_top_level){
-        stream << get_buf(buf);
-        stream << "_stride_";
-        print(dim);
-        return;
-    }
-    print(buf);
-    if(is_pvl){
-        const IntImm *dimn = dim.as<IntImm>();
-        internal_assert(dimn && dimn->value >= 0 && dimn->value<=3);
-        stream << ".stride_" << dimn->value;
-         
-    } else {
-        stream << "->dim[";
-        print(dim);
-        stream << "].stride";
-    }
+    print_buffer_helper(buf, dim, "stride");
 }
 
 void AnnotationPrinter::print_buffer_max(const Expr &buf, const Expr &dim){
@@ -4053,8 +4021,8 @@ void AnnotationPrinter::visit(const Select * op) {
         stream << ")";
 }
 
-AnnotationPrinter::AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level, Scope<CodeGen_C::Allocation> &buffer_types)
-        : IRPrinter(s), is_pvl(is_pvl), is_top_level(is_top_level), buffer_types(buffer_types) {};
+AnnotationPrinter::AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level, const Scope<CodeGen_C::Allocation> &buffer_types)
+        : IRPrinter(s), is_pvl(is_pvl), is_top_level(is_top_level), buffer_types(buffer_types){};
 
 }  // namespace Internal
 }  // namespace Halide

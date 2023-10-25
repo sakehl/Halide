@@ -60,13 +60,61 @@ void get_buffer_annotations(const Parameter &buf, vector<Annotation> &res){
 class UpdateBufferAnnotations: public IRMutator {
     using IRMutator::visit;
 
-    map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints;
+    const map<string, vector<tuple<Expr,Expr,Expr>>> &buffer_constraints;
 
     enum VarType {
         Min,
         Extent,
         Stride
     };
+
+    Expr get_min(string name, int i){
+        auto constraints = buffer_constraints.find(name);
+        user_assert(constraints != buffer_constraints.end() ) 
+            << "Pipeline annotation for images contain a call to a non-image type, which is not allowed: " << name;
+
+        Expr e = std::get<0>(constraints->second[i]);
+        if(e.defined()) return e;
+        
+        if(top_level){
+            Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), name + ".buffer");
+            return Call::make(Int(32), Call::buffer_get_min, {buffer, i}, Call::Extern);
+        } else {
+            return Variable::make(Int(32), name + ".min." + std::to_string(i));
+        }
+    }
+
+    Expr get_extent(string name, int i){
+        auto constraints = buffer_constraints.find(name);
+        user_assert(constraints != buffer_constraints.end() )
+            << "Pipeline annotation for images contain a call to a non-image type, which is not allowed: " << name;
+
+        Expr e = std::get<1>(constraints->second[i]);
+        if(e.defined()) return e;
+
+        if(top_level){
+            Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), name + ".buffer");
+            return Call::make(Int(32), Call::buffer_get_extent, {buffer, i}, Call::Extern);
+        } else {
+            return Variable::make(Int(32), name + ".extent." + std::to_string(i));
+        }
+    }
+
+     Expr get_stride(string name, int i){
+        auto constraints = buffer_constraints.find(name);
+        user_assert(constraints != buffer_constraints.end() ) 
+            << "Pipeline annotation for images contain a call to a non-image type, which is not allowed: " << name;
+
+        Expr e = std::get<2>(constraints->second[i]);
+        if(e.defined()) return e;
+        
+        if(top_level){
+            Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), name + ".buffer");
+            return Call::make(Int(32), Call::buffer_get_stride, {buffer, i}, Call::Extern);
+        } else {
+            return Variable::make(Int(32), name + ".stride." + std::to_string(i));
+        }
+    }
 
     Expr visit(const Variable *op) override {
         if(!top_level)
@@ -106,21 +154,14 @@ class UpdateBufferAnnotations: public IRMutator {
             }
 
             if(name != ""){
-                auto constraints = buffer_constraints.find(name);
-                user_assert(constraints != buffer_constraints.end()) 
-                    << "Pipeline annotation for images contain a call to a non-image type, which is not allowed: " << name;
                 switch(prop) {
                     case VarType::Min:
-                        return std::get<0>(constraints->second[num]);
+                        return get_min(name, num);
                     case VarType::Extent:
-                        return std::get<1>(constraints->second[num]);
+                        return get_extent(name, num);
                     case VarType::Stride:
-                        return std::get<2>(constraints->second[num]);
+                        return get_stride(name, num);
                 }
-                
-
-                // Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), name + ".buffer");
-                // return Call::make(Int(32), prop,{buffer, num}, Call::Extern);
             }
         }
 
@@ -142,10 +183,6 @@ class UpdateBufferAnnotations: public IRMutator {
             if(ends_with(name, "_im"))
                 name.erase(name.length()-3);
 
-            auto constraints = buffer_constraints.find(name);
-            user_assert(constraints != buffer_constraints.end()) 
-                << "Annotations for images contain a call to a non-image type, which is not allowed: \"" << call->name << "\": " << name;
-
             Function f(call->func);
             user_assert(f.outputs() == 1)
                 << "Function " << name << "has zero or more than one outputs, which we do not yet support";
@@ -153,7 +190,7 @@ class UpdateBufferAnnotations: public IRMutator {
             dimensions = f.dimensions();
         } else {
             user_assert(call->call_type == Call::CallType::Image) 
-                << "Annotawtions for images contain a call to a non-image type, which is not alloed: \"" << call->name << "\"";
+                << "Annotations for images contain a call to a non-image type, which is not allowed: \"" << call->name << "\"";
             type = call->param.type();
             dimensions = call->param.dimensions();
         }
@@ -170,14 +207,10 @@ class UpdateBufferAnnotations: public IRMutator {
             Expr new_arg = mutate(old_arg);
             new_args[i] = std::move(new_arg);
         }
-   
-        auto constraints = buffer_constraints.find(name);
-        user_assert(constraints != buffer_constraints.end())
-            << "Annotations for buffers contain a call to an image, which is not in the input: \"" << call->name << "\"";
-
+        
         for(size_t i=0; i < dimensions;i++){
-            Expr min = std::get<0>(constraints->second[i]);
-            Expr stride = std::get<2>(constraints->second[i]);
+            Expr min = get_min(name, i);
+            Expr stride = get_stride(name, i);
             Expr added_dimension = (new_args[i] - min) * stride;
             if(i==0)
                 index = added_dimension;
@@ -194,7 +227,7 @@ class UpdateBufferAnnotations: public IRMutator {
     }
 
 public:
-    UpdateBufferAnnotations(map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints, bool top_level) 
+    UpdateBufferAnnotations(const map<string, vector<tuple<Expr,Expr,Expr>>> &buffer_constraints, bool top_level) 
       : buffer_constraints(buffer_constraints), top_level(top_level) {}
 
     bool top_level;
@@ -353,20 +386,19 @@ class AddParameterAnnotations : public IRMutator {
             Expr host = Call::make(Handle(), Call::buffer_get_host, {buffer}, Call::Extern);
             for (int i = 0; i < par.dimensions(); i++) {
                 Expr min = par.min_constraint(i);
-                if(!min.defined()){
-                    min = Call::make(Int(32), Call::buffer_get_min, {buffer, i}, Call::Extern);
-                }
-
                 Expr extent = par.extent_constraint(i);
-                if(!extent.defined()){
-                    extent = Call::make(Int(32), Call::buffer_get_extent, {buffer, i}, Call::Extern);
-                }
-
                 Expr stride = par.stride_constraint(i);
+                buffer_dims.emplace_back(min, extent, stride);
+                if(!min.defined()){
+                    min = Variable::make(Int(32), par.name() + ".min." + std::to_string(i));
+                }
+                if(!extent.defined()){
+                    extent = Variable::make(Int(32), par.name() + ".extent." + std::to_string(i));
+                }
                 if(!stride.defined()){
                     stride = Call::make(Int(32), Call::buffer_get_stride, {buffer, i}, Call::Extern);
+                    stride = Variable::make(Int(32), par.name() + ".stride." + std::to_string(i));
                 }
-                buffer_dims.emplace_back(min, extent, stride);
                 
                 Var var = Var::implicit(i);
                 forall_vars_expr.emplace_back(var);
