@@ -571,7 +571,7 @@ void GetForallBounds::updateMin(Simplify::ExprInfo &info, const Simplify::ExprIn
 // x < 5
 // or 0 < x
 bool GetForallBounds::getBoundsLesser(Expr left, Expr right, bool equal){
-    bool used;
+    bool used = false;
     // x <= [0,4] means that x is maximally 4
     if(const Variable *v = left.as<Variable>()){
         if(vars.count(v->name) != 0){
