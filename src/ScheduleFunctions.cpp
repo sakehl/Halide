@@ -1176,6 +1176,7 @@ protected:
     using IRMutator::visit;
 
     Stmt visit(const For *for_loop) override {
+
         debug(3) << "Injecting " << funcs << " entering for-loop over " << for_loop->name << "\n";
         Stmt body = for_loop->body;
 

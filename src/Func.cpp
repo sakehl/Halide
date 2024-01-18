@@ -1659,6 +1659,12 @@ Stage &Stage::serial(const VarOrRVar &var) {
     return *this;
 }
 
+Stage &Stage::gpu_thread_reduce(const RVar &r, DeviceAPI device_api) {
+    set_dim_device_api(r, device_api);
+    set_dim_type(r, ForType::GPUThreadReduce);
+    return *this;
+}
+
 Stage &Stage::parallel(const VarOrRVar &var) {
     set_dim_type(var, ForType::Parallel);
     return *this;
@@ -2662,6 +2668,12 @@ Func &Func::tile(const std::vector<VarOrRVar> &previous,
 Func &Func::reorder(const std::vector<VarOrRVar> &vars) {
     invalidate_cache();
     Stage(func, func.definition(), 0).reorder(vars);
+    return *this;
+}
+
+Func &Func::gpu_thread_reduce(const RVar &r, DeviceAPI device_api) {
+    invalidate_cache();
+    Stage(func, func.definition(), 0).gpu_thread_reduce(r, device_api);
     return *this;
 }
 

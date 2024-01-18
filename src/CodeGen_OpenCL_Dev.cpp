@@ -200,6 +200,8 @@ string simt_intrinsic(const string &name) {
         return "get_group_id(2)";
     } else if (ends_with(name, ".__block_id_w")) {
         return "get_group_id(3)";
+    } else if (ends_with(name, ".__gpu_thread_reduce")) {
+        return "get_local_id(0)";
     }
     internal_error << "simt_intrinsic called on bad variable name: " << name << "\n";
     return "";
@@ -209,8 +211,54 @@ string simt_intrinsic(const string &name) {
 void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const For *loop) {
     user_assert(loop->for_type != ForType::GPULane)
         << "The OpenCL backend does not support the gpu_lanes() scheduling directive.";
+       
+    // Cover the added GPUThreadReduceLoop
+    if(loop->for_type == ForType::GPUThreadReduce) {
+        // Check if the condition for the gpu_thread_reduce holds, only for addition (right now)
+        user_assert(loop->body.as<Store>()->value.as<Add>())
+            << "GPUThreadReduce is only defined on addition\n";
 
-    if (is_gpu_var(loop->name)) {
+        // get the local ID of this tread
+        stream << get_indent() << print_type(Int(32)) << " " << print_name(loop->name)
+               << " = " << simt_intrinsic(loop->name) << ";\n";
+
+        // Local results of the computation
+        stream << "__local int local_sum[1024];\n";
+
+        // initialize the repsentive sum value (might already be loaded in case of sum[0])
+        string store_name = print_name(loop->body.as<Store>()->name);
+        string b_value = print_expr(loop->body.as<Store>()->value.as<Add>()->b);
+        stream << get_indent() 
+                << "local_sum" 
+                << "[" << print_name(loop->name) 
+                << "] = " << store_name 
+                << "[" << print_name(loop->name) 
+                << "] + "<< b_value << ";\n";
+
+        // Wait for all threads to do this
+        stream << get_indent() << "barrier(CLK_LOCAL_MEM_FENCE);\n";
+        
+        // take the nearest larger/equal integer that is a power of 2 as loop range
+        stream << get_indent() << "int group_size = get_local_size(0);\n";
+        stream << get_indent() << "int group_size_2 = 1;\n";
+        stream << get_indent() << "while (group_size_2 < group_size) {\n";
+        stream << get_indent() << "  group_size_2 <<= 1;\n";
+        stream << get_indent() << "}\n";
+
+        // compute the sum based on parallel reduction, wait on each thread after each loop step
+        stream << get_indent() << "for (unsigned int i = group_size_2 / 2; i > 0; i >>= 1) {;\n";
+        stream << get_indent() << "  if (" << print_name(loop->name) << " < i) {\n";
+        stream << get_indent() << "    " << "local_sum" << "[" << print_name(loop->name) << "] += " << "local_sum" << "[" << print_name(loop->name) << " + i];\n";
+        stream << get_indent() << "  }\n";
+        stream << get_indent() << "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+        stream << get_indent() << "}\n";
+
+        // store the value back to global memory if we are the first thread
+        stream << get_indent() << "if (" << print_name(loop->name) << " == 0) {\n";
+        stream << get_indent() << "  " << store_name << "[0] = local_sum[0];\n";
+        stream << get_indent() << "}\n";
+        
+    } else if (is_gpu_var(loop->name)) {
         internal_assert((loop->for_type == ForType::GPUBlock) ||
                         (loop->for_type == ForType::GPUThread))
             << "kernel loop must be either gpu block or gpu thread\n";
@@ -699,6 +747,7 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::visit(const Store *op) {
                    << id_value << ".s" << vector_elements[i] << ";\n";
         }
     } else {
+        // stream << "HERE ARE WE \n";
         string id_index = print_expr(op->index);
         stream << get_indent();
         std::string array_indexing = print_array_access(op->name, t, id_index);
@@ -957,16 +1006,17 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
         if (arg.is_buffer &&
             CodeGen_GPU_Dev::is_buffer_constant(s, arg.name) &&
             arg.size > 0) {
-            constants.emplace_back(arg.name, arg.size);
-        }
+                constants.emplace_back(arg.name, arg.size);
+        } 
     }
 
     // Sort the constant candidates from smallest to largest. This will put
     // as many of the constant allocations in __constant as possible.
     // Ideally, we would prioritize constant buffers by how frequently they
     // are accessed.
+    
     sort(constants.begin(), constants.end());
-
+    
     // Compute the cumulative sum of the constants.
     for (size_t i = 1; i < constants.size(); i++) {
         constants[i].size += constants[i - 1].size;
@@ -1046,6 +1096,7 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
         }
     }
 
+
     class FindShared : public IRVisitor {
         using IRVisitor::visit;
         void visit(const Allocate *op) override {
@@ -1102,6 +1153,7 @@ void CodeGen_OpenCL_Dev::CodeGen_OpenCL_C::add_kernel(Stmt s,
             stream << "#undef " << get_memory_space(arg.name) << "\n";
         }
     }
+
 }
 
 void CodeGen_OpenCL_Dev::init_module() {

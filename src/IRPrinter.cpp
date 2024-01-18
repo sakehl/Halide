@@ -318,6 +318,9 @@ ostream &operator<<(ostream &out, const ForType &type) {
     case ForType::GPULane:
         out << "gpu_lane";
         break;
+    case ForType::GPUThreadReduce:
+        out << "gpu_thread_reduce";
+        break;
     }
     return out;
 }
@@ -465,7 +468,13 @@ void IRPrinter::print_no_parens(const Expr &ir) {
 }
 
 void IRPrinter::print(const Stmt &ir) {
-    ir.accept(this);
+    try{
+        ir.accept(this);
+    } catch(const Halide::InternalError& e) {
+        debug(1) << "Halide::InternalError: " << e.what() << "\n";
+        throw;
+    }
+   
 }
 
 void IRPrinter::print_list(const std::vector<Expr> &exprs) {

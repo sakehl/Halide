@@ -69,6 +69,8 @@ private:
             num_blocks[2] = op->extent;
         } else if (ends_with(op->name, ".__block_id_w")) {
             num_blocks[3] = op->extent;
+        } else if (ends_with(op->name, ".__gpu_thread_reduce")) {
+            num_threads[0] = op->extent;
         }
 
         op->body.accept(this);

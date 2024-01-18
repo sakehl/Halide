@@ -1,3 +1,6 @@
+#include <iostream>
+#include <sstream>
+
 #include "Error.h"
 #include "Introspection.h"
 #include "Util.h"  // for get_env_variable

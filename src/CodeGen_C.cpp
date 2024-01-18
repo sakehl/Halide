@@ -903,6 +903,7 @@ void CodeGen_C::compile(const Module &input) {
         }
     }
     uses_gpu_for_loops = (type_info.for_types_used.count(ForType::GPUBlock) ||
+                          type_info.for_types_used.count(ForType::GPUThreadReduce) ||
                           type_info.for_types_used.count(ForType::GPUThread) ||
                           type_info.for_types_used.count(ForType::GPULane));
 

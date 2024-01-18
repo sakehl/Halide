@@ -525,7 +525,8 @@ private:
         }
         bool old_in_gpu = in_gpu;
         if (op->for_type == ForType::GPUBlock ||
-            op->for_type == ForType::GPUThread) {
+            op->for_type == ForType::GPUThread ||
+            op->for_type == ForType::GPUThreadReduce) {
             in_gpu = true;
         }
         Stmt stmt = IRMutator::visit(op);

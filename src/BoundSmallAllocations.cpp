@@ -65,7 +65,7 @@ class BoundSmallAllocations : public IRMutator {
         b.max = simplify(b.max);
         ScopedBinding<Interval> bind(scope, op->name, b);
         bool new_in_thread_loop =
-            in_thread_loop || op->for_type == ForType::GPUThread;
+            in_thread_loop || op->for_type == ForType::GPUThread || op->for_type == ForType::GPUThreadReduce;
         ScopedValue<bool> old_in_thread_loop(in_thread_loop, new_in_thread_loop);
         DeviceAPI new_device_api =
             op->device_api == DeviceAPI::None ? device_api : op->device_api;

@@ -863,8 +863,8 @@ void run_with_large_stack(const std::function<void()> &action) {
 
 #ifdef HALIDE_WITH_EXCEPTIONS
     if (args.exception) {
-        debug(1) << "Subcontext threw exception. Rethrowing...\n";
-        std::rethrow_exception(args.exception);
+        debug(1) << "Subcontext threw exception. Rethrowing...\n";\
+        std::rethrow_exception(args.exception);        
     }
 #endif
 

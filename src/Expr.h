@@ -407,6 +407,7 @@ enum class ForType {
     GPUBlock,
     GPUThread,
     GPULane,
+    GPUThreadReduce,
 };
 
 /** Check if for_type executes for loop iterations in parallel and unordered. */

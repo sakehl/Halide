@@ -107,7 +107,8 @@ class CanonicalizeGPUVars : public IRMutator {
 
         if ((op->for_type == ForType::GPUBlock) ||
             (op->for_type == ForType::GPUThread) ||
-            (op->for_type == ForType::GPULane)) {
+            (op->for_type == ForType::GPULane)  ||
+            (op->for_type == ForType::GPUThreadReduce)) {
 
             CountGPUBlocksThreads counter;
             op->body.accept(&counter);
@@ -125,6 +126,8 @@ class CanonicalizeGPUVars : public IRMutator {
             } else if (op->for_type == ForType::GPULane) {
                 user_assert(counter.nlanes == 0) << "Cannot nest multiple loops over gpu lanes: " << name << "\n";
                 name += "." + get_thread_name(0);
+            } else if (op->for_type == ForType::GPUThreadReduce) {
+                name += ".__gpu_thread_reduce";
             }
 
             if (name != op->name) {
