@@ -72,7 +72,14 @@ const string headers = R"INLINE_CODE(
 )INLINE_CODE";
 
 const string globals = R"INLINE_CODE(
-void halide_unused(bool e){};
+#ifndef HALIVER_GLOBALS
+#define HALIVER_GLOBALS
+
+struct halide_dimension_t {
+    int32_t min, extent, stride;
+};
+
+inline void halide_unused(bool e){};
 
 /*@
 pure int max(int x, int y) = x > y ? x : y;
@@ -88,17 +95,15 @@ pure int abs(int x) = x >= 0 ? x : -x;
 pure float abs(float x) = x >= 0 ? x : -x;
 
 // Euclidean division is defined internally in VerCors
-pure int euclidean_div(int x, int y);
-pure int euclidean_mod(int x, int y);
-pure int hdiv(int x, int y) = y == 0 ? 0 : euclidean_div(x, y);
-pure int hmod(int x, int y) = y == 0 ? 0 : euclidean_mod(x, y);
+pure int hdiv(int x, int y) = y == 0 ? 0 : \euclidean_div(x, y);
+pure int hmod(int x, int y) = y == 0 ? 0 : \euclidean_mod(x, y);
 @*/
 
 /*@
   requires y != 0;
-  ensures \result == euclidean_div(x, y);
+  ensures \result == \euclidean_div(x, y);
 @*/
-/*inline*/ int /*@ pure @*/ div_eucl(int x, int y)
+inline int /*@ pure @*/ div_eucl(int x, int y)
 {
     int q = x/y;
     int r = x%y;
@@ -107,29 +112,39 @@ pure int hmod(int x, int y) = y == 0 ? 0 : euclidean_mod(x, y);
 
 /*@
   requires y != 0;
-  ensures \result == euclidean_mod(x, y);
+  ensures \result == \euclidean_mod(x, y);
 @*/
-/*inline*/ int /*@ pure @*/ mod_eucl(int x, int y)
+inline int /*@ pure @*/ mod_eucl(int x, int y)
 {
     int r = x%y;
     return (x >= 0 || r == 0) ? r : r + abs(y);
 }
 
-static inline float /*@ pure @*/ fast_inverse_f32(float x) {return 1.0f/x;};
-//@ given double eps;
-static inline float /*@ pure @*/ sqrt_f32(double x) {return (float)sqrt((double)x)/*@given {eps=eps}@*/;}
+static inline int /*@ pure @*/ min(int x, int y) {return x < y ? x : y;}
+
+static inline float /*@ pure @*/ fast_inverse_f32(float x) {return 1.0f/x;}
+static inline float /*@ pure @*/ sqrt_f32(double x) {return (float)sqrt((double)x);}
 static inline float /*@ pure @*/ pow_f32(float x, float y){ return (float) pow((double) x, (double) y);}
 static inline float /*@ pure @*/ floor_f32(float x){ return (float) floor((double) x); }
 static inline float /*@ pure @*/ ceil_f32(float x){ return (float) ceil((double) x); }
 static inline float /*@ pure @*/ round_f32(float x){ return (float) round((double) x); }
 
-//@ given double eps;
-static inline double /*@ pure @*/ sqrt_f64(double x) {return sqrt(x)/*@given {eps=eps}@*/;}
+static inline double /*@ pure @*/ sqrt_f64(double x) {return sqrt(x);}
 static inline double /*@ pure @*/ pow_f64(double x, double y) {return pow(x, y);}
 static inline double /*@ pure @*/ floor_f64(double x) {return floor(x);}
 static inline double /*@ pure @*/ ceil_f64(double x) {return ceil(x);}
 static inline double /*@ pure @*/ round_f64(double x){ return round(x); }
 
+inline float nan_f32() {return NAN;}
+/*@
+inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) = 
+ Perm(&dim[i], 1\2) **
+ Perm(dim[i].min, 1\2) **
+ Perm(dim[i].stride, 1\2) **
+ Perm(dim[i].extent, 1\2)
+ ;
+@*/
+#endif // HALIVER_GLOBALS
 )INLINE_CODE";
 
 // We now add definitions of things in the runtime which are
@@ -373,7 +388,7 @@ string buffer_header(string type){
     return ss.str();
 }
 
-string buffer_annotations(string buffer_name, int dimensions, Indentation indent, bool is_pvl){
+string buffer_annotations(string buffer_name, Type t, int dimensions, Indentation indent, bool is_pvl){
     std::ostringstream o;
 
     // std::ostringstream min_val_s;
@@ -388,23 +403,21 @@ string buffer_annotations(string buffer_name, int dimensions, Indentation indent
         for(int i =0; i< dimensions; i++){
             o << indent << "context Perm(" << buffer_name << ".min_" << i <<", read) ** Perm(" << buffer_name << ".stride_" << i << ", read) ** Perm(" << buffer_name << ".extent_" << i << ", read);\n";
         } 
-        o << indent << "context " << buffer_name << ".host.length == 1 ";
+        o << indent << "context " << buffer_name << ".host.length == 1";
         for(int i =0; i< dimensions; i++){
-            o << " + abs(" << buffer_name << ".stride_" << i << ") * (" << buffer_name << ".extent_" << i << " - 1)";
+            // o << " + abs(" << buffer_name << ".stride_" << i << ") * (" << buffer_name << ".extent_" << i << " - 1)";
+            o << " * " << buffer_name << ".extent_" << i;
         }
         o << ";\n";
     } else {
-        o << indent << "context Perm(" << buffer_name << "->dim, 1\\2) ** " << buffer_name << "->dim != NULL;\n"
-          << indent << "context \\pointer_length(" << buffer_name << "->dim) == " << dimensions << ";\n"
-          << indent << "context Perm(" << buffer_name << "->host, 1\\2) ** " << buffer_name << "->host != NULL;\n"
-          ;
+        o << indent << "context buffer_"<< type_to_c_type(t, false) << "(" << buffer_name << ", 1\\2, " << dimensions << ");\n";
         for(int i =0; i< dimensions; i++){
-            o << indent << "context Perm(&" << buffer_name << "->dim[" << i << "], 1\\2);\n"
-              << indent << "context Perm(" << buffer_name << "->dim[" << i << "].min, 1\\2) ** Perm(" << buffer_name << "->dim[" << i <<"].stride"  ", 1\\2) ** Perm(" << buffer_name << "->dim[" << i <<"].extent"  ", 1\\2);\n";
+            o << indent << "context dim_perm(" << buffer_name << "->dim, 1\\2, "<< i <<");\n";
         } 
         o << indent << "context \\pointer_length(" << buffer_name << "->host) == 1";
         for(int i =0; i< dimensions; i++){
-            o << " + abs(" << buffer_name << "->dim[" << i <<"].stride"  ") * (" << buffer_name << "->dim[" << i <<"].extent"  " - 1)";
+            // o << " + abs(" << buffer_name << "->dim[" << i <<"].stride"  ") * (" << buffer_name << "->dim[" << i <<"].extent"  " - 1)";
+            o << " * " << buffer_name << "->dim[" << i <<"].extent";
         }
         o << ";\n";
     }
@@ -1680,7 +1693,9 @@ void CodeGen_C::forward_declare_type_if_needed(const Type &t) {
 
 void CodeGen_C::emit_buffer(Type t) {
     string type = print_type(t);
-    
+    string type_cap = type;
+    for (auto & c: type_cap) c = (char)toupper(c);
+
     const char *buffer_decl = R"INLINE_CODE(
     /** The dimensionality of the buffer. */
     int32_t dimensions;
@@ -1694,6 +1709,9 @@ void CodeGen_C::emit_buffer(Type t) {
      * coordinates (defined below). */
 
 )INLINE_CODE";
+    stream
+        << "#ifndef HALIDE_BUFFER_TYPE_" << type_cap << "\n"
+        << "#define HALIDE_BUFFER_TYPE_" << type_cap << "\n";
     stream << "struct halide_buffer_" << type << " {\n"
         << buffer_decl
         << "    " << type << " *host;\n"
@@ -1701,56 +1719,69 @@ void CodeGen_C::emit_buffer(Type t) {
         ;
     stream 
         << "/*@ \n"
-        << " requires buf != NULL ** Perm(buf, 1\\2);\n"
+        << " requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
         << " requires Perm(buf->host, 1\\2);\n"
         << " @*/\n"
-        << "/*@ pure @*/ " << type << " *_halide_buffer_get_host_" << type << "(struct halide_buffer_" << type << " *buf) {\n"
+        << "/*@ pure @*/ inline " << type << " *_halide_buffer_get_host_" << type << "(struct halide_buffer_" << type << " *buf) {\n"
         << "    return buf->host;\n"
         << "}\n"
         << "\n"
         << "/*@ \n"
-        << "    requires buf != NULL ** Perm(buf, 1\\2);\n"
+        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
         << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
         << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].min, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_min_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ inline int _halide_buffer_get_min_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].min;\n"
         << "}\n"
         << "\n"
         << "/*@ \n"
-        << "    requires buf != NULL ** Perm(buf, 1\\2);\n"
+        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
         << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
         << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].min, 1\\2) ** Perm(buf->dim[d].extent, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_max_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ inline int _halide_buffer_get_max_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].min + buf->dim[d].extent - 1;\n"
         << "}\n"
         << "\n"
         << "/*@ \n"
-        << "    requires buf != NULL ** Perm(buf, 1\\2);\n"
+        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
         << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
         << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].extent, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_extent_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ inline int _halide_buffer_get_extent_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].extent;\n"
         << "}\n"
         << "\n"
         << "/*@ \n"
-        << "    requires buf != NULL ** Perm(buf, 1\\2);\n"
+        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
         << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
         << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
         << "    requires Perm(&buf->dim[d], 1\\2);\n"
         << "    requires Perm(buf->dim[d].stride, 1\\2);\n"
         << "@*/\n"
-        << "/*@ pure @*/ int _halide_buffer_get_stride_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
+        << "/*@ pure @*/ inline int _halide_buffer_get_stride_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
         << "    return buf->dim[d].stride;\n"
         << "}\n"
+        << "\n"
+        << "/*@\n"
+        << "inline resource buffer_"<< type <<"(struct halide_buffer_" << type << " *buf, rational p, int n_dims) = \n"
+        << " buf != NULL **\n"
+        << " \\pointer_length(buf) == 1 **\n"
+        << " Perm(buf, p) **\n"
+        << " Perm(buf->dim, p) **\n"
+        << " buf->dim != NULL **\n"
+        << " \\pointer_length(buf->dim) == n_dims **\n"
+        << " Perm(buf->host, p) **\n"
+        << " buf->host != NULL;\n"
+        << "@*/\n"
+        << "#endif //HALIDE_BUFFER_TYPE_" << type_cap << "\n"
         ;
 }
 
@@ -1762,13 +1793,6 @@ string get_simple_type(Type t){
 }
 
 void CodeGen_C::emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitted){
-    const char *dimension_decl = R"INLINE_CODE(
-struct halide_dimension_t {
-    int32_t min, extent, stride;
-};
-)INLINE_CODE";
-    stream << dimension_decl << "\n";
-
     for(const auto &a: f.args){
         if(a.is_buffer() && buffers_emitted->count(a.type) == 0){
             buffers_emitted->insert(a.type);
@@ -1911,7 +1935,7 @@ void CodeGen_C::compile(const LoweredFunc &f) {
 
         for (size_t i = 0; i < args.size(); i++) {
             if (args[i].is_buffer()) {
-                stream << buffer_annotations(print_name(args[i].name) + "_buffer", args[i].dimensions, get_indent(), is_pvl());
+                stream << buffer_annotations(print_name(args[i].name) + "_buffer", args[i].type, args[i].dimensions, get_indent(), is_pvl());
             }
         }
 
@@ -2003,8 +2027,7 @@ void CodeGen_C::compile(const LoweredFunc &f) {
     for (size_t i = 0; i < args.size(); i++) {
         string name = print_name(args[i].name);
         if (args[i].is_buffer()) {
-            stream << get_indent() << "context " << name << "_buffer != NULL ** Perm(" << name <<"_buffer, 1\\2);\n";
-            stream << buffer_annotations(name + "_buffer", args[i].dimensions, get_indent(), is_pvl());
+            stream << buffer_annotations(name + "_buffer", args[i].type, args[i].dimensions, get_indent(), is_pvl());
         }
     }
 
@@ -2095,10 +2118,10 @@ void CodeGen_C::compile(const LoweredFunc &f) {
 
     if (is_header_or_extern_decl() && f.linkage == LinkageType::ExternalPlusMetadata) {
         // Emit the argv version
-        stream << "\nHALIDE_FUNCTION_ATTRS\nint " << simple_name << "_argv(void **args);\n";
+        // stream << "\nHALIDE_FUNCTION_ATTRS\nint " << simple_name << "_argv(void **args);\n";
 
         // And also the metadata.
-        stream << "\nHALIDE_FUNCTION_ATTRS\nconst struct halide_filter_metadata_t *" << simple_name << "_metadata();\n";
+        // stream << "\nHALIDE_FUNCTION_ATTRS\nconst struct halide_filter_metadata_t *" << simple_name << "_metadata();\n";
     }
 
     if (!namespaces.empty()) {
@@ -2526,7 +2549,11 @@ static bool isinf(T x) {
 }
 
 void CodeGen_C::visit(const FloatImm *op) {
-    id = std::to_string(op->value);
+    if (isnan(op->value)) {
+        id = "nan_f32()";
+    } else {
+        id = std::to_string(op->value);
+    }
     return;
 
     if (isnan(op->value)) {
@@ -3419,7 +3446,7 @@ void CodeGen_C::visit(const Allocate *op) {
         } else {
             // Check that the allocation is not scalar (if it were scalar
             // it would have constant size).
-            internal_error << "Unsupported by HaliVer";
+            // internal_error << "Unsupported by HaliVer";
             internal_assert(!op->extents.empty());
 
             size_id = print_assignment(Int(64), print_expr(op->extents[0]));
@@ -3436,18 +3463,18 @@ void CodeGen_C::visit(const Allocate *op) {
                 }
                 size_id = print_assignment(Int(64), new_size_id_rhs);
             }
-            stream << get_indent() << "if (("
-                   << size_id << " > ((int64_t(1) << 31) - 1)) || (("
-                   << size_id << " * sizeof("
-                   << op_type << ")) > ((int64_t(1) << 31) - 1)))\n";
-            open_scope();
-            stream << get_indent();
-            // TODO: call halide_error_buffer_allocation_too_large() here instead
-            // TODO: call create_assertion() so that NoAssertions works
-            stream << "halide_error(_ucon, "
-                   << "\"32-bit signed overflow computing size of allocation " << op->name << "\\n\");\n";
-            stream << get_indent() << "return -1;\n";
-            close_scope("overflow test " + op->name);
+            // stream << get_indent() << "if (("
+            //        << size_id << " > ((int64_t(1) << 31) - 1)) || (("
+            //        << size_id << " * sizeof("
+            //        << op_type << ")) > ((int64_t(1) << 31) - 1)))\n";
+            // open_scope();
+            // stream << get_indent();
+            // // TODO: call halide_error_buffer_allocation_too_large() here instead
+            // // TODO: call create_assertion() so that NoAssertions works
+            // stream << "halide_error(_ucon, "
+            //        << "\"32-bit signed overflow computing size of allocation " << op->name << "\\n\");\n";
+            // stream << get_indent() << "return -1;\n";
+            // close_scope("overflow test " + op->name);
         }
 
         // Check the condition to see if this allocation should actually be created.
@@ -3879,7 +3906,25 @@ void AnnotationPrinter::visit(const Let *op) {
 }
 
 void AnnotationPrinter::visit(const Div *op) {
-    stream << "hdiv(";
+    if(op->type.is_int_or_uint()){
+        stream << "hdiv(";
+        print_no_parens(op->a);
+        stream << ", ";
+        print_no_parens(op->b);
+        stream << ")";
+    } else {
+        IRPrinter::visit(op);
+    }
+}
+
+void AnnotationPrinter::visit(const Mod *op) {
+    if(op->type.is_int_or_uint()){   
+        stream << "hmod("; 
+    } else if(op->type.is_float()) {
+        stream << "fmod(";
+    } else {
+        internal_error << "Unsupported by Haliver" << to_string(op);
+    }
     print_no_parens(op->a);
     stream << ", ";
     print_no_parens(op->b);
