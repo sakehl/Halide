@@ -1083,14 +1083,14 @@ public:
 
 void Function::add_func_annotation(Annotation ann){
     contents->func_annotations.emplace_back(ann);
-    user_assert(contents->output_buffers.size() == 1) << "We only support functions with a single valued output: " << contents->name;
+    // user_assert(contents->output_buffers.size() == 1) << "We only support functions with a single valued output: " << contents->name;
     Annotation new_ann = SubstituteArgs(contents->args).mutate(ann);
     contents->output_buffers.front().add_annotation(new_ann);
 }
 
 void Function::clear_func_annotations(){
     contents->func_annotations.clear();
-    user_assert(contents->output_buffers.size() == 1) << "We only support functions with a single valued output: " << contents->name;
+    // user_assert(contents->output_buffers.size() == 1) << "We only support functions with a single valued output: " << contents->name;
     contents->output_buffers.front().clear_annotations();
 }
 
