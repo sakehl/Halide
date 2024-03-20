@@ -117,6 +117,8 @@ public:
     /** Emit an expression on the output stream without enclosing parens */
     void print_no_parens(const Expr &);
 
+    void print_maybe_parens(const Expr &, const Expr &outer_expr, bool is_left);
+
     /** emit a statement on the output stream */
     void print(const Stmt &);
 

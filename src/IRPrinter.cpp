@@ -2,6 +2,7 @@
 #include <sstream>
 
 #include "IRPrinter.h"
+#include "IRVisitor.h"
 
 #include "AssociativeOpsTable.h"
 #include "Associativity.h"
@@ -168,6 +169,131 @@ ostream &operator<<(ostream &stream, const Target &target) {
 }
 
 namespace Internal {
+
+class Precedence : public IRVisitor {
+public:
+    int precedence = -1;
+    bool left_associative = false;
+    bool right_associative = false;
+    bool associative = false;
+
+    static int get_precedence(const Expr &e) {
+        Precedence p;
+        e.accept(&p);
+        return p.precedence;
+    }
+
+    using IRVisitor::visit;
+
+    void visit(const IntImm *) override {
+        precedence = 2;
+    }
+    void visit(const UIntImm *) override {
+        precedence = 2;
+    }
+    void visit(const FloatImm *) override {
+        precedence = 1;
+    }
+    void visit(const StringImm *) override {
+        precedence = 1;
+    }
+    void visit(const ReadPerm *) override {
+        precedence = 1;
+    }
+    void visit(const Cast *) override {
+        precedence = 2;
+    }
+    void visit(const Variable *) override {
+        precedence = 1;
+    }
+    void visit(const Add *) override {
+        precedence = 4;
+        associative = true;
+        left_associative = true;
+    }
+    void visit(const Sub *) override {
+        precedence = 4;
+        left_associative = true;
+    }
+    void visit(const Mul *) override {
+        precedence = 3;
+        associative = true;
+        left_associative = true;
+    }
+    void visit(const Div *) override {
+        precedence = 3;
+        left_associative = true;
+    }
+    void visit(const Frac *) override {
+        precedence = 3;
+        left_associative = true;
+    }
+    void visit(const Mod *) override {
+        precedence = 3;
+    }
+    void visit(const Min *) override {
+        precedence = 1;
+    }
+    void visit(const Max *) override {
+        precedence = 1;
+    }
+    void visit(const EQ *) override {
+        precedence = 7;
+    }
+    void visit(const NE *) override {
+        precedence = 7;
+    }
+    void visit(const LT *) override {
+        precedence = 6;
+    }
+    void visit(const LE *) override {
+        precedence = 6;
+    }
+    void visit(const GT *) override {
+        precedence = 6;
+    }
+    void visit(const GE *) override {
+        precedence = 6;
+    }
+    void visit(const And *) override {
+        precedence = 11;
+        associative = true;
+    }
+    void visit(const Or *) override {
+        precedence = 12;
+        associative = true;
+    }
+    void visit(const Implies *) override {
+        precedence = 14;
+    }
+    void visit(const Not *) override {
+        precedence = 2;
+    }
+    void visit(const Forall *) override {
+        precedence = 1;
+    }
+    void visit(const Exists *) override {
+        precedence = 1;
+    }
+    void visit(const Select *) override {
+        precedence = 13;
+    }
+    void visit(const Load *) override {
+        precedence = 1;
+    }
+    void visit(const Ramp *) override {
+        precedence = 1;
+    }
+    void visit(const Broadcast *) override {
+        precedence = 1;
+    }
+    void visit(const Call *) override {
+        precedence = 1;
+    }
+    void visit(const Let *) override {
+        precedence = 1;
+    }
+};
 
 void IRPrinter::test() {
     Type i32 = Int(32);
@@ -484,6 +610,23 @@ void IRPrinter::print_no_parens(const Expr &ir) {
     ir.accept(this);
 }
 
+void IRPrinter::print_maybe_parens(const Expr &ir, const Expr &outer_expr, bool is_left) {
+    Precedence outer;
+    outer_expr.accept(&outer);
+    Precedence inner;
+    ir.accept(&inner);
+
+    int outer_precedence = outer.precedence;
+    int precedence = Precedence::get_precedence(ir);
+    bool no_parens = inner.precedence < outer.precedence ||
+                     (inner.precedence == outer.precedence &&
+                        inner.associative && outer.associative) ||
+                     (is_left && inner.precedence == outer.precedence &&
+                        inner.left_associative && outer.left_associative);
+    ScopedValue<bool> old(implicit_parens, no_parens);
+    ir.accept(this);
+}
+
 void IRPrinter::print(const Stmt &ir) {
     ir.accept(this);
 }
@@ -599,49 +742,49 @@ void IRPrinter::close() {
 
 void IRPrinter::visit(const Add *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " + ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const Sub *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " - ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const Mul *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << "*";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const Div *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << "/";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const Frac *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << "\\";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const Mod *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " % ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
@@ -663,73 +806,73 @@ void IRPrinter::visit(const Max *op) {
 
 void IRPrinter::visit(const EQ *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " == ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const NE *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " != ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const LT *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " < ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const LE *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " <= ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const GT *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " > ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const GE *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " >= ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const And *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " && ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const Or *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " || ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
 void IRPrinter::visit(const Implies *op) {
     open();
-    print(op->a);
+    print_maybe_parens(op->a, op, true);
     stream << " ==> ";
-    print(op->b);
+    print_maybe_parens(op->b, op, false);
     close();
 }
 
