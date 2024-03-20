@@ -162,8 +162,6 @@ public:
     using IRMutator::mutate;
 
     Expr mutate(const Expr &e) override {
-        if(!e.defined()) return e;
-
         if (should_lift(e)) {
             // Lift it in canonical form
             Expr lifted_expr = simplify(e);
