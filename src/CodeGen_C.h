@@ -310,6 +310,7 @@ protected:
     void visit(const Call *op) override;
 
     void visit(const Div *op) override;
+    void visit(const Mod *op) override;
 
     void visit(const UIntImm *op) override;
     
