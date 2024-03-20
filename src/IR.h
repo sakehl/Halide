@@ -237,7 +237,7 @@ struct Select : public ExprNode<Select> {
 struct Load : public ExprNode<Load> {
     std::string name;
 
-    Expr predicate, index;
+    Expr predicate, index, lemma;
 
     // If it's a load from an image argument or compiled-in constant
     // image, this will point to that
@@ -254,7 +254,8 @@ struct Load : public ExprNode<Load> {
                      Expr index, Buffer<> image,
                      Parameter param,
                      Expr predicate,
-                     ModulusRemainder alignment);
+                     ModulusRemainder alignment,
+                     Expr lemma = Expr());
 
     static const IRNodeType _node_type = IRNodeType::Load;
 };
@@ -352,7 +353,7 @@ struct ProducerConsumer : public StmtNode<ProducerConsumer> {
  * Handle(). */
 struct Store : public StmtNode<Store> {
     std::string name;
-    Expr predicate, value, index;
+    Expr predicate, value, index, lemma;
     // If it's a store to an output buffer, then this parameter points to it.
     Parameter param;
 
@@ -361,7 +362,7 @@ struct Store : public StmtNode<Store> {
     ModulusRemainder alignment;
 
     static Stmt make(const std::string &name, Expr value, Expr index,
-                     Parameter param, Expr predicate, ModulusRemainder alignment);
+                     Parameter param, Expr predicate, ModulusRemainder alignment, Expr lemma = Expr());
 
     static const IRNodeType _node_type = IRNodeType::Store;
 };
