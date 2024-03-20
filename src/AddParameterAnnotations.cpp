@@ -223,7 +223,7 @@ class UpdateBufferAnnotations: public IRMutator {
         if(top_level){
             name = name + ".buffer.host";
         }
-        return Load::make(type, name, index, Buffer<>(), call->param, const_true(), ModulusRemainder());
+        return Load::make(type, name, index, Buffer<>(), call->param, const_true(), ModulusRemainder(), Expr());
     }
 
 public:
@@ -433,7 +433,7 @@ class AddParameterAnnotations : public IRMutator {
         get_buffer_annotations(par, top_level);
         BufferInfo info = process_dimensions(par);
 
-        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(),ModulusRemainder());
+        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(),ModulusRemainder(), Expr());
         top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(1,1), info.forall_vars));
 
         for(const auto& ann :par.annotations()){
@@ -452,14 +452,14 @@ class AddParameterAnnotations : public IRMutator {
         BufferInfo info = process_dimensions(par);
 
         // Expr call = Call::make(par, forall_vars_expr);
-        Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder());
+        Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder(), Expr());
         Expr pure_call = Call::make(par.type(), "pure_" + par.name(), {info.index}, Call::Extern);
         proven_annotations[par.name()].emplace_back(AnnotationType::Context, info.bound, load, true, info.forall_vars);
 
         proven_annotations[par.name()].emplace_back(AnnotationType::Context, 
             Forall::make(info.forall_vars, info.bound, load == pure_call));
 
-        load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder());
+        load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
         top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(make_const(Int(32), 1), make_const(Int(32), 2)), info.forall_vars));
         top_level.emplace_back(AnnExpr::make(AnnotationType::Context, 
             Forall::make(info.forall_vars, info.bound, load == pure_call)));

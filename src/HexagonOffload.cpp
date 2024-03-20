@@ -663,7 +663,7 @@ class ReplaceParams : public IRMutator {
         auto i = replacements.find(op->name);
         if (i != replacements.end()) {
             return Load::make(op->type, op->name, mutate(op->index), op->image,
-                              i->second, mutate(op->predicate), op->alignment);
+                              i->second, mutate(op->predicate), op->alignment, mutate(op->lemma));
         } else {
             return IRMutator::visit(op);
         }
@@ -673,7 +673,7 @@ class ReplaceParams : public IRMutator {
         auto i = replacements.find(op->name);
         if (i != replacements.end()) {
             return Store::make(op->name, mutate(op->value), mutate(op->index),
-                               i->second, mutate(op->predicate), op->alignment);
+                               i->second, mutate(op->predicate), op->alignment, mutate(op->lemma));
         } else {
             return IRMutator::visit(op);
         }
@@ -697,7 +697,7 @@ class InjectHexagonRpc : public IRMutator {
     Expr state_var(const std::string &name, Type type) {
         return Let::make(name, state_var_ptr(name, type),
                          Load::make(type_of<void *>(), name, 0,
-                                    Buffer<>(), Parameter(), const_true(), ModulusRemainder()));
+                                    Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr()));
     }
 
     Expr state_var_ptr(const std::string &name, Type type) {
@@ -770,9 +770,9 @@ class InjectHexagonRpc : public IRMutator {
             if (i->second == scalars_buffer_type) {
                 int index = scalars_buffer_init.size();
                 scalars_buffer_init.push_back(Store::make(scalars_buffer_name, Variable::make(scalars_buffer_type, i->first),
-                                                          index, Parameter(), const_true(), ModulusRemainder()));
+                                                          index, Parameter(), const_true(), ModulusRemainder(), Expr()));
                 Expr replacement = Load::make(scalars_buffer_type, scalars_buffer_name, index, Buffer<>(),
-                                              Parameter(), const_true(), ModulusRemainder());
+                                              Parameter(), const_true(), ModulusRemainder(), Expr());
                 body = LetStmt::make(i->first, replacement, body);
 
                 i = c.vars.erase(i);

@@ -154,12 +154,13 @@ Expr IRMutator::visit(const Select *op) {
 Expr IRMutator::visit(const Load *op) {
     Expr predicate = mutate(op->predicate);
     Expr index = mutate(op->index);
-    if (predicate.same_as(op->predicate) && index.same_as(op->index)) {
+    Expr lemma = mutate(op->lemma);
+    if (predicate.same_as(op->predicate) && index.same_as(op->index) && lemma.same_as(op->lemma)) {
         return op;
     }
     return Load::make(op->type, op->name, std::move(index),
                       op->image, op->param, std::move(predicate),
-                      op->alignment);
+                      op->alignment, std::move(lemma));
 }
 
 Expr IRMutator::visit(const Ramp *op) {
@@ -263,10 +264,11 @@ Stmt IRMutator::visit(const Store *op) {
     Expr predicate = mutate(op->predicate);
     Expr value = mutate(op->value);
     Expr index = mutate(op->index);
-    if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index)) {
+    Expr lemma = mutate(op->lemma);
+    if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index), lemma.same_as(op->lemma)) {
         return op;
     }
-    return Store::make(op->name, std::move(value), std::move(index), op->param, std::move(predicate), op->alignment);
+    return Store::make(op->name, std::move(value), std::move(index), op->param, std::move(predicate), op->alignment, std::move(lemma));
 }
 
 Stmt IRMutator::visit(const Provide *op) {

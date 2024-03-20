@@ -150,11 +150,12 @@ private:
         }
         value = mutate(value);
         Expr index = mutate(op->index);
+        Expr lemma = mutate(op->lemma);
 
-        if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index)) {
+        if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index) && lemma.same_as(op->lemma)) {
             return op;
         } else {
-            return Store::make(op->name, value, index, op->param, predicate, op->alignment);
+            return Store::make(op->name, value, index, op->param, predicate, op->alignment, lemma);
         }
     }
 
@@ -164,12 +165,13 @@ private:
             predicate = mutate(predicate);
         }
         Expr index = mutate(op->index);
-        if (predicate.same_as(op->predicate) && index.same_as(op->index)) {
+        Expr lemma = mutate(op->lemma);
+        if (predicate.same_as(op->predicate) && index.same_as(op->index) && lemma.same_as(op->lemma)) {
             return op;
         } else {
             return Load::make(op->type, op->name, std::move(index),
                               op->image, op->param, std::move(predicate),
-                              op->alignment);
+                              op->alignment, std::move(lemma));
         }
     }
 

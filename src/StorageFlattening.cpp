@@ -49,6 +49,18 @@ private:
         return Variable::make(Int(32), name, buf, param, rdom);
     }
 
+    Expr make_lemma_call(const string &name, vector<Expr> args, const Buffer<> &buf, const Parameter &param) {
+        vector<Expr> new_args;
+        for (size_t i = 0; i < args.size(); i++) {
+            new_args.push_back(args[i]);
+            new_args.push_back(make_shape_var(name, "min", i, buf, param));
+            new_args.push_back(make_shape_var(name, "extent", i, buf, param));
+            new_args.push_back(make_shape_var(name, "stride", i, buf, param));
+        }
+        // return mutate(Call::make(Int(32), Call::lemma_flattened_array, args, Call::PureIntrinsic));
+        return Expr();
+    }
+
     Expr flatten_args(const string &name, vector<Expr> args,
                       const Buffer<> &buf, const Parameter &param) {
         bool internal = realizations.contains(name);
@@ -254,7 +266,8 @@ private:
             return Evaluate::make(store);
         } else {
             Expr idx = mutate(flatten_args(op->name, op->args, Buffer<>(), output_buf));
-            return Store::make(op->name, value, idx, output_buf, const_true(value.type().lanes()), ModulusRemainder());
+            Expr lemma = make_lemma_call(op->name, op->args, Buffer<>(), output_buf);
+            return Store::make(op->name, value, idx, output_buf, const_true(value.type().lanes()), ModulusRemainder(), lemma);
         }
     }
 
@@ -305,8 +318,9 @@ private:
                                   op->param);
             } else {
                 Expr idx = mutate(flatten_args(op->name, op->args, op->image, op->param));
+                Expr lemma = make_lemma_call(op->name, op->args, op->image, op->param);
                 return Load::make(op->type, op->name, idx, op->image, op->param,
-                                  const_true(op->type.lanes()), ModulusRemainder());
+                                  const_true(op->type.lanes()), ModulusRemainder(), lemma);
             }
 
         } else {
@@ -400,7 +414,7 @@ class PromoteToMemoryType : public IRMutator {
         if (t != op->type) {
             return Cast::make(op->type,
                               Load::make(t, op->name, mutate(op->index),
-                                         op->image, op->param, mutate(op->predicate), ModulusRemainder()));
+                                         op->image, op->param, mutate(op->predicate), ModulusRemainder(), mutate(op->lemma)));
         } else {
             return IRMutator::visit(op);
         }
@@ -410,7 +424,7 @@ class PromoteToMemoryType : public IRMutator {
         Type t = upgrade(op->value.type());
         if (t != op->value.type()) {
             return Store::make(op->name, Cast::make(t, mutate(op->value)), mutate(op->index),
-                               op->param, mutate(op->predicate), ModulusRemainder());
+                               op->param, mutate(op->predicate), ModulusRemainder(), mutate(op->lemma));
         } else {
             return IRMutator::visit(op);
         }

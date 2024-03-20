@@ -261,12 +261,14 @@ protected:
     Stmt visit(const Store *op) override {
         Expr predicate = mutate(op->predicate);
         Expr value = mutate(op->value);
+        Expr lemma = mutate(op->lemma);
         return Store::make(op->name,
                            std::move(value),
                            var,
                            op->param,
                            std::move(predicate),
-                           op->alignment);
+                           op->alignment
+                           , lemma);
     }
 
     const std::string &producer_name;

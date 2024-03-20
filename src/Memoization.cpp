@@ -231,7 +231,7 @@ public:
         writes.push_back(Store::make(key_name,
                                      StringImm::make(std::to_string(top_level_name.size()) + ":" + top_level_name +
                                                      std::to_string(function_name.size()) + ":" + function_name),
-                                     (index / Handle().bytes()), Parameter(), const_true(), ModulusRemainder()));
+                                     (index / Handle().bytes()), Parameter(), const_true(), ModulusRemainder(), Expr()));
         size_t alignment = Handle().bytes();
         index += Handle().bytes();
 
@@ -239,7 +239,7 @@ public:
         writes.push_back(Store::make(key_name,
                                      memoize_instance,
                                      (index / Int(32).bytes()),
-                                     Parameter(), const_true(), ModulusRemainder()));
+                                     Parameter(), const_true(), ModulusRemainder(), Expr()));
         alignment += 4;
         index += 4;
 
@@ -247,7 +247,7 @@ public:
         if (needed_alignment > 1) {
             while (alignment % needed_alignment) {
                 writes.push_back(Store::make(key_name, Cast::make(UInt(8), 0),
-                                             index, Parameter(), const_true(), ModulusRemainder()));
+                                             index, Parameter(), const_true(), ModulusRemainder(), Expr()));
                 index = index + 1;
                 alignment++;
             }
@@ -257,7 +257,7 @@ public:
             writes.push_back(Store::make(key_name,
                                          i.second.value_expr,
                                          (index / i.second.size_expr),
-                                         Parameter(), const_true(), ModulusRemainder()));
+                                         Parameter(), const_true(), ModulusRemainder(), Expr()));
             index += i.second.size_expr;
         }
         Stmt blocks = Block::make(writes);

@@ -217,7 +217,7 @@ void CodeGen_PyTorch::test() {
     Param<float> alpha("alpha");
     Param<int> beta("beta");
     Expr e = Add::make(alpha, Cast::make(Float(32), beta));
-    Stmt s = Store::make("buf", e, x, Parameter(), const_true(), ModulusRemainder());
+    Stmt s = Store::make("buf", e, x, Parameter(), const_true(), ModulusRemainder(), Expr());
     Expr buf = Variable::make(Handle(), "buf.buffer");
     s = LetStmt::make("buf", Call::make(Handle(), Call::buffer_get_host, {buf}, Call::Extern), s);
 

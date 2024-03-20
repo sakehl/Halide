@@ -321,12 +321,12 @@ class RewriteAccessToVectorAlloc : public IRMutator {
 
     Expr visit(const Load *op) override {
         return Load::make(op->type, op->name, mutate_index(op->name, op->index),
-                          op->image, op->param, mutate(op->predicate), mutate_alignment(op->name, op->alignment));
+                          op->image, op->param, mutate(op->predicate), mutate_alignment(op->name, op->alignment), mutate(op->lemma));
     }
 
     Stmt visit(const Store *op) override {
         return Store::make(op->name, mutate(op->value), mutate_index(op->name, op->index),
-                           op->param, mutate(op->predicate), mutate_alignment(op->name, op->alignment));
+                           op->param, mutate(op->predicate), mutate_alignment(op->name, op->alignment), mutate(op->lemma));
     }
 
 public:
@@ -431,7 +431,7 @@ class PredicateLoadStore : public IRMutator {
             return op;
         }
         vectorized = true;
-        return Load::make(op->type, op->name, index, op->image, op->param, predicate, op->alignment);
+        return Load::make(op->type, op->name, index, op->image, op->param, predicate, op->alignment, mutate(op->lemma));
     }
 
     Stmt visit(const Store *op) override {
@@ -462,7 +462,7 @@ class PredicateLoadStore : public IRMutator {
             return op;
         }
         vectorized = true;
-        return Store::make(op->name, value, index, op->param, predicate, op->alignment);
+        return Store::make(op->name, value, index, op->param, predicate, op->alignment, mutate(op->lemma));
     }
 
     Expr visit(const Call *op) override {
@@ -642,7 +642,7 @@ class VectorSubs : public IRMutator {
             int w = index.type().lanes();
             predicate = widen(predicate, w);
             return Load::make(op->type.with_lanes(w), op->name, index, op->image,
-                              op->param, predicate, op->alignment);
+                              op->param, predicate, op->alignment, mutate(op->lemma));
         }
     }
 
@@ -821,7 +821,7 @@ class VectorSubs : public IRMutator {
         } else {
             int lanes = std::max(predicate.type().lanes(), std::max(value.type().lanes(), index.type().lanes()));
             return Store::make(op->name, widen(value, lanes), widen(index, lanes),
-                               op->param, widen(predicate, lanes), op->alignment);
+                               op->param, widen(predicate, lanes), op->alignment, mutate(op->lemma));
         }
     }
 
@@ -1242,14 +1242,14 @@ class VectorSubs : public IRMutator {
             Expr new_load = Load::make(load_a->type.with_lanes(output_lanes),
                                        load_a->name, store_index, load_a->image,
                                        load_a->param, const_true(output_lanes),
-                                       ModulusRemainder{});
+                                       ModulusRemainder{}, mutate(load_a->lemma));
 
             Expr lhs = cast(b.type(), new_load);
             b = binop(lhs, b);
             b = cast(new_load.type(), b);
 
             Stmt s = Store::make(store->name, b, store_index, store->param,
-                                 const_true(b.type().lanes()), store->alignment);
+                                 const_true(b.type().lanes()), store->alignment, mutate(load_a->lemma));
 
             // We may still need the atomic node, if there was more
             // parallelism than just the vectorization.

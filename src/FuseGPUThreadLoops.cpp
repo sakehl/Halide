@@ -329,9 +329,9 @@ private:
 
     void precompute_allocation_size(SharedAllocation &s) {
         Expr val = Load::make(Int(32), s.name + ".shared_size", 0,
-                              Buffer<>{}, Parameter{}, const_true(), ModulusRemainder{});
+                              Buffer<>{}, Parameter{}, const_true(), ModulusRemainder{}, Expr());
         Stmt update_size = Store::make(s.name + ".shared_size", max(s.size, val), 0,
-                                       Parameter{}, const_true(), ModulusRemainder{});
+                                       Parameter{}, const_true(), ModulusRemainder{}, Expr());
 
         if (host_side_preamble.defined()) {
             host_side_preamble = Block::make(host_side_preamble, update_size);
@@ -550,7 +550,7 @@ private:
             Expr predicate = mutate(op->predicate);
             Expr index = mutate_index(alloc, op->index);
             return Load::make(op->type, alloc->name,
-                              index, op->image, op->param, predicate, op->alignment);
+                              index, op->image, op->param, predicate, op->alignment, mutate(op->lemma));
         } else {
             return IRMutator::visit(op);
         }
@@ -565,7 +565,7 @@ private:
             Expr index = mutate_index(alloc, op->index);
             Expr value = mutate(op->value);
             return Store::make(alloc->name, value, index,
-                               op->param, predicate, op->alignment);
+                               op->param, predicate, op->alignment, mutate(op->lemma));
         } else {
             return IRMutator::visit(op);
         }
@@ -894,7 +894,7 @@ public:
                             if (op->name == alloc_name) {
                                 return Load::make(op->type, cluster_name, mutate(op->index) + offset,
                                                   op->image, op->param, mutate(op->predicate),
-                                                  op->alignment);
+                                                  op->alignment, mutate(op->lemma));
                             } else {
                                 return IRMutator::visit(op);
                             }
@@ -903,7 +903,7 @@ public:
                         Stmt visit(const Store *op) override {
                             if (op->name == alloc_name) {
                                 return Store::make(cluster_name, mutate(op->value), mutate(op->index) + offset,
-                                                   op->param, mutate(op->predicate), op->alignment);
+                                                   op->param, mutate(op->predicate), op->alignment, mutate(op->lemma));
                             } else {
                                 return IRMutator::visit(op);
                             }
@@ -1019,7 +1019,7 @@ public:
                 string alloc_name = alloc.name + ".shared_size";
                 string var_name = alloc.name + ".shared_size_var";
                 Expr val = Load::make(Int(32), alloc_name, 0,
-                                      Buffer<>{}, Parameter{}, const_true(), ModulusRemainder{});
+                                      Buffer<>{}, Parameter{}, const_true(), ModulusRemainder{}, Expr());
                 result = LetStmt::make(var_name, val, result);
                 alloc.size = Variable::make(Int(32), var_name);
             }
@@ -1033,7 +1033,7 @@ public:
             if (alloc.size_computed_on_host) {
                 string alloc_name = alloc.name + ".shared_size";
                 Stmt init = Store::make(alloc_name, 0, 0,
-                                        Parameter{}, const_true(), ModulusRemainder{});
+                                        Parameter{}, const_true(), ModulusRemainder{}, Expr());
                 result = Block::make(init, result);
                 result = Allocate::make(alloc_name, Int(32), MemoryType::Stack, {1}, const_true(), result);
             }
@@ -1161,7 +1161,7 @@ class ExtractRegisterAllocations : public IRMutator {
         }
         return Load::make(op->type, new_name, mutate(op->index),
                           op->image, op->param, mutate(op->predicate),
-                          op->alignment);
+                          op->alignment, mutate(op->lemma));
     }
 
     Stmt visit(const Store *op) override {
@@ -1170,7 +1170,7 @@ class ExtractRegisterAllocations : public IRMutator {
             new_name = alloc_renaming.get(op->name);
         }
         return Store::make(new_name, mutate(op->value), mutate(op->index),
-                           op->param, mutate(op->predicate), op->alignment);
+                           op->param, mutate(op->predicate), op->alignment, mutate(op->lemma));
     }
 
     template<typename ExprOrStmt, typename LetOrLetStmt>

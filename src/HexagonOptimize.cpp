@@ -1896,11 +1896,12 @@ class EliminateInterleaves : public IRMutator {
             internal_assert(is_const_one(predicate)) << "The store shouldn't have been predicated.\n";
             value = remove_interleave(value);
         }
+        Expr lemma = mutate(op->lemma);
 
-        if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index)) {
+        if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index) && lemma.same_as(op->lemma)) {
             return op;
         } else {
-            return Store::make(op->name, value, index, op->param, predicate, op->alignment);
+            return Store::make(op->name, value, index, op->param, predicate, op->alignment, lemma);
         }
     }
 
@@ -2051,6 +2052,7 @@ class OptimizeShuffles : public IRMutator {
         }
 
         Expr index = mutate(op->index);
+        Expr lemma = mutate(op->lemma);
         Interval unaligned_index_bounds = bounds_of_expr_in_scope(index, bounds);
         if (unaligned_index_bounds.is_bounded()) {
             // We want to try both the unaligned and aligned
@@ -2079,7 +2081,7 @@ class OptimizeShuffles : public IRMutator {
                     // returns a native vector size to account for this.
                     Expr lut = Load::make(op->type.with_lanes(const_extent), op->name,
                                           Ramp::make(base, 1, const_extent),
-                                          op->image, op->param, const_true(const_extent), alignment);
+                                          op->image, op->param, const_true(const_extent), alignment, lemma);
 
                     // We know the size of the LUT is not more than 256, so we
                     // can safely cast the index to 8 bit, which
@@ -2091,8 +2093,8 @@ class OptimizeShuffles : public IRMutator {
                 alignment = ModulusRemainder();
             }
         }
-        if (!index.same_as(op->index)) {
-            return Load::make(op->type, op->name, index, op->image, op->param, op->predicate, op->alignment);
+        if (!index.same_as(op->index) || !lemma.same_as(op->lemma)) {
+            return Load::make(op->type, op->name, index, op->image, op->param, op->predicate, op->alignment, lemma);
         } else {
             return op;
         }
@@ -2316,7 +2318,7 @@ class ScatterGatherGenerator : public IRMutator {
     // the input parameter value.
     Expr is_scatter_acc(const Store *op) {
         Expr lhs = Load::make(op->value.type(), op->name, op->index, Buffer<>(),
-                              Parameter(), const_true(op->value.type().lanes()), op->alignment);
+                              Parameter(), const_true(op->value.type().lanes()), op->alignment, op->lemma);
         Expr wild = Variable::make(op->value.type(), "*");
         vector<Expr> matches;
         if (expr_match(lhs + wild, op->value, matches) ||

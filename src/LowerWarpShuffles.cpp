@@ -508,7 +508,7 @@ class LowerWarpShuffles : public IRMutator {
             // them. Reassembling the result into a flat address gives
             // the expression below.
             Expr in_warp_idx = simplify((idx / (warp_size * stride)) * stride + reduce_expr(idx, stride, bounds), true, bounds);
-            return Store::make(op->name, value, in_warp_idx, op->param, op->predicate, ModulusRemainder());
+            return Store::make(op->name, value, in_warp_idx, op->param, op->predicate, ModulusRemainder(), mutate(op->lemma));
         } else {
             return IRMutator::visit(op);
         }
@@ -537,7 +537,7 @@ class LowerWarpShuffles : public IRMutator {
 
         // Load the value to be shuffled
         Expr base_val = Load::make(type, name, idx, Buffer<>(),
-                                   Parameter(), const_true(idx.type().lanes()), ModulusRemainder());
+                                   Parameter(), const_true(idx.type().lanes()), ModulusRemainder(), Expr());
 
         Expr scalar_lane = lane;
         if (const Broadcast *b = scalar_lane.as<Broadcast>()) {

@@ -109,7 +109,7 @@ class FlattenRamps : public IRMutator {
                     Expr dense_load =
                         Load::make(op->type.with_lanes(extent), op->name, dense_index,
                                    op->image, op->param,
-                                   const_true(extent), ModulusRemainder{});
+                                   const_true(extent), ModulusRemainder{}, op->lemma);
                     return Shuffle::make({dense_load}, const_indices);
                 }
             }

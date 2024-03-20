@@ -240,7 +240,7 @@ private:
             if (starting_lane != 0) {
                 align = ModulusRemainder();
             }
-            return Load::make(t, op->name, mutate(op->index), op->image, op->param, mutate(op->predicate), align);
+            return Load::make(t, op->name, mutate(op->index), op->image, op->param, mutate(op->predicate), align, mutate(op->lemma));
         }
     }
 
@@ -554,20 +554,20 @@ class Interleaver : public IRMutator {
             // If we want to deinterleave both the index and predicate
             // (or the predicate is one), then deinterleave the
             // resulting load.
-            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment);
+            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment, mutate(op->lemma));
             expr = deinterleave_expr(expr);
         } else if (should_deinterleave_idx) {
             // If we only want to deinterleave the index and not the
             // predicate, deinterleave the index prior to the load.
             idx = deinterleave_expr(idx);
-            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment);
+            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment, mutate(op->lemma));
         } else if (should_deinterleave_predicate) {
             // Similarly, deinterleave the predicate prior to the load
             // if we don't want to deinterleave the index.
             predicate = deinterleave_expr(predicate);
-            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment);
+            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment, mutate(op->lemma));
         } else if (!idx.same_as(op->index) || !predicate.same_as(op->index)) {
-            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment);
+            expr = Load::make(op->type, op->name, idx, op->image, op->param, predicate, op->alignment, mutate(op->lemma));
         } else {
             expr = op;
         }
@@ -599,7 +599,7 @@ class Interleaver : public IRMutator {
             predicate = deinterleave_expr(predicate);
         }
 
-        Stmt stmt = Store::make(op->name, value, idx, op->param, predicate, op->alignment);
+        Stmt stmt = Store::make(op->name, value, idx, op->param, predicate, op->alignment, mutate(op->lemma));
 
         should_deinterleave = old_should_deinterleave;
         num_lanes = old_num_lanes;
@@ -755,7 +755,7 @@ class Interleaver : public IRMutator {
                 // Convert multiple dense vector stores of strided vector loads
                 // into one dense vector store of interleaving dense vector loads.
                 args[j] = Load::make(t, load_name, stores[i].as<Store>()->index,
-                                     load_image, load_param, const_true(t.lanes()), ModulusRemainder());
+                                     load_image, load_param, const_true(t.lanes()), ModulusRemainder(), stores[i].as<Store>()->lemma);
             } else {
                 args[j] = stores[i].as<Store>()->value;
             }
@@ -770,7 +770,7 @@ class Interleaver : public IRMutator {
         Expr index = Ramp::make(base, make_one(base.type()), t.lanes());
         Expr value = Shuffle::make_interleave(args);
         Expr predicate = Shuffle::make_interleave(predicates);
-        Stmt new_store = Store::make(store->name, value, index, store->param, predicate, ModulusRemainder());
+        Stmt new_store = Store::make(store->name, value, index, store->param, predicate, ModulusRemainder(), store->lemma); // LvdH: Maybe TODO
 
         // Continue recursively into the stuff that
         // collect_strided_stores didn't collect.
@@ -839,9 +839,9 @@ void deinterleave_vector_test() {
     check(ramp, ramp_a, ramp_b);
     check(broadcast, broadcast_a, broadcast_b);
 
-    check(Load::make(ramp.type(), "buf", ramp, Buffer<>(), Parameter(), const_true(ramp.type().lanes()), ModulusRemainder()),
-          Load::make(ramp_a.type(), "buf", ramp_a, Buffer<>(), Parameter(), const_true(ramp_a.type().lanes()), ModulusRemainder()),
-          Load::make(ramp_b.type(), "buf", ramp_b, Buffer<>(), Parameter(), const_true(ramp_b.type().lanes()), ModulusRemainder()));
+    check(Load::make(ramp.type(), "buf", ramp, Buffer<>(), Parameter(), const_true(ramp.type().lanes()), ModulusRemainder(), Expr()),
+          Load::make(ramp_a.type(), "buf", ramp_a, Buffer<>(), Parameter(), const_true(ramp_a.type().lanes()), ModulusRemainder(), Expr()),
+          Load::make(ramp_b.type(), "buf", ramp_b, Buffer<>(), Parameter(), const_true(ramp_b.type().lanes()), ModulusRemainder(), Expr()));
 
     Expr vec_x = Variable::make(Int(32, 4), "vec_x");
     Expr vec_y = Variable::make(Int(32, 4), "vec_y");

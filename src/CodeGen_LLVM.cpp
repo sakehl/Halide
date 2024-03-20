@@ -1891,7 +1891,7 @@ void CodeGen_LLVM::visit(const Load *op) {
     if (op->type != storage_type) {
         codegen(reinterpret(op->type, Load::make(storage_type, op->name,
                                                  op->index, op->image,
-                                                 op->param, op->predicate, op->alignment)));
+                                                 op->param, op->predicate, op->alignment, op->lemma)));
         return;
     }
 
@@ -1956,8 +1956,8 @@ void CodeGen_LLVM::visit(const Load *op) {
             // Do each load.
             Expr ramp_a = Ramp::make(base_a, stride_a, ramp->lanes);
             Expr ramp_b = Ramp::make(base_b, stride_b, ramp->lanes);
-            Expr load_a = Load::make(op->type, op->name, ramp_a, op->image, op->param, op->predicate, align_a);
-            Expr load_b = Load::make(op->type, op->name, ramp_b, op->image, op->param, op->predicate, align_b);
+            Expr load_a = Load::make(op->type, op->name, ramp_a, op->image, op->param, op->predicate, align_a, op->lemma);
+            Expr load_b = Load::make(op->type, op->name, ramp_b, op->image, op->param, op->predicate, align_b, op->lemma);
             Value *vec_a = codegen(load_a);
             Value *vec_b = codegen(load_b);
 
@@ -1979,7 +1979,7 @@ void CodeGen_LLVM::visit(const Load *op) {
             ModulusRemainder align = op->alignment;
             // Switch to the alignment of the last lane
             align = align - (ramp->lanes - 1);
-            Expr flipped_load = Load::make(op->type, op->name, flipped_index, op->image, op->param, op->predicate, align);
+            Expr flipped_load = Load::make(op->type, op->name, flipped_index, op->image, op->param, op->predicate, align, op->lemma);
 
             Value *flipped = codegen(flipped_load);
 
@@ -2350,13 +2350,13 @@ void CodeGen_LLVM::codegen_predicated_vector_load(const Load *op) {
         align = align - (ramp->lanes - 1);
 
         Expr flipped_load = Load::make(op->type, op->name, flipped_index, op->image,
-                                       op->param, const_true(op->type.lanes()), align);
+                                       op->param, const_true(op->type.lanes()), align, op->lemma);
 
         Value *flipped = codegen_dense_vector_load(flipped_load.as<Load>(), vpred);
         value = shuffle_vectors(flipped, indices);
     } else {  // It's not dense vector load, we need to scalarize it
         Expr load_expr = Load::make(op->type, op->name, op->index, op->image,
-                                    op->param, const_true(op->type.lanes()), op->alignment);
+                                    op->param, const_true(op->type.lanes()), op->alignment, op->lemma);
         debug(4) << "Scalarize predicated vector load\n\t" << load_expr << "\n";
         Expr pred_load = Call::make(load_expr.type(),
                                     Call::if_then_else,
@@ -2382,7 +2382,7 @@ void CodeGen_LLVM::codegen_atomic_store(const Store *op) {
                                  Buffer<>(),
                                  op->param,
                                  op->predicate,
-                                 op->alignment);
+                                 op->alignment, op->lemma);
     Expr delta = simplify(common_subexpression_elimination(op->value - equiv_load));
     bool is_atomic_add = supports_atomic_add(value_type) && !expr_uses_var(delta, op->name);
     if (is_atomic_add) {
@@ -3960,7 +3960,7 @@ void CodeGen_LLVM::visit(const Store *op) {
     Halide::Type storage_type = upgrade_type_for_storage(value_type);
     if (value_type != storage_type) {
         Expr v = reinterpret(storage_type, op->value);
-        codegen(Store::make(op->name, v, op->index, op->param, op->predicate, op->alignment));
+        codegen(Store::make(op->name, v, op->index, op->param, op->predicate, op->alignment, op->lemma));
         return;
     }
 
@@ -3990,7 +3990,7 @@ void CodeGen_LLVM::visit(const Store *op) {
         StoreInst *store = builder->CreateAlignedStore(val, ptr, llvm::Align(value_type.bytes()));
         add_tbaa_metadata(store, op->name, op->index);
     } else if (const Let *let = op->index.as<Let>()) {
-        Stmt s = Store::make(op->name, op->value, let->body, op->param, op->predicate, op->alignment);
+        Stmt s = Store::make(op->name, op->value, let->body, op->param, op->predicate, op->alignment, op->lemma);
         codegen(LetStmt::make(let->name, let->value, s));
     } else {
         int alignment = value_type.bytes();

@@ -1081,7 +1081,7 @@ void CodeGen_D3D12Compute_Dev::CodeGen_D3D12Compute_C::add_kernel(Stmt s,
             if (it != replacements.end()) {
                 return Load::make(op->type, it->second,
                                   mutate(op->index), op->image, op->param,
-                                  mutate(op->predicate), op->alignment);
+                                  mutate(op->predicate), op->alignment, mutate(op->lemma));
             } else {
                 return IRMutator::visit(op);
             }
@@ -1092,7 +1092,7 @@ void CodeGen_D3D12Compute_Dev::CodeGen_D3D12Compute_C::add_kernel(Stmt s,
             if (it != replacements.end()) {
                 return Store::make(it->second, mutate(op->value),
                                    mutate(op->index), op->param,
-                                   mutate(op->predicate), op->alignment);
+                                   mutate(op->predicate), op->alignment, mutate(op->lemma));
             } else {
                 return IRMutator::visit(op);
             }

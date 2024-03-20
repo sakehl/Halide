@@ -107,6 +107,9 @@ class LiftLoopInvariants : public IRMutator {
             if (call->is_intrinsic(Call::size_of_halide_buffer_t)) {
                 return true;
             }
+            if(call->is_intrinsic(Call::lemma_flattened_array)){
+                return false;
+            }
         }
         return true;
     }
@@ -159,6 +162,8 @@ public:
     using IRMutator::mutate;
 
     Expr mutate(const Expr &e) override {
+        if(!e.defined()) return e;
+
         if (should_lift(e)) {
             // Lift it in canonical form
             Expr lifted_expr = simplify(e);

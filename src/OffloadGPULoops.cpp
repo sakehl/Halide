@@ -105,7 +105,7 @@ class InjectGpuOffload : public IRMutator {
         // Expr v = Variable::make(type_of<void *>(), name);
         state_needed[name] = true;
         return Load::make(type_of<void *>(), name, 0,
-                          Buffer<>(), Parameter(), const_true(), ModulusRemainder());
+                          Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
     }
 
     Expr make_state_var(const string &name) {

@@ -197,10 +197,11 @@ private:
         if (!index.defined()) {
             return Expr();
         }
-        if (pred.same_as(op->predicate) && index.same_as(op->index)) {
+        Expr lemma = mutate(op->lemma);
+        if (pred.same_as(op->predicate) && index.same_as(op->index) && lemma.same_as(op->lemma)) {
             return op;
         } else {
-            return Load::make(op->type, op->name, index, op->image, op->param, pred, op->alignment);
+            return Load::make(op->type, op->name, index, op->image, op->param, pred, op->alignment, op->lemma);
         }
     }
 
@@ -366,6 +367,7 @@ private:
 
         Expr pred = mutate(op->predicate);
         Expr value = mutate(op->value);
+        Expr lemma = mutate(op->lemma);
         if (!value.defined()) {
             return Stmt();
         }
@@ -377,15 +379,16 @@ private:
 
         if (predicate.defined()) {
             // This becomes a conditional store
-            Stmt stmt = IfThenElse::make(predicate, Store::make(op->name, value, index, op->param, pred, op->alignment));
+            Stmt stmt = IfThenElse::make(predicate, Store::make(op->name, value, index, op->param, pred, op->alignment, lemma));
             predicate = Expr();
             return stmt;
         } else if (pred.same_as(op->predicate) &&
                    value.same_as(op->value) &&
-                   index.same_as(op->index)) {
+                   index.same_as(op->index) &&
+                   lemma.same_as(op->lemma)) {
             return op;
         } else {
-            return Store::make(op->name, value, index, op->param, pred, op->alignment);
+            return Store::make(op->name, value, index, op->param, pred, op->alignment, lemma);
         }
     }
 

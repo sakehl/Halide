@@ -353,7 +353,7 @@ void CodeGen_PTX_Dev::visit(const Load *op) {
         if (align.modulus % 4 == 0 && align.remainder % 4 == 0) {
             Expr index = simplify(r->base / 4);
             Expr equiv = Load::make(UInt(128), op->name, index,
-                                    op->image, op->param, const_true(), align / 4);
+                                    op->image, op->param, const_true(), align / 4, op->lemma);
             equiv = reinterpret(op->type, equiv);
             codegen(equiv);
             return;
@@ -378,7 +378,7 @@ void CodeGen_PTX_Dev::visit(const Store *op) {
         if (align.modulus % 4 == 0 && align.remainder % 4 == 0) {
             Expr index = simplify(r->base / 4);
             Expr value = reinterpret(UInt(128), op->value);
-            Stmt equiv = Store::make(op->name, value, index, op->param, const_true(), align / 4);
+            Stmt equiv = Store::make(op->name, value, index, op->param, const_true(), align / 4, op->lemma);
             codegen(equiv);
             return;
         }
@@ -422,12 +422,12 @@ class RewriteLoadsAs32Bit : public IRMutator {
             if (op->type.lanes() > sub_lanes) {
                 new_idx = Ramp::make(new_idx, 1, load_lanes);
             }
-            Expr new_load = Load::make(Int(32, load_lanes), op->name, new_idx, op->image, op->param, const_true(load_lanes), op->alignment / sub_lanes);
+            Expr new_load = Load::make(Int(32, load_lanes), op->name, new_idx, op->image, op->param, const_true(load_lanes), op->alignment / sub_lanes, op->lemma);
             return reinterpret(op->type, new_load);
         } else if (index.same_as(op->index)) {
             return op;
         } else {
-            return Load::make(op->type, op->name, op->index, op->image, op->param, op->predicate, op->alignment);
+            return Load::make(op->type, op->name, op->index, op->image, op->param, op->predicate, op->alignment, op->lemma);
         }
     }
 };

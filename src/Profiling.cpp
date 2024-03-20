@@ -371,7 +371,7 @@ Stmt inject_profiling(Stmt s, const string &pipeline_name) {
         for (int i = num_funcs - 1; i >= 0; --i) {
             s = Block::make(Store::make("profiling_func_stack_peak_buf",
                                         make_const(UInt(64), profiling.func_stack_peak[i]),
-                                        i, Parameter(), const_true(), ModulusRemainder()),
+                                        i, Parameter(), const_true(), ModulusRemainder(), Expr()),
                             s);
         }
         s = Block::make(s, Free::make("profiling_func_stack_peak_buf"));
@@ -380,7 +380,7 @@ Stmt inject_profiling(Stmt s, const string &pipeline_name) {
     }
 
     for (const auto &p : profiling.indices) {
-        s = Block::make(Store::make("profiling_func_names", p.first, p.second, Parameter(), const_true(), ModulusRemainder()), s);
+        s = Block::make(Store::make("profiling_func_names", p.first, p.second, Parameter(), const_true(), ModulusRemainder(), Expr()), s);
     }
 
     s = Block::make(s, Free::make("profiling_func_names"));

@@ -285,7 +285,7 @@ Expr Select::make(Expr condition, Expr true_value, Expr false_value) {
     return node;
 }
 
-Expr Load::make(Type type, const std::string &name, Expr index, Buffer<> image, Parameter param, Expr predicate, ModulusRemainder alignment) {
+Expr Load::make(Type type, const std::string &name, Expr index, Buffer<> image, Parameter param, Expr predicate, ModulusRemainder alignment, Expr lemma) {
     internal_assert(predicate.defined()) << "Load with undefined predicate\n";
     internal_assert(index.defined()) << "Load of undefined\n";
     internal_assert(type.lanes() == index.type().lanes()) << "Vector lanes of Load must match vector lanes of index\n";
@@ -299,6 +299,7 @@ Expr Load::make(Type type, const std::string &name, Expr index, Buffer<> image, 
     node->index = std::move(index);
     node->image = std::move(image);
     node->param = std::move(param);
+    node->lemma = std::move(lemma);
     node->alignment = alignment;
     return node;
 }
@@ -409,7 +410,7 @@ Stmt Acquire::make(Expr semaphore, Expr count, Stmt body) {
     return node;
 }
 
-Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter param, Expr predicate, ModulusRemainder alignment) {
+Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter param, Expr predicate, ModulusRemainder alignment, Expr lemma) {
     internal_assert(predicate.defined()) << "Store with undefined predicate\n";
     internal_assert(value.defined()) << "Store of undefined\n";
     internal_assert(index.defined()) << "Store of undefined\n";
@@ -423,6 +424,7 @@ Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter para
     node->value = std::move(value);
     node->index = std::move(index);
     node->param = std::move(param);
+    node->lemma = std::move(lemma);
     node->alignment = alignment;
     return node;
 }
@@ -665,6 +667,7 @@ const char *const intrinsic_op_names[] = {
     "if_then_else_mask",
     "image_load",
     "image_store",
+    "lemma_flattened_array",
     "lerp",
     "likely",
     "likely_if_innermost",

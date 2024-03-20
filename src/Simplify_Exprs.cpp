@@ -350,6 +350,7 @@ Expr Simplify::visit(const Load *op, ExprInfo *bounds) {
     found_buffer_reference(op->name);
 
     Expr predicate = mutate(op->predicate, nullptr);
+    Expr lemma = op->lemma; //mutate(op->lemma, nullptr);
 
     ExprInfo index_info;
     Expr index = mutate(op->index, &index_info);
@@ -373,7 +374,7 @@ Expr Simplify::visit(const Load *op, ExprInfo *bounds) {
         Expr new_index = b_index->value;
         int new_lanes = new_index.type().lanes();
         Expr load = Load::make(op->type.with_lanes(new_lanes), op->name, b_index->value,
-                               op->image, op->param, const_true(new_lanes), align);
+                               op->image, op->param, const_true(new_lanes), align, lemma);
         return Broadcast::make(load, b_index->lanes);
     } else if (s_index &&
                is_const_one(predicate) &&
@@ -384,14 +385,14 @@ Expr Simplify::visit(const Load *op, ExprInfo *bounds) {
         for (const Expr &new_index : s_index->vectors) {
             int new_lanes = new_index.type().lanes();
             Expr load = Load::make(op->type.with_lanes(new_lanes), op->name, new_index,
-                                   op->image, op->param, const_true(new_lanes), ModulusRemainder{});
+                                   op->image, op->param, const_true(new_lanes), ModulusRemainder{}, lemma);
             loaded_vecs.emplace_back(std::move(load));
         }
         return Shuffle::make(loaded_vecs, s_index->indices);
-    } else if (predicate.same_as(op->predicate) && index.same_as(op->index) && align == op->alignment) {
+    } else if (predicate.same_as(op->predicate) && index.same_as(op->index) && align == op->alignment && lemma.same_as(op->lemma)) {
         return op;
     } else {
-        return Load::make(op->type, op->name, index, op->image, op->param, predicate, align);
+        return Load::make(op->type, op->name, index, op->image, op->param, predicate, align, lemma);
     }
 }
 
