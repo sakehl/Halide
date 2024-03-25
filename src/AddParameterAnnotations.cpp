@@ -220,10 +220,13 @@ class UpdateBufferAnnotations: public IRMutator {
 
         index = mutate(index);
 
-        if(top_level){
-            name = name + ".buffer.host";
-        }
-        return Load::make(type, name, index, Buffer<>(), call->param, const_true(), ModulusRemainder(), Expr());
+        // if(top_level){
+        //     name = name + ".buffer.host";
+        // }
+        // return Load::make(type, name, index, Buffer<>(), call->param, const_true(), ModulusRemainder(), Expr());
+    
+        name = "pure_" + name;
+        return Call::make(type, name, {index}, Call::Extern);
     }
 
 public:

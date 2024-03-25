@@ -265,7 +265,7 @@ Stmt IRMutator::visit(const Store *op) {
     Expr value = mutate(op->value);
     Expr index = mutate(op->index);
     Expr lemma = mutate(op->lemma);
-    if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index), lemma.same_as(op->lemma)) {
+    if (predicate.same_as(op->predicate) && value.same_as(op->value) && index.same_as(op->index) && lemma.same_as(op->lemma)) {
         return op;
     }
     return Store::make(op->name, std::move(value), std::move(index), op->param, std::move(predicate), op->alignment, std::move(lemma));

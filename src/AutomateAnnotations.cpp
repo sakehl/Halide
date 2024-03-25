@@ -262,17 +262,25 @@ class AutomaticAnnotations {
 
         if(has_rvar){
             // Reduction, just give all write permissions, since loops are serial anyway
-            Expr call = Call::make(func, call_args);
-            new_def_annotations.emplace_back(Permission::make(AnnotationType::Context, bounds, call, Frac::make(1, 1), forall_vars));
+            for(int i=0; i<func.outputs(); i++){
+                Expr call = Call::make(func, call_args, i);
+                new_def_annotations.emplace_back(Permission::make(AnnotationType::Context, bounds, call, 
+                    Frac::make(1, 1), forall_vars));
+            }
         } else {
             // Non-reduction case: Add our own write permission
-            Expr call = Call::make(func, def_args);
-            new_def_annotations.emplace_back(Permission::make(AnnotationType::Context, make_bool(true), call, Frac::make(1, 1), {}));
+            for(int i=0; i<func.outputs(); i++){
+                Expr call = Call::make(func, def_args, i);
+                new_def_annotations.emplace_back(Permission::make(AnnotationType::Context, make_bool(true), 
+                    call, Frac::make(1, 1), {}));
+            }
             // Add read permission for everything else (update definitions)
             if(!forall_vars.empty()){
-                call = Call::make(func, call_args);
-                new_def_annotations.emplace_back(
-                    Permission::make(AnnotationType::Context, bounds && not_def_bounds, call, Frac::make(1, 2), forall_vars));
+                for(int i=0; i<func.outputs(); i++){
+                    Expr call = Call::make(func, call_args, i);
+                    new_def_annotations.emplace_back(
+                        Permission::make(AnnotationType::Context, bounds && not_def_bounds, call, Frac::make(1, 2), forall_vars));
+                }
             }
         }
 

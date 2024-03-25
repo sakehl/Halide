@@ -135,7 +135,8 @@ static inline double /*@ pure @*/ floor_f64(double x) {return floor(x);}
 static inline double /*@ pure @*/ ceil_f64(double x) {return ceil(x);}
 static inline double /*@ pure @*/ round_f64(double x){ return round(x); }
 
-inline float nan_f32() {return NAN;}
+//inline float nan_f32() {return NAN;}
+inline float nan_f32() {return 0.0f;}
 /*@
 inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) = 
  Perm(&dim[i], 1\2) **
@@ -143,6 +144,123 @@ inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) =
  Perm(dim[i].stride, 1\2) **
  Perm(dim[i].extent, 1\2)
  ;
+
+ ghost
+ requires a >= 0;
+ requires b > 0;
+ requires a < max_a;
+ ensures a*b <= (max_a-1)*b;
+ decreases b;
+void lemma_nonlinear(int a, int b, int max_a)
+;//{
+//  if(b>1){
+//    lemma_nonlinear(a, b-1, max_a);
+//    assert a*(b-1) <= max_a*(b-1);
+//  }
+//}
+
+ ghost
+ requires a-min_a >= 0  && a-min_a<extent_a;
+ requires b-min_b >= 0 && b-min_b<extent_b;
+ requires stride_a > 0;
+ requires stride_b > 0;
+ requires stride_b >= extent_a*stride_a;
+
+ ensures 0 <= (a-min_a)*stride_a + (b-min_b)*stride_b;
+ ensures (a-min_a)*stride_a + (b-min_b)*stride_b < stride_b*extent_b;
+ decreases;
+void lemma_2d_access(
+ int a, int min_a, int stride_a, int extent_a,
+ int b, int min_b, int stride_b, int extent_b)
+;//{
+//  lemma_nonlinear(a-min_a, stride_a, extent_a);
+//  lemma_nonlinear(b-min_b, stride_b, extent_b);
+//  return;
+//}
+
+ ghost
+ requires a-min_a >= 0 && a-min_a < extent_a;
+ requires b-min_b >= 0 && b-min_b < extent_b;
+ requires c-min_c >= 0 && c-min_c < extent_c;
+ requires stride_a > 0;
+ requires stride_b > 0;
+ requires stride_c > 0;
+ requires stride_b >= extent_a * stride_a;
+ requires stride_c >= extent_b * stride_b;
+ 
+ ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c;
+ ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c < stride_c * extent_c;
+ decreases;
+void lemma_3d_access(
+  int a, int min_a, int stride_a, int extent_a,
+  int b, int min_b, int stride_b, int extent_b,
+  int c, int min_c, int stride_c, int extent_c
+)
+;//{
+//  lemma_2d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b);
+//  lemma_nonlinear(c-min_c, stride_c, extent_c);
+//  return;
+//}
+
+ ghost
+ requires a-min_a >= 0 && a-min_a < extent_a;
+ requires b-min_b >= 0 && b-min_b < extent_b;
+ requires c-min_c >= 0 && c-min_c < extent_c;
+ requires d-min_d >= 0 && d-min_d < extent_d;
+ requires stride_a > 0;
+ requires stride_b > 0;
+ requires stride_c > 0;
+ requires stride_d > 0;
+ requires stride_b >= extent_a * stride_a;
+ requires stride_c >= extent_b * stride_b;
+ requires stride_d >= extent_c * stride_c;
+
+ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d;
+ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d < stride_d * extent_d;
+decreases;
+void lemma_4d_access(
+  int a, int min_a, int stride_a, int extent_a,
+  int b, int min_b, int stride_b, int extent_b,
+  int c, int min_c, int stride_c, int extent_c,
+  int d, int min_d, int stride_d, int extent_d
+)
+;//{
+//  lemma_3d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c);
+//  lemma_nonlinear(d-min_d, stride_d, extent_d);
+//  return;
+//}
+
+ ghost
+ requires a-min_a >= 0 && a-min_a < extent_a;
+ requires b-min_b >= 0 && b-min_b < extent_b;
+ requires c-min_c >= 0 && c-min_c < extent_c;
+ requires d-min_d >= 0 && d-min_d < extent_d;
+ requires e-min_e >= 0 && e-min_e < extent_e;
+ requires stride_a > 0;
+ requires stride_b > 0;
+ requires stride_c > 0;
+ requires stride_d > 0;
+ requires stride_e > 0;
+ requires stride_b >= extent_a * stride_a;
+ requires stride_c >= extent_b * stride_b;
+ requires stride_d >= extent_c * stride_c;
+ requires stride_e >= extent_d * stride_d;
+ 
+ ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e;
+ ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e < stride_e * extent_e;
+ decreases;
+void lemma_5d_access(
+  int a, int min_a, int stride_a, int extent_a,
+  int b, int min_b, int stride_b, int extent_b,
+  int c, int min_c, int stride_c, int extent_c,
+  int d, int min_d, int stride_d, int extent_d,
+  int e, int min_e, int stride_e, int extent_e
+)
+;//{
+//  lemma_4d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c, d, min_d, stride_d, extent_d);
+//  lemma_nonlinear(e-min_e, stride_e, extent_e);
+//  return;
+//}
 @*/
 #endif // HALIVER_GLOBALS
 )INLINE_CODE";
@@ -414,11 +532,12 @@ string buffer_annotations(string buffer_name, Type t, int dimensions, Indentatio
         for(int i =0; i< dimensions; i++){
             o << indent << "context dim_perm(" << buffer_name << "->dim, 1\\2, "<< i <<");\n";
         } 
-        o << indent << "context \\pointer_length(" << buffer_name << "->host) == 1";
-        for(int i =0; i< dimensions; i++){
-            // o << " + abs(" << buffer_name << "->dim[" << i <<"].stride"  ") * (" << buffer_name << "->dim[" << i <<"].extent"  " - 1)";
-            o << " * " << buffer_name << "->dim[" << i <<"].extent";
-        }
+        o << indent << "context \\pointer_length(" << buffer_name << "->host) == "
+        << buffer_name << "->dim[" << dimensions-1 <<"].extent"
+        << " * " << buffer_name << "->dim[" << dimensions-1 <<"].stride";
+        // for(int i =0; i< dimensions; i++){
+        //     o << " + abs(" << buffer_name << "->dim[" << i <<"].stride"  ") * (" << buffer_name << "->dim[" << i <<"].extent"  " - 1)";
+        // }
         o << ";\n";
     }
     // o << indent << "context (\\forall* int i; "<< min_val << " <=i && i< " << min_val << " + "<< buffer_name << ".host.length; Perm(" << buffer_name <<".host[i], write) );\n";
@@ -521,11 +640,22 @@ public:
     std::set<Type> vector_types_used;
 };
 
+string find_load_id(Expr load, std::vector<std::map<Expr, std::string, IRDeepCompare>> load_ids){
+    for(int i = load_ids.size()-1; i >= 0; i--){
+        auto it = load_ids[i].find(load);
+        if (it != load_ids[i].end()) {
+            return it->second;
+        }
+    }
+    return "";
+}
+
 }  // namespace
 
 CodeGen_C::CodeGen_C(ostream &s, const Target &t, OutputKind output_kind, const std::string &guard)
     : IRPrinter(s), id("$$ BAD ID $$"), target(t), output_kind(output_kind),
       extern_c_open(false), inside_atomic_mutex_node(false), emit_atomic_stores(false), using_vector_typedefs(false) {
+    load_ids.push_back({});
     
     if(is_pvl()){
         stream << pvl_header;
@@ -1815,9 +1945,9 @@ void CodeGen_C::compile(const Module &input) {
     if(!is_pvl()){
         std::set<Type> buffers_emitted;
         for (const auto &f : input.functions()) {
-            if (f.body.defined()) {
+            // if (f.body.defined()) {
                 emit_buffers(f, &buffers_emitted);
-            }
+            // }
         }
     }
 
@@ -2269,6 +2399,7 @@ string CodeGen_C::print_assignment(Type t, const std::string &rhs) {
 
 void CodeGen_C::open_scope() {
     cache.clear();
+    load_ids.push_back({});
     stream << get_indent();
     indent++;
     stream << "{\n";
@@ -2276,6 +2407,7 @@ void CodeGen_C::open_scope() {
 
 void CodeGen_C::close_scope(const std::string &comment) {
     cache.clear();
+    load_ids.pop_back();
     indent--;
     stream << get_indent();
     if (!comment.empty()) {
@@ -2964,6 +3096,7 @@ void CodeGen_C::visit(const Load *op) {
         rhs << print_type(t) + "_ops::load_gather(" << name << ", " << id_index << ")";
     } else {
         string id_index = print_expr(op->index);
+        rhs << print_lemma(op->lemma, name, id_index);
         bool type_cast_needed = !(allocations.contains(op->name) &&
                                   allocations.get(op->name).type.element_of() == t.element_of());
         if(!allocations.contains(op->name) || is_pvl()){
@@ -2977,10 +3110,12 @@ void CodeGen_C::visit(const Load *op) {
         }
         rhs << "[" << id_index << "]";
     }
-    if(inl || is_pvl()){
+    if(false && (inl || is_pvl())){
         id = rhs.str();
+        // load_ids.back()[op] = load_id;
     } else {
-        print_assignment(t, rhs.str());
+        string load_id = print_assignment(t, rhs.str());
+        load_ids.back()[op] = load_id;
     }
 }
 
@@ -3235,7 +3370,7 @@ void CodeGen_C::visit(const Atomic *op) {
 class SimpleExpressionPrinter : public AnnotationPrinter {
 public:
     SimpleExpressionPrinter(std::ostream &s, bool is_pvl, Scope<CodeGen_C::Allocation> &buffer_types)
-        : AnnotationPrinter(s, is_pvl, false, buffer_types), is_simple(true){};
+        : AnnotationPrinter(s, is_pvl, false, buffer_types, {}), is_simple(true){};
     bool is_simple;
 protected:
     using IRPrinter::visit;
@@ -3457,7 +3592,8 @@ void CodeGen_C::visit(const Allocate *op) {
                 string new_size_id_rhs;
                 string next_extent = print_expr(op->extents[i]);
                 if (i > 1) {
-                    new_size_id_rhs = "(" + size_id + " > ((int64_t(1) << 31) - 1)) ? " + size_id + " : (" + size_id + " * " + next_extent + ")";
+                    // new_size_id_rhs = "(" + size_id + " > ((int64_t(1) << 31) - 1)) ? " + size_id + " : (" + size_id + " * " + next_extent + ")";
+                    new_size_id_rhs = "(" + size_id + " * " + next_extent + ")";
                 } else {
                     new_size_id_rhs = size_id + " * " + next_extent;
                 }
@@ -3644,6 +3780,50 @@ void CodeGen_C::visit(const AnnExpr *op) { }
 
 void CodeGen_C::visit(const Permission *op) { }
 
+string CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx){
+    const Call *c = lemma.as<Call>();
+    if(c == nullptr || !c->is_intrinsic(Call::lemma_flattened_array)){
+        return "";
+    }
+    
+    ostringstream rhs;
+    int size = c->args.size();
+    assert(size % 4 == 0);
+    int dim = size / 4;
+
+    bool constant_dims = true;
+    // If the first n-1 dimensions only have constant strides and extents, we do not need the lemma
+    for(int i = 0; i < dim-1; i++){
+        if(!(is_const(c->args[4*i+2]) 
+            && is_const(c->args[4*i+3])) ){
+            constant_dims = false;
+            break;
+        }
+    }
+    // If the last dimension has constant stride and extent, we do not need the lemma (one can be non-constant)
+    constant_dims = constant_dims && (is_const(c->args[4*(dim-1)+2]) || is_const(c->args[4*(dim-1)+3]));
+    if(constant_dims) return "";
+
+    indent++;
+    AnnotationPrinter ap(rhs, is_pvl(), false, buffer_types, load_ids);
+    rhs << "\n" << get_indent() << "/*@ with\n" << get_indent() << "ghost ";
+    rhs << "lemma_" << dim <<"d_access(";
+    
+
+    for(int i = 0; i < size; i++){
+        ap.print(c->args[i]);
+        if(i != size - 1){
+            rhs << ", ";
+        }
+    }
+    rhs << ");\n" << get_indent()
+        << "assert (" << idx << ") >= 0 && (" << idx << ") < \\pointer_length("
+        << buf << ");\n" << get_indent();
+    rhs << "@*/\n" << get_indent();
+    indent--;
+    return rhs.str();
+}
+
 void CodeGen_C::test() {
     LoweredArgument buffer_arg("buf", Argument::OutputBuffer, Int(32), 3, ArgumentEstimates{});
     LoweredArgument float_arg("alpha", Argument::InputScalar, Float(32), 0, ArgumentEstimates{});
@@ -3807,6 +3987,12 @@ void AnnotationPrinter::visit(const Variable *op) {
 }
 
 void AnnotationPrinter::visit(const Load *op) {
+    string possible_load = find_load_id(op, load_ids);
+    if(possible_load != ""){
+        stream << possible_load;
+        return;
+    }
+
     const bool has_pred = !is_const_one(op->predicate);
     const bool show_alignment = op->type.is_vector() && op->alignment.modulus > 1;
     if (has_pred) {
@@ -4065,9 +4251,6 @@ void AnnotationPrinter::visit(const Select * op) {
         print(op->false_value);
         stream << ")";
 }
-
-AnnotationPrinter::AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level, const Scope<CodeGen_C::Allocation> &buffer_types)
-        : IRPrinter(s), is_pvl(is_pvl), is_top_level(is_top_level), buffer_types(buffer_types){};
 
 }  // namespace Internal
 }  // namespace Halide

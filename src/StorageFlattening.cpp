@@ -34,6 +34,15 @@ public:
         }
     }
 
+    using IRMutator::mutate;
+
+    Annotation mutate(const Annotation &a) override {
+        in_annotation = true;
+        Annotation res = IRMutator::mutate(a);
+        in_annotation = false;
+        return res;
+    }
+
 private:
     const map<string, pair<Function, int>> &env;
     set<string> outputs;
@@ -41,6 +50,7 @@ private:
     const Target &target;
     Scope<> realizations;
     bool in_gpu = false;
+    bool in_annotation = false;
 
     Expr make_shape_var(string name, const string &field, size_t dim,
                         const Buffer<> &buf, const Parameter &param) {
@@ -50,15 +60,18 @@ private:
     }
 
     Expr make_lemma_call(const string &name, vector<Expr> args, const Buffer<> &buf, const Parameter &param) {
+        if(args.size() <= 1 || in_annotation){
+            return Expr();
+        }
+        
         vector<Expr> new_args;
         for (size_t i = 0; i < args.size(); i++) {
             new_args.push_back(args[i]);
             new_args.push_back(make_shape_var(name, "min", i, buf, param));
-            new_args.push_back(make_shape_var(name, "extent", i, buf, param));
             new_args.push_back(make_shape_var(name, "stride", i, buf, param));
+            new_args.push_back(make_shape_var(name, "extent", i, buf, param));
         }
-        // return mutate(Call::make(Int(32), Call::lemma_flattened_array, args, Call::PureIntrinsic));
-        return Expr();
+        return mutate(Call::make(Int(32), Call::lemma_flattened_array, new_args, Call::PureIntrinsic));
     }
 
     Expr flatten_args(const string &name, vector<Expr> args,

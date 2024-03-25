@@ -350,7 +350,7 @@ Expr Simplify::visit(const Load *op, ExprInfo *bounds) {
     found_buffer_reference(op->name);
 
     Expr predicate = mutate(op->predicate, nullptr);
-    Expr lemma = op->lemma; //mutate(op->lemma, nullptr);
+    Expr lemma = mutate(op->lemma, nullptr);
 
     ExprInfo index_info;
     Expr index = mutate(op->index, &index_info);

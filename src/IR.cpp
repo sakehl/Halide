@@ -299,7 +299,11 @@ Expr Load::make(Type type, const std::string &name, Expr index, Buffer<> image, 
     node->index = std::move(index);
     node->image = std::move(image);
     node->param = std::move(param);
-    node->lemma = std::move(lemma);
+    if(lemma.defined()){
+        node->lemma = std::move(lemma);
+    } else {
+        node->lemma = IntImm::make(Int(32), 0);
+    }
     node->alignment = alignment;
     return node;
 }
@@ -424,7 +428,11 @@ Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter para
     node->value = std::move(value);
     node->index = std::move(index);
     node->param = std::move(param);
-    node->lemma = std::move(lemma);
+    if(lemma.defined()){
+        node->lemma = std::move(lemma);
+    } else {
+        node->lemma = IntImm::make(Int(32), 0);
+    }
     node->alignment = alignment;
     return node;
 }

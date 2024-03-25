@@ -281,7 +281,7 @@ Stmt Simplify::visit(const Store *op) {
 
     Expr predicate = mutate(op->predicate, nullptr);
     Expr value = mutate(op->value, nullptr);
-    Expr lemma = op->lemma; //mutate(op->lemma, nullptr);
+    Expr lemma = mutate(op->lemma, nullptr);
 
     ExprInfo index_info;
     Expr index = mutate(op->index, &index_info);

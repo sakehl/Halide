@@ -6,6 +6,7 @@
  * Defines an IRPrinter that emits C++ code equivalent to a halide stmt
  */
 
+#include "IREquality.h"
 #include "IRPrinter.h"
 #include "Scope.h"
 #include "Target.h"
@@ -90,9 +91,14 @@ protected:
     /** A cache of generated values in scope */
     std::map<std::string, std::string> cache;
 
+    /** A cache, respecting scopes, that given a load, gives back an id, used for annotations */
+    std::vector<std::map<Expr, std::string, IRDeepCompare>> load_ids;
+
     /** Emit an expression as an assignment, then return the id of the
      * resulting var */
     std::string print_expr(const Expr &);
+
+    std::string print_lemma(const Expr &e, const std::string& buf, const std::string &idx);
 
     /** Like print_expr, but cast the Expr to the given Type */
     std::string print_cast_expr(const Type &, const Expr &);
@@ -286,13 +292,19 @@ protected:
 
 class AnnotationPrinter : public IRPrinter {
 public:
-    AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level, const Scope<CodeGen_C::Allocation> &buffer_types);
+    AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level,
+     const Scope<CodeGen_C::Allocation> &buffer_types,
+     const std::vector<std::map<Expr, std::string, IRDeepCompare>> &load_ids = {}) :
+      IRPrinter(s), is_pvl(is_pvl), is_top_level(is_top_level), buffer_types(buffer_types), load_ids(load_ids) {}
 protected:
     bool is_pvl;
     bool is_top_level;
 
     /** Track the types of buffer parameters. */
     const Scope<CodeGen_C::Allocation> &buffer_types;
+
+    /** Track ids of previous loads*/
+    const std::vector<std::map<Expr, std::string, IRDeepCompare>> load_ids;
     using IRPrinter::visit;
 
     void visit(const Variable *op) override;
