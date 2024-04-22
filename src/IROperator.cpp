@@ -2595,6 +2595,16 @@ Expr frac(Expr a, Expr b) {
     return Internal::Frac::make(std::move(a), std::move(b));
 }
 
+Expr read(Expr factor) {
+    user_assert(factor.defined() ) << "read of undefined Expr\n";
+    return Internal::Frac::make(Internal::make_one(Int(32)), factor);
+}
+
+Expr write() {
+    return Internal::Frac::make(Internal::make_one(Int(32)), Internal::make_one(Int(32)));
+}
+
+
 namespace {
 Expr make_scatter_gather(const std::vector<Expr> &args) {
     // There's currently no difference in the IR between a gather and

@@ -139,6 +139,27 @@ Expr IRMutator::visit(const Exists *op) {
     }
 }
 
+Expr IRMutator::visit(const Predicate *op) {
+    Expr perm = mutate(op->perm);
+    vector<Expr> new_args(op->args.size());
+    bool changed = false;
+
+    // Mutate the args
+    for (size_t i = 0; i < op->args.size(); i++) {
+        const Expr &old_arg = op->args[i];
+        Expr new_arg = mutate(old_arg);
+        if (!new_arg.same_as(old_arg)) {
+            changed = true;
+        }
+        new_args[i] = std::move(new_arg);
+    }
+
+    if (!changed && perm.same_as(op->perm)) {
+        return op;
+    }
+    return Predicate::make(op->name, new_args, perm, op->buffer_types, op->pred_type);
+}
+
 Expr IRMutator::visit(const Select *op) {
     Expr cond = mutate(op->condition);
     Expr t = mutate(op->true_value);

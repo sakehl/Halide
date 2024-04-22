@@ -13,6 +13,7 @@
 #include "IRVisitor.h"
 #include "Simplify.h"
 #include "Substitute.h"
+#include "CodeGen_C.h"
 
 namespace Halide {
 namespace Internal {
@@ -474,6 +475,138 @@ public:
 void add_automatic_annotations(map<string, Function> &env, vector<Function> &output_funcs) {
     AutomaticAnnotations aa = AutomaticAnnotations(env, output_funcs);
     aa.add_automatic_annotations();
+}
+
+string define_complete_predicate(const Type &t){
+    std::ostringstream ss;
+    string tt = print_type_helper(t, true, false);
+    ss << "resource _" << t << "_pred(" << tt << "* data) = data != NULL **"
+      << " (\\forall* int i; 0<=i && i< \\pointer_length(data); Perm(&data[i], write) );\n\n";
+
+    return ss.str();
+}
+
+string define_part_predicate(Function &f){
+    user_assert( f.dimensions() < 5 ) << "We only made HaliVer generate valid definitions up to 5 dimensions\n";
+    if(f.dimensions() == 0){
+        internal_error << "TODO: dimension 0";
+    }
+    vector<string> dim, mins, extents, data, full_extents, strides;
+    string full_extent;
+    for(int i=0; i<f.dimensions();i++){
+        string a = f.args()[i];
+        user_assert( a != "idx" && !ends_with(a, "_min") && !ends_with(a, "_extent")
+            && !starts_with(a, "data")
+        ) << "We disallow variable name " << a << "\n";
+        dim.emplace_back(a);
+        mins.emplace_back(a + "_min");
+        extents.emplace_back(a + "_extent");
+        if(i != 0){
+            strides.emplace_back(full_extent);
+            full_extent += " * " + extents[i];
+        } else {
+            strides.emplace_back("1");
+            full_extent = extents[i];
+        }
+        full_extents.emplace_back(full_extent);
+    }
+    for(int i = 0; i < f.outputs(); i++){
+        data.emplace_back("data" + std::to_string(i));
+    }
+
+    std::ostringstream ss;
+    ss
+    << "resource _" << f.name() << "_part_pred(\n ";
+    for(int i = 0; i < f.outputs(); i++){
+        if(i != 0) ss << ", ";
+        ss << print_type_helper(f.output_types()[i], true, false) << "* " << data[i];
+    }
+    ss << "\n ";
+    for(int i=0; i<f.dimensions();i++){
+        ss << ", int " << dim[i] << ", int " << mins[i] << ", int " << extents[i];
+    }
+    ss << ") = \n (";
+    for(int i=0; i<f.dimensions();i++){
+        ss << " " << dim[i] << " >= " << mins[i] << " && " << dim[i] << " < " << mins[i] << " + " << extents[i] << " && \n ";
+    }
+    for(int i = 0; i < f.outputs(); i++){
+        ss << " " << data[i] << " != NULL && \\pointer_length(" << data[i] << ") == " << full_extents.back() << " && \n"  ;
+    }
+
+    ss << "  lemma_" << f.dimensions() << "d_access(";
+    for(int i=0; i<f.dimensions();i++){
+        ss << dim[i] << ", " << mins[i] << ", " << strides[i] << ", " << extents[i];
+        if(i != f.dimensions()-1){
+            ss << ", ";
+        } else {
+            ss << ")";
+        }
+    }
+    ss << ") ** \n";
+    ss << "  (\\let int idx = ";
+    
+    for(int i=0; i<f.dimensions();i++){
+        ss << "(" << dim[i] << "-" << mins[i] << ")*" << strides[i];
+        if(i != f.dimensions()-1){
+            ss << " + ";
+        } else {
+            ss << ";\n";
+        }
+    }
+
+    for(int i = 0; i < f.outputs(); i++){
+        ss << "   Perm(&" << data[i] << "[idx], write)";
+        if(i != f.outputs()-1){
+            ss << " ** ";
+        } else {
+            ss << ");\n\n";
+        }
+    }
+
+    return ss.str();
+}
+
+string process_func(Function &f, set<vector<Type>> &defined_complete_predicates){
+    
+    if(f.has_extern_definition()) return "";
+
+    std::ostringstream ss;
+    ss << define_part_predicate(f);
+
+    for(auto &t: f.output_types()){
+        if(defined_complete_predicates.count({t}) == 0){
+            ss << define_complete_predicate(t);
+            defined_complete_predicates.insert({t});
+        }
+    }
+
+    return ss.str();
+}
+
+string define_predicates(map<string, Function> &env, vector<Function> &output_funcs, vector<Parameter> & input_buffers) {
+    set<vector<Type>> defined_complete_predicates;
+    std::ostringstream ss;
+
+    for(auto &f: env){
+        Function &func = f.second;
+        ss << process_func(func, defined_complete_predicates);
+    }
+
+    // for(auto &func: output_funcs){
+    //     ss << process_func(func, defined_complete_predicates);
+    //     ss << "\n";
+    // }
+
+    for(auto &inp: input_buffers){
+        Type t = inp.type();
+        if(defined_complete_predicates.count({t}) == 0){
+            ss << define_complete_predicate(t);
+            defined_complete_predicates.insert({t});
+        }
+    }
+        
+
+    return ss.str();
 }
 
 }  // namespace Internal

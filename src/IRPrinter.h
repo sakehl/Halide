@@ -214,6 +214,7 @@ protected:
     void visit(const Atomic *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
+    void visit(const Predicate *) override;
 };
 
 }  // namespace Internal

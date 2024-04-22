@@ -258,6 +258,7 @@ protected:
     void visit(const Atomic *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
+    void visit(const Predicate *) override;
 
     void visit_binop(Type t, const Expr &a, const Expr &b, const char *op);
     void visit_relop(Type t, const Expr &a, const Expr &b, const char *scalar_op, const char *vector_op);
@@ -315,6 +316,8 @@ protected:
 
     void visit(const Exists *op) override;
 
+    void visit(const Predicate *op) override;
+
     void visit(const Permission *op) override;
 
     void visit(const Let *op) override;
@@ -344,6 +347,8 @@ protected:
 
 void print_buffer_get_host(const Expr &buf);
 };
+
+std::string print_type_helper(Type type, bool is_pvl, bool include_space);
 
 }  // namespace Internal
 }  // namespace Halide

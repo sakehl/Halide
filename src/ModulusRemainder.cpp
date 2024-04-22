@@ -57,6 +57,7 @@ public:
     void visit(const Not *) override;
     void visit(const Forall *) override;
     void visit(const Exists *) override;
+    void visit(const Predicate *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -195,6 +196,10 @@ void ComputeModulusRemainder::visit(const Forall *) {
 }
 
 void ComputeModulusRemainder::visit(const Exists *) {
+    internal_error << "modulus_remainder of bool\n";
+}
+
+void ComputeModulusRemainder::visit(const Predicate *) {
     internal_error << "modulus_remainder of bool\n";
 }
 

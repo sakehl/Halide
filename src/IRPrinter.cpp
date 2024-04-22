@@ -38,6 +38,9 @@ ostream &operator<<(ostream &out, const Type &type) {
     case Type::BFloat:
         out << "bfloat";
         break;
+    case Type::Resource:
+        out << "resource";
+        break;
     }
     if (!type.is_handle()) {
         out << type.bits();
@@ -273,6 +276,9 @@ public:
         precedence = 1;
     }
     void visit(const Exists *) override {
+        precedence = 1;
+    }
+    void visit(const Predicate *) override {
         precedence = 1;
     }
     void visit(const Select *) override {
@@ -616,8 +622,6 @@ void IRPrinter::print_maybe_parens(const Expr &ir, const Expr &outer_expr, bool 
     Precedence inner;
     ir.accept(&inner);
 
-    int outer_precedence = outer.precedence;
-    int precedence = Precedence::get_precedence(ir);
     bool no_parens = inner.precedence < outer.precedence ||
                      (inner.precedence == outer.precedence &&
                         inner.associative && outer.associative) ||
@@ -912,6 +916,38 @@ void IRPrinter::visit(const Exists *op) {
     stream << ")";
 }
 
+void IRPrinter::visit(const Predicate *op) {
+    if(!is_const_one(op->perm)){
+        stream << "[" << op->perm << "]";
+    }
+    if(op->pred_type == Predicate::PredicateType::Partial){
+        stream << op->name << "_pred(";
+    } else {
+        for(int i=0; i<(int)op->buffer_types.size(); i++){
+            stream << "_" << op->buffer_types[i];
+        }
+        stream << "_pred(";
+    }
+    if(op->buffer_types.size() == 1){
+        print(Variable::make(Int(32), op->name));
+    } else {
+        for(size_t i = 0; i < op->buffer_types.size(); i++){
+            print(Variable::make(Int(32), op->name + "_"));
+            stream << i;
+            if(i < op->buffer_types.size() - 1){
+                stream << ", ";
+            }
+        }
+    }
+    if(op->args.size()>0){
+        stream << ", ";
+        print_list(op->args);
+    }
+    
+    
+    stream << ")";
+}
+
 void IRPrinter::visit(const Select *op) {
     stream << "select(";
     print_no_parens(op->condition);
@@ -1105,7 +1141,7 @@ void IRPrinter::visit(const Store *op) {
     if (has_pred) {
         indent--;
     }
-    if(op->lemma.defined()){
+    if(op->lemma.defined() && !is_const_zero(op->lemma)){
         stream << "/* lemma: ";
         print(op->lemma);
         stream << "*/";

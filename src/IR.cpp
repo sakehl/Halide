@@ -220,10 +220,10 @@ Expr Implies::make(Expr a, Expr b) {
     internal_assert(a.defined()) << "Implies of undefined\n";
     internal_assert(b.defined()) << "Implies of undefined\n";
     internal_assert(a.type().is_bool()) << "lhs of Implies is not a bool\n";
-    internal_assert(b.type().is_bool()) << "rhs of Implies is not a bool\n";
+    internal_assert(b.type().is_bool_or_resource()) << "rhs of Implies is not a bool\n";
 
     Implies *node = new Implies;
-    node->type = Bool(a.type().lanes());
+    node->type = b.type();
     node->a = std::move(a);
     node->b = std::move(b);
     return node;
@@ -239,31 +239,48 @@ Expr Not::make(Expr a) {
     return node;
 }
 
-Expr Forall::make(std::vector<std::string> vars, Expr select, Expr main) {
+Expr Forall::make(const std::vector<std::string> &vars, Expr select, Expr main) {
     internal_assert(select.defined()) << "Forall of undefined\n";
     internal_assert(main.defined()) << "Forall of undefined\n";
     internal_assert(select.type().is_bool() && select.type().is_scalar()) << "select of Forall is not a scalar bool\n";
-    internal_assert(main.type().is_bool() && main.type().is_scalar()) << "main of Forall is not a scalar bool\n";
+    internal_assert(main.type().is_bool_or_resource() && main.type().is_scalar()) << "main of Forall is not a scalar bool or resource\n";
 
     Forall *node = new Forall;
-    node->type = select.type();
+    node->type = main.type();
     node->vars = vars;
     node->select = std::move(select);
     node->main = std::move(main);
     return node;
 }
 
-Expr Exists::make(std::vector<std::string> vars, Expr select, Expr main) {
+Expr Exists::make(const std::vector<std::string> &vars, Expr select, Expr main) {
     internal_assert(select.defined()) << "Exists of undefined\n";
     internal_assert(main.defined()) << "Exists of undefined\n";
     internal_assert(select.type().is_bool() && select.type().is_scalar()) << "select of Exists is not a scalar bool\n";
-    internal_assert(main.type().is_bool() && main.type().is_scalar()) << "main of Exists is not a scalar bool\n";
+    internal_assert(main.type().is_bool_or_resource() && main.type().is_scalar()) << "main of Exists is not a scalar bool\n";
 
     Exists *node = new Exists;
-    node->type = select.type();
+    node->type = main.type();
     node->vars = vars;
     node->select = std::move(select);
     node->main = std::move(main);
+    return node;
+}
+
+Expr Predicate::make(const std::string &name, const std::vector<Expr> &args, Expr perm, const std::vector<Type> &buffer_types, PredicateType pred_type){
+    internal_assert(!name.empty()) << "Predicate of undefined name\n";
+    for (size_t i = 0; i < args.size(); i++) {
+        internal_assert(args[i].defined()) << "Predicate of " << name << " with argument " << i << " undefined.\n";
+    }
+    internal_assert(perm.defined()) << "Predicate of undefined perm\n";
+    
+    Predicate *node = new Predicate;
+    node->type = Resource();
+    node->name = name;
+    node->args = args;
+    node->perm = perm;
+    node->buffer_types = buffer_types;
+    node->pred_type = pred_type;
     return node;
 }
 
@@ -385,7 +402,7 @@ Stmt ProducerConsumer::make_consume(const std::string &name, Stmt body) {
 }
 
 Stmt For::make(const std::string &name, Expr min, Expr extent, ForType for_type, DeviceAPI device_api, Stmt body,
-  std::vector<Annotation> annotations) {
+  const std::vector<Annotation> &annotations) {
     internal_assert(min.defined()) << "For of undefined\n";
     internal_assert(extent.defined()) << "For of undefined\n";
     internal_assert(min.type() == Int(32)) << "For with non-integer min\n";
@@ -623,7 +640,7 @@ Stmt IfThenElse::make(Expr condition, Stmt then_case, Stmt else_case) {
     return node;
 }
 
-Stmt Evaluate::make(Expr v, std::vector<Annotation> annotations) {
+Stmt Evaluate::make(Expr v, const std::vector<Annotation> &annotations) {
     internal_assert(v.defined()) << "Evaluate of undefined\n";
 
     Evaluate *node = new Evaluate;
@@ -685,6 +702,8 @@ const char *const intrinsic_op_names[] = {
     "mulhi_shr",
     "mux",
     "popcount",
+    "predicate",
+    "predicate_partial",
     "prefetch",
     "promise_clamped",
     "random",
@@ -970,7 +989,7 @@ Expr VectorReduce::make(VectorReduce::Operator op,
 
 Annotation AnnExpr::make(AnnotationType ann_type, Expr condition){
     internal_assert(condition.defined()) << "AnnExpr of undefined\n";
-    internal_assert(condition.type().is_bool()) << "Argument to AnnExpr is not a bool: " << condition.type() << "\n";
+    internal_assert(condition.type().is_bool_or_resource()) << "Argument to AnnExpr is not a bool: " << condition.type() << "\n";
 
     AnnExpr *node = new AnnExpr;
     node->ann_type = ann_type;
@@ -978,7 +997,7 @@ Annotation AnnExpr::make(AnnotationType ann_type, Expr condition){
     return node;
 }
 
-Annotation Permission::make(AnnotationType ann_type, Expr antecedent, Expr variable, Expr permission, std::vector<std::string> forall_vars){
+Annotation Permission::make(AnnotationType ann_type, Expr antecedent, Expr variable, Expr permission, const std::vector<std::string> &forall_vars){
     internal_assert(antecedent.defined()) << "Permission of undefined\n";
     internal_assert(variable.defined()) << "Permission of undefined\n";
     internal_assert(permission.defined()) << "Permission of undefined\n";
@@ -1142,6 +1161,10 @@ void ExprNode<Forall>::accept(IRVisitor *v) const {
 template<>
 void ExprNode<Exists>::accept(IRVisitor *v) const {
     v->visit((const Exists *)this);
+}
+template<>
+void ExprNode<Predicate>::accept(IRVisitor *v) const {
+    v->visit((const Predicate *)this);
 }
 template<>
 void ExprNode<Select>::accept(IRVisitor *v) const {
@@ -1355,6 +1378,10 @@ Expr ExprNode<Forall>::mutate_expr(IRMutator *v) const {
 template<>
 Expr ExprNode<Exists>::mutate_expr(IRMutator *v) const {
     return v->visit((const Exists *)this);
+}
+template<>
+Expr ExprNode<Predicate>::mutate_expr(IRMutator *v) const {
+    return v->visit((const Predicate *)this);
 }
 template<>
 Expr ExprNode<Select>::mutate_expr(IRMutator *v) const {

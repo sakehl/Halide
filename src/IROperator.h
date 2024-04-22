@@ -1361,6 +1361,10 @@ inline Expr undef() {
  */
 Expr frac(Expr a, Expr b);
 
+Expr read(Expr factor);
+
+Expr write();
+
 
 /** Control the values used in the memoization cache key for memoize.
  * Normally parameters and other external dependencies are

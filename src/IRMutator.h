@@ -72,6 +72,7 @@ protected:
     virtual Expr visit(const Not *);
     virtual Expr visit(const Forall *);
     virtual Expr visit(const Exists *);
+    virtual Expr visit(const Predicate *);
     virtual Expr visit(const Select *);
     virtual Expr visit(const Load *);
     virtual Expr visit(const Ramp *);

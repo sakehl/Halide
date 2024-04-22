@@ -295,9 +295,33 @@ Expr Simplify::visit(const Exists *op, ExprInfo *bounds) {
         main.same_as(op->main)) {
         return op;
     } else {
-        return Forall::make(op->vars, select, main);
+        return Exists::make(op->vars, select, main);
     }
 }
+
+Expr Simplify::visit(const Predicate *op, ExprInfo *bounds) {
+    Expr perm = mutate(op->perm, nullptr);
+    std::vector<Expr> new_args(op->args.size());
+    bool changed = false;
+
+    // Mutate the args
+    for (size_t i = 0; i < op->args.size(); i++) {
+        const Expr &old_arg = op->args[i];
+        Expr new_arg = mutate(old_arg, nullptr);
+        if (!new_arg.same_as(old_arg)) {
+            changed = true;
+        }
+        new_args[i] = std::move(new_arg);
+    }
+
+    if (!changed && perm.same_as(op->perm)) {
+        return op;
+    } else {
+        return Predicate::make(op->name, new_args, perm, op->buffer_types, op->pred_type);
+    }
+}
+
+
 
 Expr Simplify::visit(const Ramp *op, ExprInfo *bounds) {
     ExprInfo base_bounds, stride_bounds;

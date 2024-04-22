@@ -64,14 +64,6 @@ class SplitTuples : public IRMutator {
 
     map<string, set<int>> func_value_indices;
 
-    // Annotation visit(const AnnExpr *op) override {
-    //     return op;
-    // }
-
-    // Annotation visit(const Permission *op) override {
-    //     return op;
-    // }
-
     Stmt visit(const Realize *op) override {
         ScopedBinding<int> bind(realizations, op->name, 0);
         if (op->types.size() > 1) {

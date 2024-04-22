@@ -77,6 +77,7 @@ const string globals = R"INLINE_CODE(
 
 struct halide_dimension_t {
     int32_t min, extent, stride;
+    uint32_t flags;
 };
 
 inline void halide_unused(bool e){};
@@ -144,123 +145,92 @@ inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) =
  Perm(dim[i].stride, 1\2) **
  Perm(dim[i].extent, 1\2)
  ;
-
- ghost
+ 
  requires a >= 0;
  requires b > 0;
  requires a < max_a;
  ensures a*b <= (max_a-1)*b;
+ ensures \result;
  decreases b;
-void lemma_nonlinear(int a, int b, int max_a)
-;//{
-//  if(b>1){
-//    lemma_nonlinear(a, b-1, max_a);
-//    assert a*(b-1) <= max_a*(b-1);
-//  }
-//}
-
- ghost
- requires a-min_a >= 0  && a-min_a<extent_a;
+pure bool lemma_nonlinear(int a, int b, int max_a) = 
+  b>1 ? lemma_nonlinear(a, b-1, max_a) : true;
+ 
+ requires a-min_a >= 0 && a-min_a<extent_a;
  requires b-min_b >= 0 && b-min_b<extent_b;
  requires stride_a > 0;
- requires stride_b > 0;
  requires stride_b >= extent_a*stride_a;
 
+ ensures 0 <= (b-min_b)*stride_b;
  ensures 0 <= (a-min_a)*stride_a + (b-min_b)*stride_b;
  ensures (a-min_a)*stride_a + (b-min_b)*stride_b < stride_b*extent_b;
+ ensures \result;
  decreases;
-void lemma_2d_access(
+pure bool lemma_2d_access(
  int a, int min_a, int stride_a, int extent_a,
- int b, int min_b, int stride_b, int extent_b)
-;//{
-//  lemma_nonlinear(a-min_a, stride_a, extent_a);
-//  lemma_nonlinear(b-min_b, stride_b, extent_b);
-//  return;
-//}
+ int b, int min_b, int stride_b, int extent_b) =
+  lemma_nonlinear(a-min_a, stride_a, extent_a) &&
+  lemma_nonlinear(b-min_b, stride_b, extent_b);
 
- ghost
  requires a-min_a >= 0 && a-min_a < extent_a;
  requires b-min_b >= 0 && b-min_b < extent_b;
  requires c-min_c >= 0 && c-min_c < extent_c;
  requires stride_a > 0;
- requires stride_b > 0;
- requires stride_c > 0;
  requires stride_b >= extent_a * stride_a;
  requires stride_c >= extent_b * stride_b;
  
  ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c;
  ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c < stride_c * extent_c;
+ ensures \result;
  decreases;
-void lemma_3d_access(
+pure bool lemma_3d_access(
   int a, int min_a, int stride_a, int extent_a,
   int b, int min_b, int stride_b, int extent_b,
   int c, int min_c, int stride_c, int extent_c
-)
-;//{
-//  lemma_2d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b);
-//  lemma_nonlinear(c-min_c, stride_c, extent_c);
-//  return;
-//}
+) = lemma_2d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b) && lemma_nonlinear(c-min_c, stride_c, extent_c);
 
- ghost
+
  requires a-min_a >= 0 && a-min_a < extent_a;
  requires b-min_b >= 0 && b-min_b < extent_b;
  requires c-min_c >= 0 && c-min_c < extent_c;
  requires d-min_d >= 0 && d-min_d < extent_d;
  requires stride_a > 0;
- requires stride_b > 0;
- requires stride_c > 0;
- requires stride_d > 0;
  requires stride_b >= extent_a * stride_a;
  requires stride_c >= extent_b * stride_b;
  requires stride_d >= extent_c * stride_c;
 
-ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d;
-ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d < stride_d * extent_d;
-decreases;
-void lemma_4d_access(
+ ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d;
+ ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d < stride_d * extent_d;
+ ensures \result;
+ decreases;
+pure bool lemma_4d_access(
   int a, int min_a, int stride_a, int extent_a,
   int b, int min_b, int stride_b, int extent_b,
   int c, int min_c, int stride_c, int extent_c,
   int d, int min_d, int stride_d, int extent_d
-)
-;//{
-//  lemma_3d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c);
-//  lemma_nonlinear(d-min_d, stride_d, extent_d);
-//  return;
-//}
+) = lemma_3d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c) && lemma_nonlinear(d-min_d, stride_d, extent_d);
 
- ghost
  requires a-min_a >= 0 && a-min_a < extent_a;
  requires b-min_b >= 0 && b-min_b < extent_b;
  requires c-min_c >= 0 && c-min_c < extent_c;
  requires d-min_d >= 0 && d-min_d < extent_d;
  requires e-min_e >= 0 && e-min_e < extent_e;
  requires stride_a > 0;
- requires stride_b > 0;
- requires stride_c > 0;
- requires stride_d > 0;
- requires stride_e > 0;
  requires stride_b >= extent_a * stride_a;
  requires stride_c >= extent_b * stride_b;
  requires stride_d >= extent_c * stride_c;
  requires stride_e >= extent_d * stride_d;
- 
+
  ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e;
  ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e < stride_e * extent_e;
+ ensures \result;
  decreases;
-void lemma_5d_access(
+pure bool lemma_5d_access(
   int a, int min_a, int stride_a, int extent_a,
   int b, int min_b, int stride_b, int extent_b,
   int c, int min_c, int stride_c, int extent_c,
   int d, int min_d, int stride_d, int extent_d,
   int e, int min_e, int stride_e, int extent_e
-)
-;//{
-//  lemma_4d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c, d, min_d, stride_d, extent_d);
-//  lemma_nonlinear(e-min_e, stride_e, extent_e);
-//  return;
-//}
+) = lemma_4d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c, d, min_d, stride_d, extent_d) && lemma_nonlinear(e-min_e, stride_e, extent_e);
 @*/
 #endif // HALIVER_GLOBALS
 )INLINE_CODE";
@@ -1942,12 +1912,14 @@ void CodeGen_C::emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitt
 void CodeGen_C::compile(const Module &input) {
     TypeInfoGatherer type_info;
 
+    stream << "/*@\n";
+    stream << input.get_annotation_header();
+    stream << "\n@*/\n";
+
     if(!is_pvl()){
         std::set<Type> buffers_emitted;
         for (const auto &f : input.functions()) {
-            // if (f.body.defined()) {
-                emit_buffers(f, &buffers_emitted);
-            // }
+            emit_buffers(f, &buffers_emitted);
         }
     }
 
@@ -3778,6 +3750,8 @@ void CodeGen_C::visit(const Shuffle *op) {
 
 void CodeGen_C::visit(const AnnExpr *op) { }
 
+void CodeGen_C::visit(const Predicate *op) { }
+
 void CodeGen_C::visit(const Permission *op) { }
 
 string CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx){
@@ -4057,6 +4031,33 @@ void AnnotationPrinter::visit(const Exists *op) {
     stream << "; ";
     print_no_parens(op->main);
     stream << ")";
+}
+
+void AnnotationPrinter::visit(const Predicate *op) {
+    IRPrinter::visit(op);
+    // if(!is_const_one(op->perm)){
+    //     stream << "[" << op->perm << "]";
+    // }
+    // if(op->pred_type == Predicate::PredicateType::Partial){
+    //     stream << op->name;
+    // } else {
+    //     for(size_t i = 0; i < op->buffer_types.size(); i++){
+    //         stream << "_" << op->buffer_types[i];
+    //     }
+    // }
+    // stream << "_pred(";
+
+    // if(op->buffer_types.size() == 1){
+    //     stream << op->name << ", ";
+    // } else {
+    //     for(size_t i = 0; i < op->buffer_types.size(); i++){
+    //         stream << op->name << "_" << i << ", ";
+    //     }
+    // }
+    
+     
+    // print_list(op->args);
+    // stream << ")";
 }
 
 void AnnotationPrinter::visit(const Permission *op) {

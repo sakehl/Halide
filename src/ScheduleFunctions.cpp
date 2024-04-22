@@ -1476,29 +1476,45 @@ struct PlaceholderPrefetch {
     }
 };
 
+/** This helps creating permissions to read or write for functions.
+ * The write permission is distributed if the function is stored at a higher place than it is computed, in for-loops of other functions.
+ * The function manages it's own write permission otherwise
+ * 
+ * The read permission is for where this function is used, so we do not have to forall there, and give the whole predicate.
+ */
 class PermCreater {
+public:
+    string f_name;
+private:
     Expr antecedent;
+    std::vector<Expr> pred_args;
+    std::vector<Type> buffer_types;
     std::vector<std::string> forall_vars;
 public:
-    Expr variable;
 
     PermCreater() {}
 
-    PermCreater(Expr antecedent, Expr variable, std::vector<std::string> forall_vars) 
-        : antecedent(antecedent),
-          forall_vars(forall_vars),
-          variable(variable) {
-            internal_assert(antecedent.defined()) << "Permission of undefined\n";
-            internal_assert(variable.defined()) << "Permission of undefined\n";
+    PermCreater(const string &f_name, Expr antecedent, std::vector<Expr> &pred_args, const std::vector<Type> &buffer_types,
+        std::vector<std::string> forall_vars) 
+        : f_name(f_name),
+          antecedent(antecedent),
+          pred_args(pred_args),
+          buffer_types(buffer_types),
+          forall_vars(forall_vars){
+            internal_assert(antecedent.defined()) << "PermCreater of undefined\n";
     }
 
     Annotation create(Expr factor, bool is_serial = true){
-        return Permission::make(
-            is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, antecedent, variable,Frac::make(make_one(Int(32)), factor) ,forall_vars);
+        return AnnExpr::make(is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, 
+            Predicate::make(f_name, {}, read(factor), buffer_types, Predicate::PredicateType::Complete)
+        );
     }
 
     Annotation create_write(){
-        return Permission::make(AnnotationType::LoopInvariant, antecedent, variable,Frac::make(make_one(Int(32)), make_one(Int(32))) ,forall_vars);
+        return AnnExpr::make(AnnotationType::LoopInvariant,
+        Forall::make(forall_vars, antecedent, Predicate::make(f_name, pred_args, write(), buffer_types, Predicate::PredicateType::Partial))
+            
+        );
     }
 };
 
@@ -1623,7 +1639,7 @@ protected:
         } else if(!in_produce) {
             user_assert(!for_loop->is_parallel()) 
               << "We cannot have a parallel loop (" << for_loop->name << ") before distributing write permissions for: " 
-              << permission_annotation.variable;
+              << permission_annotation.f_name << "\n";
             vector<Annotation> new_annotations;
             new_annotations.emplace_back(permission_annotation.create_write());
             // After one iteration the post-conditions should hold
@@ -1663,6 +1679,8 @@ protected:
             Expr extent = Variable::make(Int(32), name + "." + arg + ".extent_realized");
             Expr var = Variable::make(Int(32), arg);
             args.emplace_back(var);
+            args.emplace_back(min);
+            args.emplace_back(extent);
             Expr new_bound = And::make(
                 LE::make(min, var),
                 LT::make(var, Add::make(min, extent))
@@ -1673,15 +1691,7 @@ protected:
                 bound = And::make(bound, new_bound);
         }
 
-        permission_annotation = PermCreater(bound, Call::make(func, args),func_args );
-        // for(const auto& ann :func.func_annotations()){
-        //     if (const auto *ann_expr = ann.as<AnnExpr>()){
-        //         if(ann_expr->ann_type == AnnotationType::Ensure || ann_expr->ann_type == AnnotationType::Context 
-        //             || ann_expr->ann_type == AnnotationType::ContextEverywhere){
-        //             proven_conditions.emplace_back(make_forall(func_args, bound, ann_expr->condition));
-        //         }
-        //     }
-        // }
+        permission_annotation = PermCreater(name, bound, args, func.output_types(), func_args);
     }
 
 };

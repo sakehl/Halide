@@ -203,7 +203,7 @@ struct Forall : public ExprNode<Forall> {
     std::vector<std::string> vars;
     Expr select, main;
 
-    static Expr make(std::vector<std::string> vars, Expr select, Expr main);
+    static Expr make(const std::vector<std::string> &vars, Expr select, Expr main);
 
     static const IRNodeType _node_type = IRNodeType::Forall;
 };
@@ -213,9 +213,28 @@ struct Exists : public ExprNode<Exists> {
     std::vector<std::string> vars;
     Expr select, main;
 
-    static Expr make(std::vector<std::string> vars, Expr select, Expr main);
+    static Expr make(const std::vector<std::string> &vars, Expr select, Expr main);
 
     static const IRNodeType _node_type = IRNodeType::Exists;
+};
+
+/** Predicate of either a complete pointer or partial pointer that contains its permission */
+struct Predicate: public ExprNode<Predicate> {
+    typedef enum {
+        Partial,
+        Complete,
+    } PredicateType;
+
+    std::string name;
+    std::vector<Expr> args;
+    Expr perm;
+    std::vector<Type> buffer_types;
+    PredicateType pred_type;
+
+    
+    static Expr make(const std::string &name, const std::vector<Expr> &args, Expr perm, const std::vector<Type> &buffer_types, PredicateType pred_type);
+
+    static const IRNodeType _node_type = IRNodeType::Predicate;
 };
 
 /** A ternary operator. Evalutes 'true_value' and 'false_value',
@@ -489,7 +508,7 @@ struct Evaluate : public StmtNode<Evaluate> {
     Expr value;
     std::vector<Annotation> annotations;
 
-    static Stmt make(Expr v, std::vector<Annotation> annotations = {});
+    static Stmt make(Expr v, const std::vector<Annotation> &annotations = {});
 
     static const IRNodeType _node_type = IRNodeType::Evaluate;
 };
@@ -569,6 +588,8 @@ struct Call : public ExprNode<Call> {
         mulhi_shr,  // Compute high_half(arg[0] * arg[1]) >> arg[3]. Note that this is a shift in addition to taking the upper half of multiply result. arg[3] must be an unsigned integer immediate.
         mux,
         popcount,
+        predicate,
+        predicate_partial,
         prefetch,
         promise_clamped,
         random,
@@ -769,7 +790,7 @@ struct For : public StmtNode<For> {
     std::vector<Annotation> annotations;
 
     static Stmt make(const std::string &name, Expr min, Expr extent, ForType for_type, DeviceAPI device_api, Stmt body,
-      std::vector<Annotation> annotations = {});
+      const std::vector<Annotation> &annotations = {});
 
     bool is_unordered_parallel() const {
         return Halide::Internal::is_unordered_parallel(for_type);
@@ -916,7 +937,7 @@ struct Permission : public AnnNode<Permission> {
                      Expr antecedent,
                      Expr variable,
                      Expr permission,
-                     std::vector<std::string> forall_vars);
+                     const std::vector<std::string> &forall_vars);
 
     static const IRNodeType _node_type = IRNodeType::Permission;
 };
