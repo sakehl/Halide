@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 16,
@@ -22,6 +22,7 @@
     {
       "name": "gcc-release",
       "inherits": "gcc-debug",
+      "binaryDir": "${sourceDir}/build",
       "displayName": "GCC (Release)",
       "description": "Release build using Ninja generator and GCC-compatible compiler",
       "cacheVariables": {

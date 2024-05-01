@@ -122,19 +122,45 @@ inline int /*@ pure @*/ mod_eucl(int x, int y)
 }
 
 static inline int /*@ pure @*/ min(int x, int y) {return x < y ? x : y;}
-
 static inline float /*@ pure @*/ fast_inverse_f32(float x) {return 1.0f/x;}
-static inline float /*@ pure @*/ sqrt_f32(double x) {return (float)sqrt((double)x);}
-static inline float /*@ pure @*/ pow_f32(float x, float y){ return (float) pow((double) x, (double) y);}
-static inline float /*@ pure @*/ floor_f32(float x){ return (float) floor((double) x); }
-static inline float /*@ pure @*/ ceil_f32(float x){ return (float) ceil((double) x); }
-static inline float /*@ pure @*/ round_f32(float x){ return (float) round((double) x); }
+
+static inline float /*@ pure @*/ sqrt_f32(float x) {return sqrtf(x);}
+static inline float /*@ pure @*/ sin_f32(float x) {return sinf(x);}
+static inline float /*@ pure @*/ asin_f32(float x) {return asinf(x);}
+static inline float /*@ pure @*/ cos_f32(float x) {return cosf(x);}
+static inline float /*@ pure @*/ acos_f32(float x) {return acosf(x);}
+static inline float /*@ pure @*/ tan_f32(float x) {return tanf(x);}
+static inline float /*@ pure @*/ atan_f32(float x) {return atanf(x);}
+static inline float /*@ pure @*/ atan2_f32(float x, float y) {return atan2f(x, y);}
+static inline float /*@ pure @*/ sinh_f32(float x) {return sinhf(x);}
+static inline float /*@ pure @*/ cosh_f32(float x) {return coshf(x);}
+static inline float /*@ pure @*/ tanh_f32(float x) {return tanhf(x);}
+static inline float /*@ pure @*/ hypot_f32(float x, float y) {return hypotf(x, y);}
+static inline float /*@ pure @*/ exp_f32(float x) {return expf(x);}
+static inline float /*@ pure @*/ log_f32(float x) {return logf(x);}
+static inline float /*@ pure @*/ pow_f32(float x, float y) {return powf(x, y);}
+static inline float /*@ pure @*/ floor_f32(float x) {return floorf(x);}
+static inline float /*@ pure @*/ ceil_f32(float x) {return ceilf(x);}
+static inline float /*@ pure @*/ round_f32(float x) {return roundf(x);}
 
 static inline double /*@ pure @*/ sqrt_f64(double x) {return sqrt(x);}
+static inline double /*@ pure @*/ sin_f64(double x) {return sin(x);}
+static inline double /*@ pure @*/ asin_f64(double x) {return asin(x);}
+static inline double /*@ pure @*/ cos_f64(double x) {return cos(x);}
+static inline double /*@ pure @*/ acos_f64(double x) {return acos(x);}
+static inline double /*@ pure @*/ tan_f64(double x) {return tan(x);}
+static inline double /*@ pure @*/ atan_f64(double x) {return atan(x);}
+static inline double /*@ pure @*/ atan2_f64(double x, double y) {return atan2(x, y);}
+static inline double /*@ pure @*/ sinh_f64(double x) {return sinh(x);}
+static inline double /*@ pure @*/ cosh_f64(double x) {return cosh(x);}
+static inline double /*@ pure @*/ tanh_f64(double x) {return tanh(x);}
+static inline double /*@ pure @*/ hypot_f64(double x, double y) {return hypot(x, y);}
+static inline double /*@ pure @*/ exp_f64(double x) {return exp(x);}
+static inline double /*@ pure @*/ log_f64(double x) {return log(x);}
 static inline double /*@ pure @*/ pow_f64(double x, double y) {return pow(x, y);}
 static inline double /*@ pure @*/ floor_f64(double x) {return floor(x);}
 static inline double /*@ pure @*/ ceil_f64(double x) {return ceil(x);}
-static inline double /*@ pure @*/ round_f64(double x){ return round(x); }
+static inline double /*@ pure @*/ round_f64(double x) {return round(x);}
 
 //inline float nan_f32() {return NAN;}
 inline float nan_f32() {return 0.0f;}

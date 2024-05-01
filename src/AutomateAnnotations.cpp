@@ -487,7 +487,7 @@ string define_complete_predicate(const Type &t){
 }
 
 string define_part_predicate(Function &f){
-    user_assert( f.dimensions() < 5 ) << "We only made HaliVer generate valid definitions up to 5 dimensions\n";
+    user_assert( f.dimensions() < 8 ) << "We only made HaliVer generate valid definitions up to 8 dimensions\n";
     if(f.dimensions() == 0){
         internal_error << "TODO: dimension 0";
     }
