@@ -2160,6 +2160,146 @@ int main(int argc, char **argv) {
     printf("Running store_at different levels test\n");
     if (store_at_different_levels_test() != 0) {
         return -1;
+// Test for the issue described in https://github.com/halide/Halide/issues/8149.
+int child_var_dependent_bounds_test() {
+    Func f{"f"}, g{"g"};
+    Var x{"x"}, y{"y"};
+    RDom r(0, 10, "r");
+
+    Func f_inter{"f_inter"}, g_inter{"g_inter"};
+
+    f_inter(x, y) = x;
+    f_inter(x, y) += 1;
+    f(x) = x;
+    f(x) += f_inter(x, r);
+
+    g_inter(x, y) = x;
+    g_inter(x, y) += 1;
+    g(x) = x;
+    g(x) += g_inter(x, r);
+
+    f_inter.compute_at(f, r);
+    g_inter.compute_at(f, r);
+    g.update().compute_with(f.update(), r);
+    f.update().unscheduled();
+
+    Pipeline p({f, g});
+
+    p.compile_jit();
+    Buffer<int> f_buf(10), g_buf(10);
+
+    f_buf.set_min(2);
+    p.realize({f_buf, g_buf});
+    f_buf.set_min(0);
+
+    for (int i = 0; i < 10; i++) {
+        int correct_f = 10 + 11 * (i + 2);
+        int correct_g = 10 + 11 * i;
+        if (f_buf(i) != correct_f) {
+            printf("f(%d) = %d instead of %d\n", i, f_buf(i), correct_f);
+        }
+        if (g_buf(i) != correct_g) {
+            printf("g(%d) = %d instead of %d\n", i, g_buf(i), correct_f);
+        }
+    }
+
+    return 0;
+}
+
+int overlapping_updates_test() {
+    Func f{"f"}, g{"g"};
+    Var x{"x"};
+
+    f(x) = 0;
+    f(x) += x;
+    g(x) = 0;
+    g(x) += x;
+
+    g.update().compute_with(f.update(), x);
+    f.update().unscheduled();
+
+    Pipeline p({f, g});
+
+    p.compile_jit();
+    Buffer<int> f_buf(10), g_buf(10);
+
+    f_buf.set_min(2);
+    p.realize({f_buf, g_buf});
+    f_buf.set_min(0);
+
+    for (int i = 0; i < 10; i++) {
+        int correct_f = i + 2;
+        int correct_g = i;
+        if (f_buf(i) != correct_f) {
+            printf("f(%d) = %d instead of %d\n", i, f_buf(i), correct_f);
+            return 1;
+        }
+        if (g_buf(i) != correct_g) {
+            printf("g(%d) = %d instead of %d\n", i, g_buf(i), correct_f);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+}  // namespace
+
+int main(int argc, char **argv) {
+    struct Task {
+        std::string desc;
+        std::function<int()> fn;
+    };
+
+    std::vector<Task> tasks = {
+        {"split reorder test", split_test},
+        {"fuse test", fuse_test},
+        {"multiple fuse group test", multiple_fuse_group_test},
+        {"multiple outputs test", multiple_outputs_test},
+        {"double split fuse test", double_split_fuse_test},
+        {"vectorize test", vectorize_test},
+        //
+        // Note: we are deprecating skipping parts of a fused group in favor of
+        //       cloning funcs in particular stages via a new (clone_)in overload.
+        // TODO: remove this code when the new clone_in is implemented.
+        //
+        // {"some are skipped test", some_are_skipped_test},
+        {"rgb to yuv420 test", rgb_yuv420_test},
+        {"with specialization test", with_specialization_test},
+        {"fuse compute at test", fuse_compute_at_test},
+        {"nested compute with test", nested_compute_with_test},
+        {"mixed tile factor test", mixed_tile_factor_test},
+        // NOTE: disabled because it generates OOB (see #4751 for discussion).
+        // {"only some are tiled test", only_some_are_tiled_test},
+        {"multiple outputs on gpu test", multiple_outputs_on_gpu_test},
+        {"multi tile mixed tile factor test", multi_tile_mixed_tile_factor_test},
+        {"update stage test", update_stage_test},
+        {"update stage2 test", update_stage2_test},
+        {"update stage3 test", update_stage3_test},
+        {"update stage pairwise test", update_stage_pairwise_test},
+        // I think this should work, but there is an overzealous check somewhere.
+        // {"update stage pairwise zigzag test", update_stage_pairwise_zigzag_test},
+        {"update stage diagonal test", update_stage_diagonal_test},
+        {"update stage rfactor test", update_stage_rfactor_test},
+        {"vectorize inlined test", vectorize_inlined_test},
+        {"mismatching splits test", mismatching_splits_test},
+        {"different arg number compute_at test", different_arg_num_compute_at_test},
+        {"store_at different levels test", store_at_different_levels_test},
+        {"rvar bounds test", rvar_bounds_test},
+        {"two compute at test", two_compute_at_test},
+        {"overlapping updates test", overlapping_updates_test},
+        {"child var dependent bounds test", child_var_dependent_bounds_test},
+    };
+
+    using Sharder = Halide::Internal::Test::Sharder;
+    Sharder sharder;
+    for (size_t t = 0; t < tasks.size(); t++) {
+        if (!sharder.should_run(t)) continue;
+        const auto &task = tasks.at(t);
+        std::cout << task.desc << "\n";
+        if (task.fn() != 0) {
+            return 1;
+        }
     }
 
     printf("Success!\n");
