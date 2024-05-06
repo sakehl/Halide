@@ -301,6 +301,10 @@ void IRVisitor::visit(const Atomic *op) {
     op->body.accept(this);
 }
 
+void IRVisitor::visit(const Ghost *op) {
+    return;
+}
+
 void IRVisitor::visit(const AnnExpr *op) {
     op->condition.accept(this);
 }
@@ -611,6 +615,10 @@ void IRGraphVisitor::visit(const VectorReduce *op) {
 
 void IRGraphVisitor::visit(const Atomic *op) {
     include(op->body);
+}
+
+void IRGraphVisitor::visit(const Ghost *op) {
+    return;
 }
 
 void IRGraphVisitor::visit(const AnnExpr *op) {

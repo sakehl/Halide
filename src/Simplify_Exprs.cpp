@@ -317,7 +317,7 @@ Expr Simplify::visit(const Predicate *op, ExprInfo *bounds) {
     if (!changed && perm.same_as(op->perm)) {
         return op;
     } else {
-        return Predicate::make(op->name, new_args, perm, op->buffer_types, op->pred_type);
+        return Predicate::make(op->name, op->called_buffer, new_args, perm, op->buffer_type, op->pred_type);
     }
 }
 

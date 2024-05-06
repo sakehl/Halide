@@ -80,6 +80,7 @@ enum class IRNodeType {
     Evaluate,
     Prefetch,
     Atomic,
+    Ghost,
     //Annotations
     AnnExpr,
     // Forall

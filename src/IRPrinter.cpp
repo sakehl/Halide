@@ -601,8 +601,8 @@ std::string to_string(const Annotation &a){
     return out.str();
 }
 
-IRPrinter::IRPrinter(ostream &s)
-    : stream(s) {
+IRPrinter::IRPrinter(ostream &s, bool semicolon)
+    : stream(s), semicolon(semicolon) {
     s.setf(std::ios::fixed, std::ios::floatfield);
 }
 
@@ -887,6 +887,9 @@ void IRPrinter::visit(const Not *op) {
 
 void IRPrinter::visit(const Forall *op) {
     stream << "(\\forall";
+    if(op->type.is_resource()){
+        stream << "*";
+    }
     for(size_t i= 0; i<op->vars.size(); i++){
         stream << " int " << op->vars[i];
         if (i < op->vars.size() - 1) {
@@ -918,32 +921,21 @@ void IRPrinter::visit(const Exists *op) {
 
 void IRPrinter::visit(const Predicate *op) {
     if(!is_const_one(op->perm)){
-        stream << "[" << op->perm << "]";
+        stream << "[";
+        print_no_parens(op->perm);
+        stream << "]";
     }
     if(op->pred_type == Predicate::PredicateType::Partial){
-        stream << op->name << "_pred(";
+        stream << clean_print_name(op->name) << "_pred(";
     } else {
-        for(int i=0; i<(int)op->buffer_types.size(); i++){
-            stream << "_" << op->buffer_types[i];
-        }
+        stream << "_" << op->buffer_type;
         stream << "_pred(";
     }
-    if(op->buffer_types.size() == 1){
-        print(Variable::make(Int(32), op->name));
-    } else {
-        for(size_t i = 0; i < op->buffer_types.size(); i++){
-            print(Variable::make(Int(32), op->name + "_"));
-            stream << i;
-            if(i < op->buffer_types.size() - 1){
-                stream << ", ";
-            }
-        }
-    }
+    print_no_parens(Variable::make(Int(32), op->called_buffer));
     if(op->args.size()>0){
         stream << ", ";
         print_list(op->args);
     }
-    
     
     stream << ")";
 }
@@ -1042,7 +1034,7 @@ void IRPrinter::visit(const AssertStmt *op) {
     print_no_parens(op->condition);
     stream << ", ";
     print_no_parens(op->message);
-    stream << ")\n";
+    stream << ")" << (semicolon ? ";\n" : "\n");
 }
 
 void IRPrinter::visit(const ProducerConsumer *op) {
@@ -1137,7 +1129,7 @@ void IRPrinter::visit(const Store *op) {
         // Just print the value in-line
         print_no_parens(op->value);
     }
-    stream << "\n";
+    stream << (semicolon ? ";\n" : "\n");
     if (has_pred) {
         indent--;
     }
@@ -1160,7 +1152,7 @@ void IRPrinter::visit(const Provide *op) {
         stream << "}";
     }
 
-    stream << "\n";
+    stream << (semicolon ? ";\n" : "\n");
 }
 
 void IRPrinter::visit(const Allocate *op) {
@@ -1188,13 +1180,13 @@ void IRPrinter::visit(const Allocate *op) {
         stream << "\n";
         stream << get_indent() << " custom_delete { " << op->free_function << "(" << op->name << "); }";
     }
-    stream << "\n";
+    stream << (semicolon ? ";\n" : "\n");
     print(op->body);
 }
 
 void IRPrinter::visit(const Free *op) {
     stream << get_indent() << "free " << op->name;
-    stream << "\n";
+    stream << (semicolon ? ";\n" : "\n");
 }
 
 void IRPrinter::visit(const Realize *op) {
@@ -1321,7 +1313,7 @@ void IRPrinter::visit(const Evaluate *op) {
     indent--;
     stream << get_indent();
     print_no_parens(op->value);
-    stream << "\n";
+    stream << ((semicolon ? ";\n" : "\n"));
 }
 
 void IRPrinter::visit(const Shuffle *op) {
@@ -1384,6 +1376,13 @@ void IRPrinter::visit(const Atomic *op) {
     print(op->body);
     indent -= 2;
     stream << get_indent() << "}\n";
+}
+
+void IRPrinter::visit(const Ghost *op) {
+    stream << get_indent() << "ghost\n";
+    indent++;
+    print(op->ghost);
+    indent--;
 }
 
 void IRPrinter::visit(const AnnExpr *op) {

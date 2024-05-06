@@ -82,6 +82,7 @@ public:
     void visit(const VectorReduce *) override;
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
+    void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
 };
@@ -308,6 +309,11 @@ void ComputeModulusRemainder::visit(const Prefetch *) {
 void ComputeModulusRemainder::visit(const Atomic *) {
     internal_error << "modulus_remainder of statement\n";
 }
+
+void ComputeModulusRemainder::visit(const Ghost *) {
+    internal_error << "modulus_remainder of statement\n";
+}
+
 
 void ComputeModulusRemainder::visit(const AnnExpr *) {
     internal_error << "modulus_remainder of annotation\n";

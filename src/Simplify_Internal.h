@@ -353,6 +353,7 @@ public:
     Stmt visit(const Acquire *op);
     Stmt visit(const Fork *op);
     Stmt visit(const Atomic *op);
+    Stmt visit(const Ghost *op);
     Annotation visit(const AnnExpr *op);
     Annotation visit(const Permission *op);
 };

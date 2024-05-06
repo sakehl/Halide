@@ -246,6 +246,7 @@ Stmt Simplify::visit(const Provide *op) {
     found_buffer_reference(op->name, op->args.size());
 
     vector<Expr> new_args(op->args.size());
+    vector<Expr> new_ghost_args(op->ghost_args.size());
     vector<Expr> new_values(op->values.size());
     vector<Annotation> new_annotations;
     bool changed = false;
@@ -260,6 +261,15 @@ Stmt Simplify::visit(const Provide *op) {
         new_args[i] = new_arg;
     }
 
+    for (size_t i = 0; i < op->ghost_args.size(); i++) {
+        const Expr &old_arg = op->ghost_args[i];
+        Expr new_arg = mutate(old_arg, nullptr);
+        if (!new_arg.same_as(old_arg)) {
+            changed = true;
+        }
+        new_ghost_args[i] = new_arg;
+    }
+
     for (size_t i = 0; i < op->values.size(); i++) {
         const Expr &old_value = op->values[i];
         Expr new_value = mutate(old_value, nullptr);
@@ -272,7 +282,7 @@ Stmt Simplify::visit(const Provide *op) {
     if (!changed) {
         return op;
     } else {
-        return Provide::make(op->name, new_values, new_args);
+        return Provide::make(op->name, new_values, new_args, new_ghost_args);
     }
 }
 
@@ -643,6 +653,15 @@ Stmt Simplify::visit(const Atomic *op) {
         return Atomic::make(op->producer_name,
                             op->mutex_name,
                             std::move(body));
+    }
+}
+
+Stmt Simplify::visit(const Ghost *op) {
+    Stmt ghost = mutate(op->ghost);
+    if (ghost.same_as(op->ghost)) {
+        return op;
+    } else {
+        return Ghost::make(std::move(ghost));
     }
 }
 

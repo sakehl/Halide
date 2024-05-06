@@ -157,7 +157,7 @@ Expr IRMutator::visit(const Predicate *op) {
     if (!changed && perm.same_as(op->perm)) {
         return op;
     }
-    return Predicate::make(op->name, new_args, perm, op->buffer_types, op->pred_type);
+    return Predicate::make(op->name, op->called_buffer, new_args, perm, op->buffer_type, op->pred_type);
 }
 
 Expr IRMutator::visit(const Select *op) {
@@ -294,6 +294,7 @@ Stmt IRMutator::visit(const Store *op) {
 
 Stmt IRMutator::visit(const Provide *op) {
     vector<Expr> new_args(op->args.size());
+    vector<Expr> new_ghost_args(op->ghost_args.size());
     vector<Expr> new_values(op->values.size());
     vector<Annotation> new_annotations;
     bool changed = false;
@@ -308,6 +309,15 @@ Stmt IRMutator::visit(const Provide *op) {
         new_args[i] = new_arg;
     }
 
+    for (size_t i = 0; i < op->ghost_args.size(); i++) {
+        const Expr &old_arg = op->ghost_args[i];
+        Expr new_arg = mutate(old_arg);
+        if (!new_arg.same_as(old_arg)) {
+            changed = true;
+        }
+        new_ghost_args[i] = new_arg;
+    }
+
     for (size_t i = 0; i < op->values.size(); i++) {
         const Expr &old_value = op->values[i];
         Expr new_value = mutate(old_value);
@@ -320,7 +330,7 @@ Stmt IRMutator::visit(const Provide *op) {
     if (!changed) {
         return op;
     }
-    return Provide::make(op->name, new_values, new_args);
+    return Provide::make(op->name, new_values, new_args, new_ghost_args);
 }
 
 Stmt IRMutator::visit(const Allocate *op) {
@@ -484,6 +494,15 @@ Stmt IRMutator::visit(const Atomic *op) {
         return Atomic::make(op->producer_name,
                             op->mutex_name,
                             std::move(body));
+    }
+}
+
+Stmt IRMutator::visit(const Ghost *op) {
+    Stmt ghost = mutate(op->ghost);
+    if (ghost.same_as(op->ghost)) {
+        return op;
+    } else {
+        return Ghost::make(std::move(ghost));
     }
 }
 

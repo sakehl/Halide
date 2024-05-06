@@ -24,6 +24,7 @@ class CountVarUses : public IRVisitor {
 
     void visit(const Store *op) override {
         var_uses[op->name]++;
+        op->lemma.accept(this);
         IRVisitor::visit(op);
     }
 

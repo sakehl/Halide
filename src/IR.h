@@ -226,13 +226,14 @@ struct Predicate: public ExprNode<Predicate> {
     } PredicateType;
 
     std::string name;
+    std::string called_buffer;
     std::vector<Expr> args;
     Expr perm;
-    std::vector<Type> buffer_types;
+    Type buffer_type;
     PredicateType pred_type;
 
     
-    static Expr make(const std::string &name, const std::vector<Expr> &args, Expr perm, const std::vector<Type> &buffer_types, PredicateType pred_type);
+    static Expr make(const std::string &name, const std::string &called_buffer, const std::vector<Expr> &args, Expr perm, Type buffer_type, PredicateType pred_type);
 
     static const IRNodeType _node_type = IRNodeType::Predicate;
 };
@@ -394,10 +395,20 @@ struct Provide : public StmtNode<Provide> {
     std::string name;
     std::vector<Expr> values;
     std::vector<Expr> args;
+    std::vector<Expr> ghost_args;
 
-    static Stmt make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args);
+    static Stmt make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args,
+        const std::vector<Expr> &ghost_args);
 
     static const IRNodeType _node_type = IRNodeType::Provide;
+};
+
+/** In this node we can execute ghost code for the verification ghost state */
+struct Ghost : public StmtNode<Ghost> {
+    Stmt ghost;
+    static Stmt make(Stmt ghost);
+
+    static const IRNodeType _node_type = IRNodeType::Ghost;
 };
 
 /** Allocate a scratch area called with the given name, type, and
@@ -528,7 +539,7 @@ struct Call : public ExprNode<Call> {
                    PureExtern,       ///< A call to a guaranteed-side-effect-free external function
                    Halide,           ///< A call to a Func
                    Intrinsic,        ///< A possibly-side-effecty compiler intrinsic, which has special handling during codegen
-                   PureIntrinsic     ///< A side-effect-free version of the above.
+                   PureIntrinsic,     ///< A side-effect-free version of the above.
     } CallType;
     CallType call_type;
 
@@ -567,6 +578,8 @@ struct Call : public ExprNode<Call> {
         div_round_to_zero,
         dynamic_shuffle,
         extract_mask_element,
+        from_pred,
+        ghost_args,
         gpu_thread_barrier,
         halving_add,
         halving_sub,
@@ -587,6 +600,9 @@ struct Call : public ExprNode<Call> {
         mod_round_to_zero,
         mulhi_shr,  // Compute high_half(arg[0] * arg[1]) >> arg[3]. Note that this is a shift in addition to taking the upper half of multiply result. arg[3] must be an unsigned integer immediate.
         mux,
+        null,
+        perm,
+        pointer_length,
         popcount,
         predicate,
         predicate_partial,
@@ -612,9 +628,13 @@ struct Call : public ExprNode<Call> {
         signed_integer_overflow,
         size_of_halide_buffer_t,
         sorted_avg,  // Compute (arg[0] + arg[1]) / 2, assuming arg[0] < arg[1].
+        split,
         strict_float,
         stringify,
+        to_pred,
+        trigger,
         undef,
+        unfolding_in,
         unsafe_promise_clamped,
         widening_add,
         widening_mul,

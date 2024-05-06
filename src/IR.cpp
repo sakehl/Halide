@@ -191,8 +191,8 @@ Expr GE::make(Expr a, Expr b) {
 Expr And::make(Expr a, Expr b) {
     internal_assert(a.defined()) << "And of undefined\n";
     internal_assert(b.defined()) << "And of undefined\n";
-    internal_assert(a.type().is_bool()) << "lhs of And is not a bool\n";
-    internal_assert(b.type().is_bool()) << "rhs of And is not a bool\n";
+    internal_assert(a.type().is_bool_or_resource()) << "lhs of And is not a bool\n";
+    internal_assert(b.type().is_bool_or_resource()) << "rhs of And is not a bool\n";
     internal_assert(a.type() == b.type()) << "And of mismatched types\n";
 
     And *node = new And;
@@ -267,7 +267,7 @@ Expr Exists::make(const std::vector<std::string> &vars, Expr select, Expr main) 
     return node;
 }
 
-Expr Predicate::make(const std::string &name, const std::vector<Expr> &args, Expr perm, const std::vector<Type> &buffer_types, PredicateType pred_type){
+Expr Predicate::make(const std::string &name, const std::string &called_buffer, const std::vector<Expr> &args, Expr perm, Type buffer_type, PredicateType pred_type){
     internal_assert(!name.empty()) << "Predicate of undefined name\n";
     for (size_t i = 0; i < args.size(); i++) {
         internal_assert(args[i].defined()) << "Predicate of " << name << " with argument " << i << " undefined.\n";
@@ -277,9 +277,10 @@ Expr Predicate::make(const std::string &name, const std::vector<Expr> &args, Exp
     Predicate *node = new Predicate;
     node->type = Resource();
     node->name = name;
+    node->called_buffer = called_buffer;
     node->args = args;
     node->perm = perm;
-    node->buffer_types = buffer_types;
+    node->buffer_type = buffer_type;
     node->pred_type = pred_type;
     return node;
 }
@@ -454,7 +455,8 @@ Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter para
     return node;
 }
 
-Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args) {
+Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args
+    , const std::vector<Expr> &ghost_args) {
     internal_assert(!values.empty()) << "Provide of no values\n";
     for (size_t i = 0; i < values.size(); i++) {
         internal_assert(values[i].defined()) << "Provide of undefined value\n";
@@ -462,11 +464,15 @@ Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, con
     for (size_t i = 0; i < args.size(); i++) {
         internal_assert(args[i].defined()) << "Provide to undefined location\n";
     }
+    for (size_t i = 0; i < ghost_args.size(); i++) {
+        internal_assert(ghost_args[i].defined()) << "Provide to undefined location\n";
+    }
 
     Provide *node = new Provide;
     node->name = name;
     node->values = values;
     node->args = args;
+    node->ghost_args = ghost_args;
     return node;
 }
 
@@ -554,6 +560,14 @@ Stmt Realize::make(const std::string &name, const std::vector<Type> &types, Memo
     node->bounds = bounds;
     node->condition = std::move(condition);
     node->body = std::move(body);
+    return node;
+}
+
+Stmt Ghost::make(Stmt ghost) {
+    internal_assert(ghost.defined()) << "Ghost of undefined\n";
+
+    Ghost *node = new Ghost;
+    node->ghost = std::move(ghost);
     return node;
 }
 
@@ -681,6 +695,8 @@ const char *const intrinsic_op_names[] = {
     "div_round_to_zero",
     "dynamic_shuffle",
     "extract_mask_element",
+    "from_pred",
+    "ghost_args",
     "gpu_thread_barrier",
     "halving_add",
     "halving_sub",
@@ -701,6 +717,9 @@ const char *const intrinsic_op_names[] = {
     "mod_round_to_zero",
     "mulhi_shr",
     "mux",
+    "null",
+    "perm",
+    "pointer_length",
     "popcount",
     "predicate",
     "predicate_partial",
@@ -726,9 +745,13 @@ const char *const intrinsic_op_names[] = {
     "signed_integer_overflow",
     "size_of_halide_buffer_t",
     "sorted_avg",
+    "split",
     "strict_float",
     "stringify",
+    "to_pred",
+    "trigger",
     "undef",
+    "unfolding_in",
     "unsafe_promise_clamped",
     "widening_add",
     "widening_mul",
@@ -1259,6 +1282,10 @@ void StmtNode<Fork>::accept(IRVisitor *v) const {
     v->visit((const Fork *)this);
 }
 template<>
+void StmtNode<Ghost>::accept(IRVisitor *v) const {
+    v->visit((const Ghost *)this);
+}
+template<>
 void StmtNode<Atomic>::accept(IRVisitor *v) const {
     v->visit((const Atomic *)this);
 }
@@ -1479,6 +1506,10 @@ Stmt StmtNode<Fork>::mutate_stmt(IRMutator *v) const {
 template<>
 Stmt StmtNode<Atomic>::mutate_stmt(IRMutator *v) const {
     return v->visit((const Atomic *)this);
+}
+template<>
+Stmt StmtNode<Ghost>::mutate_stmt(IRMutator *v) const {
+    return v->visit((const Ghost *)this);
 }
 
 template<>

@@ -260,16 +260,12 @@ public:
         const Predicate *e = expr.as<Predicate>();
         if (result && e &&
             e->name == op->name &&
-            e->buffer_types.size() == op->buffer_types.size() &&
+            types_match(op->buffer_type, e->buffer_type) &&
             e->pred_type == op->pred_type &&
             e->args.size() == op->args.size()) {
             
             expr = e->perm;
             op->perm.accept(this);
-            for (size_t i = 0; result && (i < e->buffer_types.size()); i++) {
-                result = types_match(op->buffer_types[i], e->buffer_types[i]);
-            }
-
             for (size_t i = 0; result && (i < e->args.size()); i++) {
                 expr = e->args[i];
                 op->args[i].accept(this);
@@ -565,6 +561,7 @@ bool equal_helper(const BaseExprNode &a, const BaseExprNode &b) noexcept {
     case IRNodeType::Evaluate:
     case IRNodeType::Prefetch:
     case IRNodeType::Atomic:
+    case IRNodeType::Ghost:
     case IRNodeType::AnnExpr:
     case IRNodeType::Permission:
         break;

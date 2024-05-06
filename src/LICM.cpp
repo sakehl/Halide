@@ -107,9 +107,19 @@ class LiftLoopInvariants : public IRMutator {
             if (call->is_intrinsic(Call::size_of_halide_buffer_t)) {
                 return true;
             }
-            if(call->is_intrinsic(Call::lemma_flattened_array)){
+            if (call->is_intrinsic(Call::lemma_flattened_array)){
                 return false;
             }
+            if(call->is_intrinsic(Call::bundle) && call->args.size() > 1){
+                if(const Call *inner_call = call->args[0].as<Call>()){
+                    if(inner_call->is_intrinsic(Call::lemma_flattened_array)){
+                        return false;
+                    }
+                }
+            }
+        }
+        if(e.as<Predicate>()){
+            return false;
         }
         return true;
     }
@@ -176,6 +186,10 @@ public:
         } else {
             return IRMutator::mutate(e);
         }
+    }
+
+    Expr visit(const Predicate *p) override {
+        return p;
     }
 
     Annotation mutate(const Annotation &a) override {

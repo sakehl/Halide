@@ -98,7 +98,9 @@ protected:
      * resulting var */
     std::string print_expr(const Expr &);
 
-    std::string print_lemma(const Expr &e, const std::string& buf, const std::string &idx);
+    std::vector<std::string> print_lemma(const Expr &e, const std::string& buf, const std::string &idx);
+
+    std::tuple<std::string, std::vector<std::string>> print_access_annotations(const Expr &e, const std::string& buf, const std::string &idx);
 
     /** Like print_expr, but cast the Expr to the given Type */
     std::string print_cast_expr(const Type &, const Expr &);
@@ -256,6 +258,7 @@ protected:
     void visit(const Fork *) override;
     void visit(const Acquire *) override;
     void visit(const Atomic *) override;
+    void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
     void visit(const Predicate *) override;
@@ -296,7 +299,7 @@ public:
     AnnotationPrinter(std::ostream &s, bool is_pvl, bool is_top_level,
      const Scope<CodeGen_C::Allocation> &buffer_types,
      const std::vector<std::map<Expr, std::string, IRDeepCompare>> &load_ids = {}) :
-      IRPrinter(s), is_pvl(is_pvl), is_top_level(is_top_level), buffer_types(buffer_types), load_ids(load_ids) {}
+      IRPrinter(s, true), is_pvl(is_pvl), is_top_level(is_top_level), buffer_types(buffer_types), load_ids(load_ids) {}
 protected:
     bool is_pvl;
     bool is_top_level;
@@ -348,7 +351,7 @@ protected:
 void print_buffer_get_host(const Expr &buf);
 };
 
-std::string print_type_helper(Type type, bool is_pvl, bool include_space);
+std::string print_type_helper(Type type, bool is_pvl = false, bool include_space = false);
 
 }  // namespace Internal
 }  // namespace Halide

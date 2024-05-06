@@ -765,6 +765,12 @@ private:
         stream << close_div();
     }
 
+    void visit(const Ghost *op) override {
+        stream << open_div("Ghost");
+        print(op->ghost);
+        stream << close_div();
+    }
+
     void visit(const AnnExpr *op) override {
         stream << open_div("Annotation");
 

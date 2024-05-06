@@ -98,6 +98,7 @@ protected:
     virtual Stmt visit(const Acquire *);
     virtual Stmt visit(const Fork *);
     virtual Stmt visit(const Atomic *);
+    virtual Stmt visit(const Ghost *);
 
     virtual Annotation visit(const AnnExpr *);
     virtual Annotation visit(const Permission *);    

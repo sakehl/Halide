@@ -14,7 +14,7 @@ struct Target;
 
 namespace Internal {
 
-std::pair<Stmt, std::vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, std::vector<Parameter> input, std::vector<Parameter> output, std::vector<Annotation> pipeline_anns);
+std::pair<Stmt, std::vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, std::vector<Parameter> input, std::vector<Function> output, std::vector<Annotation> pipeline_anns);
 
 }  // namespace Internal
 }  // namespace Halide

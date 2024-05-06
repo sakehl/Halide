@@ -3,6 +3,7 @@
 #include "Bounds.h"
 #include "Function.h"
 #include "FuseGPUThreadLoops.h"
+#include "IREquality.h"
 #include "IRMutator.h"
 #include "IROperator.h"
 #include "IRPrinter.h"
@@ -31,6 +32,7 @@ public:
         : env(e), target(t) {
         for (const auto &f : o) {
             outputs.insert(f.name());
+            read_factor = IntImm::make(Int(32), 2);
         }
     }
 
@@ -51,6 +53,11 @@ private:
     Scope<> realizations;
     bool in_gpu = false;
     bool in_annotation = false;
+    map<Expr, vector<Expr>, IRDeepCompare> ghost_args;
+
+    set<string> consume_functions;
+    set<string> produce_functions;
+    Expr read_factor;
 
     Expr make_shape_var(string name, const string &field, size_t dim,
                         const Buffer<> &buf, const Parameter &param) {
@@ -59,19 +66,43 @@ private:
         return Variable::make(Int(32), name, buf, param, rdom);
     }
 
-    Expr make_lemma_call(const string &name, vector<Expr> args, const Buffer<> &buf, const Parameter &param) {
-        if(args.size() <= 1 || in_annotation){
-            return Expr();
-        }
-        
-        vector<Expr> new_args;
+    Expr make_lemma_call(const string &name, vector<Expr> args, const Buffer<> &buf, const Parameter &param, Type t, bool is_read) {
+        vector<Expr> new_args, pred_args;
         for (size_t i = 0; i < args.size(); i++) {
-            new_args.push_back(args[i]);
-            new_args.push_back(make_shape_var(name, "min", i, buf, param));
-            new_args.push_back(make_shape_var(name, "stride", i, buf, param));
-            new_args.push_back(make_shape_var(name, "extent", i, buf, param));
+            Expr min = make_shape_var(name, "min", i, buf, param);
+            Expr stride = make_shape_var(name, "stride", i, buf, param);
+            Expr extent = make_shape_var(name, "extent", i, buf, param);
+
+            new_args.emplace_back(args[i]);
+            new_args.emplace_back(min);
+            new_args.emplace_back(stride);
+            new_args.emplace_back(extent);
+
+            pred_args.emplace_back(args[i]);
+            pred_args.emplace_back(min);
+            pred_args.emplace_back(extent);
         }
-        return mutate(Call::make(Int(32), Call::lemma_flattened_array, new_args, Call::PureIntrinsic));
+        Expr pred;
+        string fname = split_string(name, ".")[0];
+        if(consume_functions.count(fname) == 1){
+            //pred = Predicate::make(name, name, {}, read(read_factor), {t}, Predicate::PredicateType::Complete);
+            pred = Predicate::make(name, name, pred_args, read(read_factor), {t}, Predicate::PredicateType::Partial);
+        } else if(produce_functions.count(fname) == 1){
+            pred = Predicate::make(name, name, pred_args, (is_read ? read(read_factor) : write()), {t}, Predicate::PredicateType::Partial);
+        } else {
+            // We assume input buffer then
+            pred = Predicate::make(name, name, {}, read(read_factor), {t}, Predicate::PredicateType::Complete);
+            // internal_error << "Function " << name << " is not a producer or consumer\n";
+        }
+        pred = mutate(pred);
+        
+        if(args.size() <= 1 || in_annotation){
+            return pred;
+        }
+
+        Expr lemma = mutate(Call::make(Int(32), Call::lemma_flattened_array, new_args, Call::PureIntrinsic));
+
+        return Call::make(Int(32), Call::bundle, {lemma, pred}, Call::PureIntrinsic);
     }
 
     Expr flatten_args(const string &name, vector<Expr> args,
@@ -89,6 +120,18 @@ private:
         }
 
         Expr zero = target.has_large_buffers() ? make_zero(Int(64)) : 0;
+
+        // Remove the split function
+        for (size_t i = 0; i < args.size(); i++) {
+            const Call *call = args[i].as<Call>();
+            if(call && call->is_intrinsic(Call::split)){
+                Expr xi = call->args[0];
+                Expr xo = call->args[1];
+                Expr xmin = call->args[2];
+                Expr factor = call->args[3];
+                args[i] = xo*factor + xi + xmin;
+            }
+        }
 
         // We peel off constant offsets so that multiple stencil
         // taps can share the same base address.
@@ -130,6 +173,22 @@ private:
     }
 
     using IRMutator::visit;
+
+    Stmt visit(const ProducerConsumer *op) override {
+        if (op->is_producer) {
+            produce_functions.insert(op->name);
+        } else {
+            consume_functions.insert(op->name);
+        }
+
+        return IRMutator::visit(op);
+
+        if (op->is_producer) {
+            produce_functions.erase(op->name);
+        } else {
+            consume_functions.erase(op->name);
+        }
+    }
 
     Stmt visit(const Realize *op) override {
         realizations.push(op->name);
@@ -279,7 +338,7 @@ private:
             return Evaluate::make(store);
         } else {
             Expr idx = mutate(flatten_args(op->name, op->args, Buffer<>(), output_buf));
-            Expr lemma = make_lemma_call(op->name, op->args, Buffer<>(), output_buf);
+            Expr lemma = make_lemma_call(op->name, op->ghost_args, Buffer<>(), output_buf, value.type(), false);
             return Store::make(op->name, value, idx, output_buf, const_true(value.type().lanes()), ModulusRemainder(), lemma);
         }
     }
@@ -331,11 +390,16 @@ private:
                                   op->param);
             } else {
                 Expr idx = mutate(flatten_args(op->name, op->args, op->image, op->param));
-                Expr lemma = make_lemma_call(op->name, op->args, op->image, op->param);
+                vector<Expr> lemma_args = ghost_args[op];
+                Expr lemma = make_lemma_call(op->name, lemma_args, op->image, op->param, op->type, true);
                 return Load::make(op->type, op->name, idx, op->image, op->param,
                                   const_true(op->type.lanes()), ModulusRemainder(), lemma);
             }
 
+        } else if(op->is_intrinsic(Call::ghost_args)) {
+            vector<Expr> args(op->args.begin()+1, op->args.end());
+            ghost_args[op->args[0]] = args;
+            return IRMutator::mutate(op->args[0]);
         } else {
             return IRMutator::visit(op);
         }
@@ -407,7 +471,12 @@ private:
             op->for_type == ForType::GPUThread) {
             in_gpu = true;
         }
+        Expr old_factor = read_factor;
+        if(op->is_parallel()) read_factor = op->extent * read_factor;
+
         Stmt stmt = IRMutator::visit(op);
+        
+        read_factor = old_factor;
         in_gpu = old_in_gpu;
         return stmt;
     }

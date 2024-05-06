@@ -61,11 +61,17 @@ vector<ApplySplitResult> apply_split(const Split &split, bool is_update, const s
             // of it. We don't also use the original loop min because
             // it needlessly complicates the expressions and doesn't
             // actually communicate anything new.
-            Expr guarded = promise_clamped(old_var, old_var, old_max);
-            string guarded_var_name = prefix + split.old_var + ".guarded";
-            Expr guarded_var = Variable::make(Int(32), guarded_var_name);
-            result.emplace_back(prefix + split.old_var, guarded_var, ApplySplitResult::Substitution);
-            result.emplace_back(guarded_var_name, guarded, ApplySplitResult::LetStmt);
+            if(false){
+                // Code path for HaliVer
+                // Expr guarded = promise_clamped(old_var, old_var, old_max);  
+                // result.emplace_back(prefix + split.old_var, guarded, ApplySplitResult::Substitution);
+            } else {
+                Expr guarded = promise_clamped(old_var, old_var, old_max);
+                string guarded_var_name = prefix + split.old_var + ".guarded";
+                Expr guarded_var = Variable::make(Int(32), guarded_var_name);
+                result.emplace_back(prefix + split.old_var, guarded_var, ApplySplitResult::Substitution);
+                result.emplace_back(guarded_var_name, guarded, ApplySplitResult::LetStmt);
+            }
 
             // Inject the if condition *after* doing the substitution
             // for the guarded version.
@@ -86,9 +92,15 @@ vector<ApplySplitResult> apply_split(const Split &split, bool is_update, const s
             internal_assert(tail == TailStrategy::RoundUp);
         }
 
-        // Define the original variable as the base value computed above plus the inner loop variable.
-        result.emplace_back(old_var_name, base_var + inner, ApplySplitResult::LetStmt);
-        result.emplace_back(base_name, base, ApplySplitResult::LetStmt);
+        if(false){
+            // HaliVer codepath
+            Expr split_call = Call::make(Int(32), Call::split, {inner, outer, old_min, split.factor}, Call::Intrinsic);
+            result.emplace_back(old_var_name, split_call, ApplySplitResult::Substitution);
+        } else {
+            // Define the original variable as the base value computed above plus the inner loop variable.
+            result.emplace_back(old_var_name, base_var + inner, ApplySplitResult::LetStmt);
+            result.emplace_back(base_name, base, ApplySplitResult::LetStmt);
+        }
 
     } else if (split.is_fuse()) {
         // Define the inner and outer in terms of the fused var

@@ -1147,8 +1147,16 @@ private:
             }
             // else fall thru and continue
         }
-
-        if (op->is_intrinsic(Call::abs)) {
+        if(op->is_intrinsic(Call::ghost_args)){
+            op->args[0].accept(this);
+        } else if(op->is_intrinsic(Call::split)){
+            Expr xi = op->args[0];
+            Expr xo = op->args[1];
+            Expr xmin = op->args[2];
+            Expr factor = op->args[3];
+            Expr res = xo*factor + xi + xmin;
+            res.accept(this);
+        } else if (op->is_intrinsic(Call::abs)) {
             op->args[0].accept(this);
             Interval a = interval;
             interval.min = make_zero(t);
@@ -3097,7 +3105,7 @@ void boxes_touched_test() {
     Scope<Interval> scope;
     scope.push("y", Interval(Expr(0), Expr(10)));
 
-    Stmt stmt = Provide::make("f", {10}, {x, y, z, w});
+    Stmt stmt = Provide::make("f", {10}, {x, y, z, w}, {});
     stmt = IfThenElse::make(y > 4, stmt, Stmt());
     stmt = IfThenElse::make(z > 18, stmt, Stmt());
     stmt = LetStmt::make("w", z + 3, stmt);
@@ -3355,7 +3363,7 @@ void bounds_test() {
     Stmt loop = For::make("x", 3, 10, ForType::Serial, DeviceAPI::Host,
                           Provide::make("output",
                                         {Add::make(Call::make(in, input_site_1),
-                                                   Call::make(in, input_site_2))},
+                                                   Call::make(in, input_site_2))}, {},
                                         output_site));
 
     map<string, Box> r;

@@ -106,6 +106,7 @@ private:
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
     void visit(const VectorReduce *) override;
+    void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
 };
@@ -487,9 +488,7 @@ void IRComparer::visit(const Predicate *op) {
     const Predicate *e = expr.as<Predicate>();
     compare_names(e->name, op->name);
     compare_expr(e->perm, op->perm);
-    for (size_t i = 0; (result == Equal) && (i < e->buffer_types.size()); i++) {
-        compare_types(e->buffer_types[i], op->buffer_types[i]);
-    }
+    compare_types(e->buffer_type, op->buffer_type);
     compare_scalar(e->pred_type, op->pred_type);
     compare_expr_vector(e->args, op->args);
 }
@@ -722,6 +721,11 @@ void IRComparer::visit(const VectorReduce *op) {
     compare_scalar(op->op, e->op);
     // We've already compared types, so it's enough to compare the value
     compare_expr(op->value, e->value);
+}
+
+void IRComparer::visit(const Ghost *op) {
+    const Ghost *s = stmt.as<Ghost>();
+    compare_stmt(s->ghost, op->ghost);
 }
 
 }  // namespace

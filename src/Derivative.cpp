@@ -152,6 +152,9 @@ protected:
     void visit(const Atomic *op) override {
         internal_error << "Encounter unexpected statement \"Atomic\" when differentiating.";
     }
+    void visit(const Ghost *op) override {
+        internal_error << "Encounter unexpected statement \"Ghost\" when differentiating.";
+    }
     void visit(const AnnExpr *op) override {
         internal_error << "Encounter unexpected annotation \"AnnExpr\" when differentiating.";
     }

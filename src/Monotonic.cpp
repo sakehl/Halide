@@ -479,6 +479,10 @@ class MonotonicVisitor : public IRVisitor {
         internal_error << "Monotonic of statement\n";
     }
 
+    void visit(const Ghost *op) override {
+        internal_error << "Monotonic of statement\n";
+    }
+
     void visit(const AnnExpr *op) override {
         internal_error << "Monotonic of annotation\n";
     }
