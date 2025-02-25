@@ -109,7 +109,7 @@ class IRPrinter : public IRVisitor {
 public:
     /** Construct an IRPrinter pointed at a given output stream
      * (e.g. std::cout, or a std::ofstream) */
-    explicit IRPrinter(std::ostream &);
+    explicit IRPrinter(std::ostream &, bool semicolon = false);
 
     /** emit an expression on the output stream */
     void print(const Expr &);
@@ -138,6 +138,8 @@ protected:
 
     /** The stream on which we're outputting */
     std::ostream &stream;
+
+    bool semicolon;
 
     /** The current indentation level, useful for pretty-printing
      * statements */
@@ -212,8 +214,10 @@ protected:
     void visit(const VectorReduce *) override;
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
+    void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
+    void visit(const Predicate *) override;
 };
 
 }  // namespace Internal

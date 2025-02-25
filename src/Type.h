@@ -279,6 +279,7 @@ public:
     static const halide_type_code_t Float = halide_type_float;
     static const halide_type_code_t BFloat = halide_type_bfloat;
     static const halide_type_code_t Handle = halide_type_handle;
+    static const halide_type_code_t Resource = halide_type_resource;
     // @}
 
     /** The number of bytes required to store a single scalar value of this type. Ignores vector lanes. */
@@ -374,6 +375,16 @@ public:
     bool is_bool() const {
         return code() == UInt && bits() == 1;
     }
+
+    bool is_resource() const {
+        return code() == Resource && bits() == 1;
+    }
+
+    HALIDE_ALWAYS_INLINE
+    bool is_bool_or_resource() const {
+        return (code() == UInt || code() == Resource) && bits() == 1;
+    }
+
 
     /** Is this type a vector type? (lanes() != 1).
      * TODO(abadams): Decide what to do for lanes() == 0. */
@@ -504,6 +515,11 @@ inline Type UInt(int bits, int lanes = 1) {
     return Type(Type::UInt, bits, lanes);
 }
 
+/** Constructing an unsigned integer type */
+inline Type Resource(int bits, int lanes = 1) {
+    return Type(Type::Resource, bits, lanes);
+}
+
 /** Construct a floating-point type */
 inline Type Float(int bits, int lanes = 1) {
     return Type(Type::Float, bits, lanes);
@@ -517,6 +533,11 @@ inline Type BFloat(int bits, int lanes = 1) {
 /** Construct a boolean type */
 inline Type Bool(int lanes = 1) {
     return UInt(1, lanes);
+}
+
+/** Construct a resource type */
+inline Type Resource(int lanes = 1) {
+    return Resource(1, lanes);
 }
 
 /** Construct a handle type */

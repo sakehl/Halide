@@ -341,6 +341,9 @@ bool is_const_one(const Expr &e) {
         return (c->is_intrinsic(Call::bool_to_mask) || c->is_intrinsic(Call::cast_mask)) &&
                is_const_one(c->args[0]);
     }
+    if (const Frac *frac = e.as<Frac>()) {
+        return is_const_one(frac->a) && is_const_one(frac->b);
+    }
     return false;
 }
 
@@ -1371,7 +1374,8 @@ Expr saturating_cast(Type t, Expr e) {
 
 Expr implies(Expr a, Expr b){
     user_assert(a.defined() && b.defined()) << "Implies of undefined condition.\n";
-    user_assert(a.type().is_bool() && b.type().is_bool()) << "Implies arguments must be of a boolean type.\n";
+    user_assert(a.type().is_bool() && (b.type().is_bool() || b.type().is_resource())) 
+        << "Implies arguments must be of a boolean type.\n";
     
     const Internal::Forall *forall = b.as<Internal::Forall>();
     if(forall){
@@ -1386,39 +1390,32 @@ Expr implies(Expr a, Expr b){
     if(implies){
         return Internal::Implies::make(Internal::And::make(a, implies->a), implies->b);
     }
+    if(Internal::is_const_true(a))
+        return b;
 
     return Internal::Implies::make(a,b);
 }
 
-Expr forall(Expr x, Expr select, Expr main){
-    std::vector<Expr> xs;
-    xs.emplace_back(x);
+Expr forall(std::string x, Expr select, Expr main){
+    std::vector<std::string> xs = {x};
     return forall(xs, select, main);
 }
 
-Expr forall(const std::vector<Expr> &xs, Expr select, Expr main){
-    std::vector<std::string> vars;
-    for(auto &x: xs){
-        user_assert(x.defined()) << "Variable where we quantify over must be defined\n";
-        user_assert(x.as<Internal::Variable>() != nullptr) << "We must quantify over variables\n";
-        vars.emplace_back(x.as<Internal::Variable>()->name);
-    }
-
-    user_assert(select.defined()) << "Forall of undefined select.\n";
-    user_assert(main.defined()) << "Forall of undefined main.\n";
-    user_assert(select.type().is_bool() && main.type().is_bool()) << "Forall arguments must be of a boolean type.\n";
-
-    if(vars.empty()){
-        return implies(select, main);
-    } else {
-        return Internal::Forall::make(vars, select, main);
-    }
+Expr forall(const std::vector<std::string> &xs, Expr select, Expr main){
+    if(xs.empty()) return implies(select, main);
+        
+    const Internal::Forall *pos_forall = main.as<Internal::Forall>();
+    Expr res;
+    if(pos_forall){
+        std::vector<std::string> new_args = xs;
+        new_args.insert(new_args.end(), pos_forall->vars.begin(), pos_forall->vars.end() );
+        res = Internal::Forall::make(new_args, select && pos_forall->select, pos_forall->main);
+    } else 
+        res = Internal::Forall::make(xs, select, main);
+    return res;
 }
 
 Annotation make_ann(Internal::AnnotationType t, Expr cond){
-    user_assert(cond.defined()) << "Undefined condition.\n";
-    user_assert(cond.type().is_bool()) << "Condition must be of a boolean type.\n";
-
     return Internal::AnnExpr::make(t, cond);
 }
 
@@ -1432,6 +1429,10 @@ Annotation ensures(Expr cond){
 
 Annotation context(Expr cond){
     return make_ann(Internal::AnnotationType::Context, cond);
+}
+
+Annotation loop_invariant(Expr cond){
+    return make_ann(Internal::AnnotationType::LoopInvariant, cond);
 }
 
 Expr select(Expr condition, Expr true_value, Expr false_value) {
@@ -2594,6 +2595,16 @@ Expr frac(Expr a, Expr b) {
     Internal::match_types(a, b);
     return Internal::Frac::make(std::move(a), std::move(b));
 }
+
+Expr read(Expr factor) {
+    user_assert(factor.defined() ) << "read of undefined Expr\n";
+    return Internal::Frac::make(Internal::make_one(Int(32)), factor);
+}
+
+Expr write() {
+    return Internal::Frac::make(Internal::make_one(Int(32)), Internal::make_one(Int(32)));
+}
+
 
 namespace {
 Expr make_scatter_gather(const std::vector<Expr> &args) {

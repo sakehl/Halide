@@ -77,6 +77,7 @@ const string globals = R"INLINE_CODE(
 
 struct halide_dimension_t {
     int32_t min, extent, stride;
+    uint32_t flags;
 };
 
 inline void halide_unused(bool e){};
@@ -121,19 +122,45 @@ inline int /*@ pure @*/ mod_eucl(int x, int y)
 }
 
 static inline int /*@ pure @*/ min(int x, int y) {return x < y ? x : y;}
-
 static inline float /*@ pure @*/ fast_inverse_f32(float x) {return 1.0f/x;}
-static inline float /*@ pure @*/ sqrt_f32(double x) {return (float)sqrt((double)x);}
-static inline float /*@ pure @*/ pow_f32(float x, float y){ return (float) pow((double) x, (double) y);}
-static inline float /*@ pure @*/ floor_f32(float x){ return (float) floor((double) x); }
-static inline float /*@ pure @*/ ceil_f32(float x){ return (float) ceil((double) x); }
-static inline float /*@ pure @*/ round_f32(float x){ return (float) round((double) x); }
+
+static inline float /*@ pure @*/ sqrt_f32(float x) {return sqrtf(x);}
+static inline float /*@ pure @*/ sin_f32(float x) {return sinf(x);}
+static inline float /*@ pure @*/ asin_f32(float x) {return asinf(x);}
+static inline float /*@ pure @*/ cos_f32(float x) {return cosf(x);}
+static inline float /*@ pure @*/ acos_f32(float x) {return acosf(x);}
+static inline float /*@ pure @*/ tan_f32(float x) {return tanf(x);}
+static inline float /*@ pure @*/ atan_f32(float x) {return atanf(x);}
+static inline float /*@ pure @*/ atan2_f32(float x, float y) {return atan2f(x, y);}
+static inline float /*@ pure @*/ sinh_f32(float x) {return sinhf(x);}
+static inline float /*@ pure @*/ cosh_f32(float x) {return coshf(x);}
+static inline float /*@ pure @*/ tanh_f32(float x) {return tanhf(x);}
+static inline float /*@ pure @*/ hypot_f32(float x, float y) {return hypotf(x, y);}
+static inline float /*@ pure @*/ exp_f32(float x) {return expf(x);}
+static inline float /*@ pure @*/ log_f32(float x) {return logf(x);}
+static inline float /*@ pure @*/ pow_f32(float x, float y) {return powf(x, y);}
+static inline float /*@ pure @*/ floor_f32(float x) {return floorf(x);}
+static inline float /*@ pure @*/ ceil_f32(float x) {return ceilf(x);}
+static inline float /*@ pure @*/ round_f32(float x) {return roundf(x);}
 
 static inline double /*@ pure @*/ sqrt_f64(double x) {return sqrt(x);}
+static inline double /*@ pure @*/ sin_f64(double x) {return sin(x);}
+static inline double /*@ pure @*/ asin_f64(double x) {return asin(x);}
+static inline double /*@ pure @*/ cos_f64(double x) {return cos(x);}
+static inline double /*@ pure @*/ acos_f64(double x) {return acos(x);}
+static inline double /*@ pure @*/ tan_f64(double x) {return tan(x);}
+static inline double /*@ pure @*/ atan_f64(double x) {return atan(x);}
+static inline double /*@ pure @*/ atan2_f64(double x, double y) {return atan2(x, y);}
+static inline double /*@ pure @*/ sinh_f64(double x) {return sinh(x);}
+static inline double /*@ pure @*/ cosh_f64(double x) {return cosh(x);}
+static inline double /*@ pure @*/ tanh_f64(double x) {return tanh(x);}
+static inline double /*@ pure @*/ hypot_f64(double x, double y) {return hypot(x, y);}
+static inline double /*@ pure @*/ exp_f64(double x) {return exp(x);}
+static inline double /*@ pure @*/ log_f64(double x) {return log(x);}
 static inline double /*@ pure @*/ pow_f64(double x, double y) {return pow(x, y);}
 static inline double /*@ pure @*/ floor_f64(double x) {return floor(x);}
 static inline double /*@ pure @*/ ceil_f64(double x) {return ceil(x);}
-static inline double /*@ pure @*/ round_f64(double x){ return round(x); }
+static inline double /*@ pure @*/ round_f64(double x) {return round(x);}
 
 //inline float nan_f32() {return NAN;}
 inline float nan_f32() {return 0.0f;}
@@ -142,125 +169,94 @@ inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) =
  Perm(&dim[i], 1\2) **
  Perm(dim[i].min, 1\2) **
  Perm(dim[i].stride, 1\2) **
- Perm(dim[i].extent, 1\2)
+ Perm(dim[i].extent, 1\2) **
+ dim[i].extent > 0
  ;
-
- ghost
+ 
  requires a >= 0;
  requires b > 0;
  requires a < max_a;
  ensures a*b <= (max_a-1)*b;
+ ensures \result;
  decreases b;
-void lemma_nonlinear(int a, int b, int max_a)
-;//{
-//  if(b>1){
-//    lemma_nonlinear(a, b-1, max_a);
-//    assert a*(b-1) <= max_a*(b-1);
-//  }
-//}
-
- ghost
- requires a-min_a >= 0  && a-min_a<extent_a;
+pure bool lemma_nonlinear(int a, int b, int max_a);// = b>1 ? lemma_nonlinear(a, b-1, max_a) : true;
+ 
+ requires a-min_a >= 0 && a-min_a<extent_a;
  requires b-min_b >= 0 && b-min_b<extent_b;
  requires stride_a > 0;
- requires stride_b > 0;
  requires stride_b >= extent_a*stride_a;
 
+ ensures 0 <= (b-min_b)*stride_b;
  ensures 0 <= (a-min_a)*stride_a + (b-min_b)*stride_b;
  ensures (a-min_a)*stride_a + (b-min_b)*stride_b < stride_b*extent_b;
+ ensures \result;
  decreases;
-void lemma_2d_access(
+pure bool lemma_2d_access(
  int a, int min_a, int stride_a, int extent_a,
- int b, int min_b, int stride_b, int extent_b)
-;//{
-//  lemma_nonlinear(a-min_a, stride_a, extent_a);
-//  lemma_nonlinear(b-min_b, stride_b, extent_b);
-//  return;
-//}
+ int b, int min_b, int stride_b, int extent_b);// = lemma_nonlinear(a-min_a, stride_a, extent_a) && lemma_nonlinear(b-min_b, stride_b, extent_b);
 
- ghost
  requires a-min_a >= 0 && a-min_a < extent_a;
  requires b-min_b >= 0 && b-min_b < extent_b;
  requires c-min_c >= 0 && c-min_c < extent_c;
  requires stride_a > 0;
- requires stride_b > 0;
- requires stride_c > 0;
  requires stride_b >= extent_a * stride_a;
  requires stride_c >= extent_b * stride_b;
  
  ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c;
  ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c < stride_c * extent_c;
+ ensures \result;
  decreases;
-void lemma_3d_access(
+pure bool lemma_3d_access(
   int a, int min_a, int stride_a, int extent_a,
   int b, int min_b, int stride_b, int extent_b,
   int c, int min_c, int stride_c, int extent_c
-)
-;//{
-//  lemma_2d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b);
-//  lemma_nonlinear(c-min_c, stride_c, extent_c);
-//  return;
-//}
+);// = lemma_2d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b) && lemma_nonlinear(c-min_c, stride_c, extent_c);
 
- ghost
+
  requires a-min_a >= 0 && a-min_a < extent_a;
  requires b-min_b >= 0 && b-min_b < extent_b;
  requires c-min_c >= 0 && c-min_c < extent_c;
  requires d-min_d >= 0 && d-min_d < extent_d;
  requires stride_a > 0;
- requires stride_b > 0;
- requires stride_c > 0;
- requires stride_d > 0;
  requires stride_b >= extent_a * stride_a;
  requires stride_c >= extent_b * stride_b;
  requires stride_d >= extent_c * stride_c;
 
-ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d;
-ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d < stride_d * extent_d;
-decreases;
-void lemma_4d_access(
+ ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d;
+ ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d < stride_d * extent_d;
+ ensures \result;
+ decreases;
+pure bool lemma_4d_access(
   int a, int min_a, int stride_a, int extent_a,
   int b, int min_b, int stride_b, int extent_b,
   int c, int min_c, int stride_c, int extent_c,
   int d, int min_d, int stride_d, int extent_d
-)
-;//{
-//  lemma_3d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c);
-//  lemma_nonlinear(d-min_d, stride_d, extent_d);
-//  return;
-//}
+);// = lemma_3d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c) && lemma_nonlinear(d-min_d, stride_d, extent_d);
 
- ghost
  requires a-min_a >= 0 && a-min_a < extent_a;
  requires b-min_b >= 0 && b-min_b < extent_b;
  requires c-min_c >= 0 && c-min_c < extent_c;
  requires d-min_d >= 0 && d-min_d < extent_d;
  requires e-min_e >= 0 && e-min_e < extent_e;
  requires stride_a > 0;
- requires stride_b > 0;
- requires stride_c > 0;
- requires stride_d > 0;
- requires stride_e > 0;
  requires stride_b >= extent_a * stride_a;
  requires stride_c >= extent_b * stride_b;
  requires stride_d >= extent_c * stride_c;
  requires stride_e >= extent_d * stride_d;
- 
+
  ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e;
  ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e < stride_e * extent_e;
+ ensures \result;
  decreases;
-void lemma_5d_access(
+pure bool lemma_5d_access(
   int a, int min_a, int stride_a, int extent_a,
   int b, int min_b, int stride_b, int extent_b,
   int c, int min_c, int stride_c, int extent_c,
   int d, int min_d, int stride_d, int extent_d,
   int e, int min_e, int stride_e, int extent_e
-)
-;//{
-//  lemma_4d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c, d, min_d, stride_d, extent_d);
-//  lemma_nonlinear(e-min_e, stride_e, extent_e);
-//  return;
-//}
+);// = lemma_4d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c, d, min_d, stride_d, extent_d) && lemma_nonlinear(e-min_e, stride_e, extent_e);
+
+pure int split(int xi, int xo, int xmin, int factor) = xo*factor + xi +xmin;
 @*/
 #endif // HALIVER_GLOBALS
 )INLINE_CODE";
@@ -1605,7 +1601,13 @@ string print_type_helper(Type type, bool is_pvl, bool include_space){
         } else if(type.is_bool()){
             oss << "bool";
         } else if(type.is_float()){
-            oss << "rational";
+            if (type.bits() == 32) {
+                oss << "float";
+            } else if (type.bits() == 64) {
+                oss << "double";
+            } else {
+                oss << "float" << type.bits() << "_t";
+            }
         } else {
             internal_error << "Type " << type << " is unsuported for PVL";
         }
@@ -1942,12 +1944,14 @@ void CodeGen_C::emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitt
 void CodeGen_C::compile(const Module &input) {
     TypeInfoGatherer type_info;
 
+    stream << "/*@\n";
+    stream << input.get_annotation_header();
+    stream << "\n@*/\n";
+
     if(!is_pvl()){
         std::set<Type> buffers_emitted;
         for (const auto &f : input.functions()) {
-            // if (f.body.defined()) {
-                emit_buffers(f, &buffers_emitted);
-            // }
+            emit_buffers(f, &buffers_emitted);
         }
     }
 
@@ -3096,7 +3100,18 @@ void CodeGen_C::visit(const Load *op) {
         rhs << print_type(t) + "_ops::load_gather(" << name << ", " << id_index << ")";
     } else {
         string id_index = print_expr(op->index);
-        rhs << print_lemma(op->lemma, name, id_index);
+        string after_ghost;
+        vector<string> befores_ghost;
+        std::tie(after_ghost, befores_ghost) = print_access_annotations(op->lemma, name, id_index);
+        if(!befores_ghost.empty()){
+            rhs << "\n" << get_indent() << "/*@ with";
+            indent++;
+            for(auto const &b: befores_ghost){
+                rhs << "\n" << get_indent() << b << ";";
+            }
+            rhs << " @*/\n" << get_indent();
+            indent--;
+        }
         bool type_cast_needed = !(allocations.contains(op->name) &&
                                   allocations.get(op->name).type.element_of() == t.element_of());
         if(!allocations.contains(op->name) || is_pvl()){
@@ -3109,6 +3124,13 @@ void CodeGen_C::visit(const Load *op) {
             rhs << name;
         }
         rhs << "[" << id_index << "]";
+        if(after_ghost != ""){
+            rhs << "\n" << get_indent() << "/*@ then";
+            indent++;
+            rhs << "\n" << get_indent() << after_ghost << ";";
+            indent--;
+            rhs << " @*/\n" << get_indent();
+        }
     }
     if(false && (inl || is_pvl())){
         id = rhs.str();
@@ -3161,6 +3183,19 @@ void CodeGen_C::visit(const Store *op) {
         string id_index = print_expr(op->index);
         stream << get_indent() << print_type(t) + "_ops::store_scatter(" << id_value << ", " << name << ", " << id_index << ");\n";
     } else {
+        string id_index = print_expr(op->index);
+        string after_ghost;
+        vector<string> befores_ghost;
+        std::tie(after_ghost, befores_ghost) = print_access_annotations(op->lemma, name, id_index);
+        if(!befores_ghost.empty()){
+            stream << get_indent() << "/*@";
+            indent++;
+            for(auto const &b: befores_ghost){
+                stream << "\n" << get_indent() << b << ";";
+            }
+            indent--;
+            stream << " @*/\n";
+        }
         bool type_cast_needed =
             t.is_handle() ||
             !allocations.contains(op->name) ||
@@ -3169,14 +3204,18 @@ void CodeGen_C::visit(const Store *op) {
             type_cast_needed = false;
         }
 
-        string id_index = print_expr(op->index);
         stream << get_indent();
         if (type_cast_needed) {
             stream << "((" << print_type(t) << " *)" << name << ")";
         } else {
             stream << name;
         }
-        stream << "[" << id_index << "] = " << id_value << ";\n";
+        stream << "[" << id_index << "]";
+        stream << "= " << id_value << ";\n";
+        if(after_ghost != ""){
+            stream << get_indent() << "/*@ " << after_ghost << ";";
+            stream << " @*/\n";
+        }
     }
     cache.clear();
 }
@@ -3365,6 +3404,13 @@ void CodeGen_C::visit(const Atomic *op) {
         ScopedValue<bool> old_emit_atomic_stores(emit_atomic_stores, true);
         op->body.accept(this);
     }
+}
+
+void CodeGen_C::visit(const Ghost *op) {
+    stream << get_indent() << "/*@ ghost ";
+    AnnotationPrinter ap(stream, is_pvl(), false, buffer_types);
+    ap.print(op->ghost);
+    stream << get_indent() << " @*/\n";
 }
 
 class SimpleExpressionPrinter : public AnnotationPrinter {
@@ -3778,17 +3824,17 @@ void CodeGen_C::visit(const Shuffle *op) {
 
 void CodeGen_C::visit(const AnnExpr *op) { }
 
+void CodeGen_C::visit(const Predicate *op) { }
+
 void CodeGen_C::visit(const Permission *op) { }
 
-string CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx){
+vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx){
     const Call *c = lemma.as<Call>();
-    if(c == nullptr || !c->is_intrinsic(Call::lemma_flattened_array)){
-        return "";
-    }
-    
-    ostringstream rhs;
+    if(!c->is_intrinsic(Call::lemma_flattened_array)) internal_error << "Unexpected other call instead of lemma: " << c->name;
+
+    ostringstream lemma_s, assert_s;
     int size = c->args.size();
-    assert(size % 4 == 0);
+    internal_assert(size % 4 == 0);
     int dim = size / 4;
 
     bool constant_dims = true;
@@ -3802,26 +3848,122 @@ string CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string
     }
     // If the last dimension has constant stride and extent, we do not need the lemma (one can be non-constant)
     constant_dims = constant_dims && (is_const(c->args[4*(dim-1)+2]) || is_const(c->args[4*(dim-1)+3]));
-    if(constant_dims) return "";
+    if(constant_dims) return {};
+    Expr lem_cal = Call::make(UInt(1), "lemma_" + std::to_string(dim) + "d_access", c->args, Call::PureExtern);
+    AnnotationPrinter ap(lemma_s, is_pvl(), false, buffer_types, load_ids);
+    lemma_s << "ghost ";
+    ap.print(lem_cal);
 
-    indent++;
-    AnnotationPrinter ap(rhs, is_pvl(), false, buffer_types, load_ids);
-    rhs << "\n" << get_indent() << "/*@ with\n" << get_indent() << "ghost ";
-    rhs << "lemma_" << dim <<"d_access(";
-    
+    // lemma_" << dim <<"d_access(";  
+    // for(int i = 0; i < size; i++){
+    //     ap.print(c->args[i]);
+    //     if(i != size - 1){
+    //         lemma_s << ", ";
+    //     }
+    // }
+    // lemma_s << ");";
 
-    for(int i = 0; i < size; i++){
-        ap.print(c->args[i]);
-        if(i != size - 1){
-            rhs << ", ";
+    // assert_s << "assert (" << idx << ") >= 0 && (" << idx << ") < \\pointer_length("
+    //     << buf << ")";
+
+    AnnotationPrinter apa(assert_s, is_pvl(), false, buffer_types, load_ids);
+    assert_s << "assert " << idx << " == ";
+    for(int i = 0; i < dim; i++){
+        if(i != 0){
+            assert_s << " + ";
         }
+        apa.print((c->args[4*i] - c->args[4*i+1])*c->args[4*i+2]);
     }
-    rhs << ");\n" << get_indent()
-        << "assert (" << idx << ") >= 0 && (" << idx << ") < \\pointer_length("
-        << buf << ");\n" << get_indent();
-    rhs << "@*/\n" << get_indent();
-    indent--;
-    return rhs.str();
+    
+    vector<string> res = {assert_s.str(), lemma_s.str()};
+    return res;
+}
+
+std::tuple<string, vector<string>> CodeGen_C::print_access_annotations(const Expr &access, const string& buf, const string &idx){
+    const Call *c = access.as<Call>();
+    const Predicate *p = access.as<Predicate>();
+    string after = "";
+    vector<string> befores = {};
+
+    if(c == nullptr && p== nullptr){
+        return std::make_tuple(after, befores);
+    }
+
+    if(p){
+        ostringstream rhs;
+        AnnotationPrinter ap(rhs, is_pvl(), false, buffer_types, load_ids);
+        ap.print(p);
+        string pred = rhs.str();
+        after = "fold " + pred;
+        befores = {"unfold " + pred};
+        return std::make_tuple(after, befores);
+    }
+
+    if(c->is_intrinsic(Call::lemma_flattened_array)){
+        return std::make_tuple(after, print_lemma(c, buf, idx));
+    }
+
+
+    if(c->is_intrinsic(Call::bundle)){
+        internal_assert(c->args.size() == 2);
+        const Call *c1 = c->args[0].as<Call>();
+        internal_assert(c1 && c1->is_intrinsic(Call::lemma_flattened_array));
+        // befores = print_lemma(c1, buf, idx);
+        befores = {};
+
+        const Predicate *p1 = c->args[1].as<Predicate>();
+        internal_assert(p1);
+
+        if(p1->pred_type == Predicate::PredicateType::Partial){
+            ostringstream assert_s;
+            vector<Expr> args = p1->args;
+            int dim = (args.size())/3;
+            bool constant_dims = true;
+            for(int i = 0; i < dim-1; i++){
+                if(!(is_const(args[3*i+2]))){
+                    constant_dims = false;
+                    break;
+                }
+            } 
+            if(!constant_dims){
+                AnnotationPrinter apa(assert_s, is_pvl(), false, buffer_types, load_ids);
+                assert_s << "assert " << idx << " == ";
+                Expr stride = Expr(1);
+                for(int i = 0; i < dim; i++){
+                    if(i != 0){
+                        assert_s << " + ";
+                    }
+                    apa.print((args[3*i] - args[3*i+1])*stride);
+                    if(i == 0){
+                        stride = args[3*i+2];
+                    } else {
+                        stride = stride * args[3*i+2];
+                    }
+                }
+                assert_s << " && perm(&";
+                apa.print(Variable::make(Handle(),p1->called_buffer));
+                assert_s << "[" << idx << "]) == ";//write";
+                apa.print(p1->perm);
+                string assert = assert_s.str();
+                befores.emplace_back(assert);
+            }
+        } else {
+            befores = print_lemma(c1, buf, idx);
+        }
+
+        ostringstream rhs;
+        AnnotationPrinter ap(rhs, is_pvl(), false, buffer_types, load_ids);
+        ap.print(p1);
+        string pred = rhs.str();
+        
+        after = "fold " + pred;
+        befores.insert(befores.begin(), "unfold " + pred);
+        return std::make_tuple(after, befores);
+    }
+
+    internal_error << "Unexpected other call instead of lemma: " << c->name;
+
+    return std::make_tuple<string, vector<string>>("", {});
 }
 
 void CodeGen_C::test() {
@@ -4040,7 +4182,12 @@ std::string add_forall_vars(std::vector<std::string> vars){
 }
 
 void AnnotationPrinter::visit(const Forall *op) {
-    stream << "(\\forall ";
+    stream << "(\\forall";
+    if(op->type.is_resource()){
+        stream << "* ";
+    } else {
+        stream << " ";
+    }
     stream << add_forall_vars(op->vars) << "; ";
 
     print_no_parens(op->select);
@@ -4057,6 +4204,33 @@ void AnnotationPrinter::visit(const Exists *op) {
     stream << "; ";
     print_no_parens(op->main);
     stream << ")";
+}
+
+void AnnotationPrinter::visit(const Predicate *op) {
+    IRPrinter::visit(op);
+    // if(!is_const_one(op->perm)){
+    //     stream << "[" << op->perm << "]";
+    // }
+    // if(op->pred_type == Predicate::PredicateType::Partial){
+    //     stream << op->name;
+    // } else {
+    //     for(size_t i = 0; i < op->buffer_types.size(); i++){
+    //         stream << "_" << op->buffer_types[i];
+    //     }
+    // }
+    // stream << "_pred(";
+
+    // if(op->buffer_types.size() == 1){
+    //     stream << op->name << ", ";
+    // } else {
+    //     for(size_t i = 0; i < op->buffer_types.size(); i++){
+    //         stream << op->name << "_" << i << ", ";
+    //     }
+    // }
+    
+     
+    // print_list(op->args);
+    // stream << ")";
 }
 
 void AnnotationPrinter::visit(const Permission *op) {
@@ -4170,26 +4344,65 @@ void AnnotationPrinter::print_buffer_get_host(const Expr &buf){
 }
 
 void AnnotationPrinter::visit(const Call *op) {
-    if(op->name == Call::buffer_get_host){
+
+    if(op->is_intrinsic(Call::unfolding_in)){
+        internal_assert(op->args.size() == 2);
+        stream << "(\\unfolding ";
+        print_no_parens(op->args[0]);
+        stream << " \\in ";
+        print_no_parens(op->args[1]);
+        stream << ")";
+    } else if(op->is_intrinsic(Call::to_pred)){
+        stream << "to_pred_";
+        stream << clean_print_name(op->args[0].as<Variable>()->name);
+        stream << "(";
+        print_list(op->args);
+        stream << ")";
+    } else if(op->is_intrinsic(Call::from_pred)){
+        stream << "from_pred_";
+        stream << clean_print_name(op->args[0].as<Variable>()->name);
+        stream << "(";
+        print_list(op->args);
+        stream << ")";
+    } else if(op->is_intrinsic(Call::trigger)){
+        internal_assert(op->args.size() == 1 || op->args.size() == 2);
+        if(op->args.size() == 1){
+            stream << "{:";
+        } else {
+            const IntImm *val = op->args[1].as<IntImm>();
+            internal_assert(val && val->value >= 0);
+            stream << "{:" << val << ":";
+        }
+        print_no_parens(op->args[0]);
+        stream << ":}";
+    } else if(op->is_intrinsic(Call::null)){
+        internal_assert(op->args.size() == 0);
+        stream << "NULL";
+    } else if(op->is_intrinsic(Call::pointer_length)){
+        internal_assert(op->args.size() == 1);
+        stream << "\\pointer_length(";
+        print_no_parens(op->args[0]);
+        stream << ")";
+    } else if(op->is_intrinsic(Call::perm)){
+        internal_assert(op->args.size() == 2);
+        stream << "Perm(&";
+        print_list(op->args);
+        stream << ")";
+    } else if(op->name == Call::buffer_get_host){
         print_buffer_get_host(op->args[0]);
-        return;
     } else if(op->name == Call::buffer_get_min){
         print_buffer_min(op->args[0], op->args[1]);
-        return;
     } else if(op->name == Call::buffer_get_extent){
         print_buffer_extent(op->args[0], op->args[1]);
-        return;
     } else if(op->name == Call::buffer_get_stride){
         print_buffer_stride(op->args[0], op->args[1]);
-        return;
     } else if(op->name == Call::buffer_get_max){
         print_buffer_max(op->args[0], op->args[1]);
-        return;
+    } else {
+        stream << op->name << "(";
+        print_list(op->args);
+        stream << ")";   
     }
-
-    stream << op->name << "(";
-    print_list(op->args);
-    stream << ")";   
 }
 
 void AnnotationPrinter::visit(const UIntImm *op) {

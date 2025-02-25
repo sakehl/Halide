@@ -127,6 +127,13 @@ void IRVisitor::visit(const Exists *op) {
     op->main.accept(this);
 }
 
+void IRVisitor::visit(const Predicate *op) {
+    for (size_t i = 0; i < op->args.size(); i++) {
+        op->args[i].accept(this);
+    }
+    op->perm.accept(this);
+}
+
 void IRVisitor::visit(const Select *op) {
     op->condition.accept(this);
     op->true_value.accept(this);
@@ -294,6 +301,10 @@ void IRVisitor::visit(const Atomic *op) {
     op->body.accept(this);
 }
 
+void IRVisitor::visit(const Ghost *op) {
+    return;
+}
+
 void IRVisitor::visit(const AnnExpr *op) {
     op->condition.accept(this);
 }
@@ -449,6 +460,13 @@ void IRGraphVisitor::visit(const Exists *op) {
     include(op->main);
 }
 
+void IRGraphVisitor::visit(const Predicate *op) {
+    for (size_t i = 0; i < op->args.size(); i++) {
+        include(op->args[i]);
+    }
+    include(op->perm);
+}
+
 void IRGraphVisitor::visit(const Select *op) {
     include(op->condition);
     include(op->true_value);
@@ -597,6 +615,10 @@ void IRGraphVisitor::visit(const VectorReduce *op) {
 
 void IRGraphVisitor::visit(const Atomic *op) {
     include(op->body);
+}
+
+void IRGraphVisitor::visit(const Ghost *op) {
+    return;
 }
 
 void IRGraphVisitor::visit(const AnnExpr *op) {

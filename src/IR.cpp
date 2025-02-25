@@ -191,8 +191,8 @@ Expr GE::make(Expr a, Expr b) {
 Expr And::make(Expr a, Expr b) {
     internal_assert(a.defined()) << "And of undefined\n";
     internal_assert(b.defined()) << "And of undefined\n";
-    internal_assert(a.type().is_bool()) << "lhs of And is not a bool\n";
-    internal_assert(b.type().is_bool()) << "rhs of And is not a bool\n";
+    internal_assert(a.type().is_bool_or_resource()) << "lhs of And is not a bool\n";
+    internal_assert(b.type().is_bool_or_resource()) << "rhs of And is not a bool\n";
     internal_assert(a.type() == b.type()) << "And of mismatched types\n";
 
     And *node = new And;
@@ -220,10 +220,10 @@ Expr Implies::make(Expr a, Expr b) {
     internal_assert(a.defined()) << "Implies of undefined\n";
     internal_assert(b.defined()) << "Implies of undefined\n";
     internal_assert(a.type().is_bool()) << "lhs of Implies is not a bool\n";
-    internal_assert(b.type().is_bool()) << "rhs of Implies is not a bool\n";
+    internal_assert(b.type().is_bool_or_resource()) << "rhs of Implies is not a bool\n";
 
     Implies *node = new Implies;
-    node->type = Bool(a.type().lanes());
+    node->type = b.type();
     node->a = std::move(a);
     node->b = std::move(b);
     return node;
@@ -239,31 +239,49 @@ Expr Not::make(Expr a) {
     return node;
 }
 
-Expr Forall::make(std::vector<std::string> vars, Expr select, Expr main) {
+Expr Forall::make(const std::vector<std::string> &vars, Expr select, Expr main) {
     internal_assert(select.defined()) << "Forall of undefined\n";
     internal_assert(main.defined()) << "Forall of undefined\n";
     internal_assert(select.type().is_bool() && select.type().is_scalar()) << "select of Forall is not a scalar bool\n";
-    internal_assert(main.type().is_bool() && main.type().is_scalar()) << "main of Forall is not a scalar bool\n";
+    internal_assert(main.type().is_bool_or_resource() && main.type().is_scalar()) << "main of Forall is not a scalar bool or resource\n";
 
     Forall *node = new Forall;
-    node->type = select.type();
+    node->type = main.type();
     node->vars = vars;
     node->select = std::move(select);
     node->main = std::move(main);
     return node;
 }
 
-Expr Exists::make(std::vector<std::string> vars, Expr select, Expr main) {
+Expr Exists::make(const std::vector<std::string> &vars, Expr select, Expr main) {
     internal_assert(select.defined()) << "Exists of undefined\n";
     internal_assert(main.defined()) << "Exists of undefined\n";
     internal_assert(select.type().is_bool() && select.type().is_scalar()) << "select of Exists is not a scalar bool\n";
-    internal_assert(main.type().is_bool() && main.type().is_scalar()) << "main of Exists is not a scalar bool\n";
+    internal_assert(main.type().is_bool_or_resource() && main.type().is_scalar()) << "main of Exists is not a scalar bool\n";
 
     Exists *node = new Exists;
-    node->type = select.type();
+    node->type = main.type();
     node->vars = vars;
     node->select = std::move(select);
     node->main = std::move(main);
+    return node;
+}
+
+Expr Predicate::make(const std::string &name, const std::string &called_buffer, const std::vector<Expr> &args, Expr perm, Type buffer_type, PredicateType pred_type){
+    internal_assert(!name.empty()) << "Predicate of undefined name\n";
+    for (size_t i = 0; i < args.size(); i++) {
+        internal_assert(args[i].defined()) << "Predicate of " << name << " with argument " << i << " undefined.\n";
+    }
+    internal_assert(perm.defined()) << "Predicate of undefined perm\n";
+    
+    Predicate *node = new Predicate;
+    node->type = Resource();
+    node->name = name;
+    node->called_buffer = called_buffer;
+    node->args = args;
+    node->perm = perm;
+    node->buffer_type = buffer_type;
+    node->pred_type = pred_type;
     return node;
 }
 
@@ -385,7 +403,7 @@ Stmt ProducerConsumer::make_consume(const std::string &name, Stmt body) {
 }
 
 Stmt For::make(const std::string &name, Expr min, Expr extent, ForType for_type, DeviceAPI device_api, Stmt body,
-  std::vector<Annotation> annotations) {
+  const std::vector<Annotation> &annotations) {
     internal_assert(min.defined()) << "For of undefined\n";
     internal_assert(extent.defined()) << "For of undefined\n";
     internal_assert(min.type() == Int(32)) << "For with non-integer min\n";
@@ -437,7 +455,8 @@ Stmt Store::make(const std::string &name, Expr value, Expr index, Parameter para
     return node;
 }
 
-Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args) {
+Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, const std::vector<Expr> &args
+    , const std::vector<Expr> &ghost_args) {
     internal_assert(!values.empty()) << "Provide of no values\n";
     for (size_t i = 0; i < values.size(); i++) {
         internal_assert(values[i].defined()) << "Provide of undefined value\n";
@@ -445,11 +464,15 @@ Stmt Provide::make(const std::string &name, const std::vector<Expr> &values, con
     for (size_t i = 0; i < args.size(); i++) {
         internal_assert(args[i].defined()) << "Provide to undefined location\n";
     }
+    for (size_t i = 0; i < ghost_args.size(); i++) {
+        internal_assert(ghost_args[i].defined()) << "Provide to undefined location\n";
+    }
 
     Provide *node = new Provide;
     node->name = name;
     node->values = values;
     node->args = args;
+    node->ghost_args = ghost_args;
     return node;
 }
 
@@ -540,6 +563,14 @@ Stmt Realize::make(const std::string &name, const std::vector<Type> &types, Memo
     return node;
 }
 
+Stmt Ghost::make(Stmt ghost) {
+    internal_assert(ghost.defined()) << "Ghost of undefined\n";
+
+    Ghost *node = new Ghost;
+    node->ghost = std::move(ghost);
+    return node;
+}
+
 Stmt Prefetch::make(const std::string &name, const std::vector<Type> &types,
                     const Region &bounds,
                     const PrefetchDirective &prefetch,
@@ -623,7 +654,7 @@ Stmt IfThenElse::make(Expr condition, Stmt then_case, Stmt else_case) {
     return node;
 }
 
-Stmt Evaluate::make(Expr v, std::vector<Annotation> annotations) {
+Stmt Evaluate::make(Expr v, const std::vector<Annotation> &annotations) {
     internal_assert(v.defined()) << "Evaluate of undefined\n";
 
     Evaluate *node = new Evaluate;
@@ -664,6 +695,8 @@ const char *const intrinsic_op_names[] = {
     "div_round_to_zero",
     "dynamic_shuffle",
     "extract_mask_element",
+    "from_pred",
+    "ghost_args",
     "gpu_thread_barrier",
     "halving_add",
     "halving_sub",
@@ -684,7 +717,12 @@ const char *const intrinsic_op_names[] = {
     "mod_round_to_zero",
     "mulhi_shr",
     "mux",
+    "null",
+    "perm",
+    "pointer_length",
     "popcount",
+    "predicate",
+    "predicate_partial",
     "prefetch",
     "promise_clamped",
     "random",
@@ -707,9 +745,13 @@ const char *const intrinsic_op_names[] = {
     "signed_integer_overflow",
     "size_of_halide_buffer_t",
     "sorted_avg",
+    "split",
     "strict_float",
     "stringify",
+    "to_pred",
+    "trigger",
     "undef",
+    "unfolding_in",
     "unsafe_promise_clamped",
     "widening_add",
     "widening_mul",
@@ -970,7 +1012,7 @@ Expr VectorReduce::make(VectorReduce::Operator op,
 
 Annotation AnnExpr::make(AnnotationType ann_type, Expr condition){
     internal_assert(condition.defined()) << "AnnExpr of undefined\n";
-    internal_assert(condition.type().is_bool()) << "Argument to AnnExpr is not a bool: " << condition.type() << "\n";
+    internal_assert(condition.type().is_bool_or_resource()) << "Argument to AnnExpr is not a bool: " << condition.type() << "\n";
 
     AnnExpr *node = new AnnExpr;
     node->ann_type = ann_type;
@@ -978,7 +1020,7 @@ Annotation AnnExpr::make(AnnotationType ann_type, Expr condition){
     return node;
 }
 
-Annotation Permission::make(AnnotationType ann_type, Expr antecedent, Expr variable, Expr permission, std::vector<std::string> forall_vars){
+Annotation Permission::make(AnnotationType ann_type, Expr antecedent, Expr variable, Expr permission, const std::vector<std::string> &forall_vars){
     internal_assert(antecedent.defined()) << "Permission of undefined\n";
     internal_assert(variable.defined()) << "Permission of undefined\n";
     internal_assert(permission.defined()) << "Permission of undefined\n";
@@ -1144,6 +1186,10 @@ void ExprNode<Exists>::accept(IRVisitor *v) const {
     v->visit((const Exists *)this);
 }
 template<>
+void ExprNode<Predicate>::accept(IRVisitor *v) const {
+    v->visit((const Predicate *)this);
+}
+template<>
 void ExprNode<Select>::accept(IRVisitor *v) const {
     v->visit((const Select *)this);
 }
@@ -1234,6 +1280,10 @@ void StmtNode<Acquire>::accept(IRVisitor *v) const {
 template<>
 void StmtNode<Fork>::accept(IRVisitor *v) const {
     v->visit((const Fork *)this);
+}
+template<>
+void StmtNode<Ghost>::accept(IRVisitor *v) const {
+    v->visit((const Ghost *)this);
 }
 template<>
 void StmtNode<Atomic>::accept(IRVisitor *v) const {
@@ -1357,6 +1407,10 @@ Expr ExprNode<Exists>::mutate_expr(IRMutator *v) const {
     return v->visit((const Exists *)this);
 }
 template<>
+Expr ExprNode<Predicate>::mutate_expr(IRMutator *v) const {
+    return v->visit((const Predicate *)this);
+}
+template<>
 Expr ExprNode<Select>::mutate_expr(IRMutator *v) const {
     return v->visit((const Select *)this);
 }
@@ -1452,6 +1506,10 @@ Stmt StmtNode<Fork>::mutate_stmt(IRMutator *v) const {
 template<>
 Stmt StmtNode<Atomic>::mutate_stmt(IRMutator *v) const {
     return v->visit((const Atomic *)this);
+}
+template<>
+Stmt StmtNode<Ghost>::mutate_stmt(IRMutator *v) const {
+    return v->visit((const Ghost *)this);
 }
 
 template<>

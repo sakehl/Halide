@@ -59,6 +59,7 @@ protected:
     virtual void visit(const Not *);
     virtual void visit(const Forall *);
     virtual void visit(const Exists *);
+    virtual void visit(const Predicate *);
     virtual void visit(const Select *);
     virtual void visit(const Load *);
     virtual void visit(const Ramp *);
@@ -83,6 +84,7 @@ protected:
     virtual void visit(const Fork *);
     virtual void visit(const Acquire *);
     virtual void visit(const Atomic *);
+    virtual void visit(const Ghost *);
     virtual void visit(const AnnExpr *);
     virtual void visit(const Permission *);
 };
@@ -137,6 +139,7 @@ protected:
     void visit(const Not *) override;
     void visit(const Forall *) override;
     void visit(const Exists *) override;
+    void visit(const Predicate *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -161,6 +164,7 @@ protected:
     void visit(const Acquire *) override;
     void visit(const Fork *) override;
     void visit(const Atomic *) override;
+    void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
     // @}
@@ -236,6 +240,8 @@ private:
             return ((T *)this)->visit((const Forall *)node, std::forward<Args>(args)...);
         case IRNodeType::Exists:
             return ((T *)this)->visit((const Exists *)node, std::forward<Args>(args)...);
+        case IRNodeType::Predicate:
+            return ((T *)this)->visit((const Predicate *)node, std::forward<Args>(args)...);
         case IRNodeType::Select:
             return ((T *)this)->visit((const Select *)node, std::forward<Args>(args)...);
         case IRNodeType::Load:
@@ -269,6 +275,7 @@ private:
         case IRNodeType::Evaluate:
         case IRNodeType::Prefetch:
         case IRNodeType::Atomic:
+        case IRNodeType::Ghost:
         case IRNodeType::AnnExpr:
         case IRNodeType::Permission:
             internal_error << "Unreachable";
@@ -310,6 +317,7 @@ private:
         case IRNodeType::Not:
         case IRNodeType::Forall:
         case IRNodeType::Exists:
+        case IRNodeType::Predicate:
         case IRNodeType::Select:
         case IRNodeType::Load:
         case IRNodeType::Ramp:
@@ -353,6 +361,8 @@ private:
             return ((T *)this)->visit((const Prefetch *)node, std::forward<Args>(args)...);
         case IRNodeType::Atomic:
             return ((T *)this)->visit((const Atomic *)node, std::forward<Args>(args)...);
+        case IRNodeType::Ghost:
+            return ((T *)this)->visit((const Ghost *)node, std::forward<Args>(args)...);
         }
         return StmtRet{};
     }
@@ -392,6 +402,7 @@ private:
         case IRNodeType::Not:
         case IRNodeType::Forall:
         case IRNodeType::Exists:
+        case IRNodeType::Predicate:
         case IRNodeType::Select:
         case IRNodeType::Load:
         case IRNodeType::Ramp:
@@ -416,6 +427,7 @@ private:
         case IRNodeType::Evaluate:
         case IRNodeType::Prefetch:
         case IRNodeType::Atomic:
+        case IRNodeType::Ghost:
             internal_error << "Unreachable";
             break;
         case IRNodeType::AnnExpr:

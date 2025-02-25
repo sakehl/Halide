@@ -57,6 +57,7 @@ public:
     void visit(const Not *) override;
     void visit(const Forall *) override;
     void visit(const Exists *) override;
+    void visit(const Predicate *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -81,6 +82,7 @@ public:
     void visit(const VectorReduce *) override;
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
+    void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
     void visit(const Permission *) override;
 };
@@ -198,6 +200,10 @@ void ComputeModulusRemainder::visit(const Exists *) {
     internal_error << "modulus_remainder of bool\n";
 }
 
+void ComputeModulusRemainder::visit(const Predicate *) {
+    internal_error << "modulus_remainder of bool\n";
+}
+
 void ComputeModulusRemainder::visit(const Select *op) {
     result = ModulusRemainder::unify(analyze(op->true_value),
                                      analyze(op->false_value));
@@ -303,6 +309,11 @@ void ComputeModulusRemainder::visit(const Prefetch *) {
 void ComputeModulusRemainder::visit(const Atomic *) {
     internal_error << "modulus_remainder of statement\n";
 }
+
+void ComputeModulusRemainder::visit(const Ghost *) {
+    internal_error << "modulus_remainder of statement\n";
+}
+
 
 void ComputeModulusRemainder::visit(const AnnExpr *) {
     internal_error << "modulus_remainder of annotation\n";

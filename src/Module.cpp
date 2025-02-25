@@ -334,6 +334,7 @@ struct ModuleContents {
     std::map<std::string, std::string> metadata_name_map;
     bool any_strict_float{false};
     std::unique_ptr<AutoSchedulerResults> auto_scheduler_results;
+    std::string annotation_headers;
 };
 
 template<>
@@ -438,6 +439,14 @@ void Module::append(const Buffer<> &buffer) {
 
 void Module::append(const Internal::LoweredFunc &function) {
     contents->functions.push_back(function);
+}
+
+void Module::set_annotation_header(const std::string &header) {
+    contents->annotation_headers = header;
+}
+
+std::string Module::get_annotation_header() const {
+    return contents->annotation_headers;
 }
 
 void Module::append(const Module &module) {

@@ -72,6 +72,7 @@ protected:
     virtual Expr visit(const Not *);
     virtual Expr visit(const Forall *);
     virtual Expr visit(const Exists *);
+    virtual Expr visit(const Predicate *);
     virtual Expr visit(const Select *);
     virtual Expr visit(const Load *);
     virtual Expr visit(const Ramp *);
@@ -97,6 +98,7 @@ protected:
     virtual Stmt visit(const Acquire *);
     virtual Stmt visit(const Fork *);
     virtual Stmt visit(const Atomic *);
+    virtual Stmt visit(const Ghost *);
 
     virtual Annotation visit(const AnnExpr *);
     virtual Annotation visit(const Permission *);    

@@ -803,18 +803,20 @@ Expr implies(Expr a, Expr b);
 /** A logical construct we quantify over variable x, constrained by `cond`
  * for the main part. Used in annotations
  */
-Expr forall(Expr x, Expr select, Expr main);
+Expr forall(std::string x, Expr select, Expr main);
 
 /** A logical construct we quantify over variables xs, constrained by `cond`
  * for the main part. Used in annotations
  */
-Expr forall(const std::vector<Expr> &xs, Expr select, Expr main);
+Expr forall(const std::vector<std::string> &xs, Expr select, Expr main);
 
 Annotation requires(Expr cond);
 
 Annotation ensures(Expr cond);
 
 Annotation context(Expr cond);
+
+Annotation loop_invariant(Expr cond);
 
 /** Returns an expression similar to the ternary operator in C, except
  * that it always evaluates all arguments. If the first argument is
@@ -1360,6 +1362,10 @@ inline Expr undef() {
  * write permission, a value between 0 and 1 is a read permission.
  */
 Expr frac(Expr a, Expr b);
+
+Expr read(Expr factor);
+
+Expr write();
 
 
 /** Control the values used in the memoization cache key for memoize.

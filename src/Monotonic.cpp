@@ -272,6 +272,10 @@ class MonotonicVisitor : public IRVisitor {
         internal_error << "Monotonic of Exists\n";
     }
 
+    void visit(const Predicate *op) override {
+        internal_error << "Monotonic of Predicate\n";
+    }
+
     void visit(const Select *op) override {
         op->condition.accept(this);
         Monotonic rcond = result;
@@ -472,6 +476,10 @@ class MonotonicVisitor : public IRVisitor {
     }
 
     void visit(const Atomic *op) override {
+        internal_error << "Monotonic of statement\n";
+    }
+
+    void visit(const Ghost *op) override {
         internal_error << "Monotonic of statement\n";
     }
 

@@ -93,10 +93,85 @@ void validate_schedule_inlined_function(Function f) {
     }
 }
 
+class SubstituteWithGhostCall : public IRMutator {
+    const std::map<string, Expr> &replace;
+    const std::map<string, Expr> &replace_ghost;
+    Scope<> hidden;
+    bool in_ghost = false;
+
+    Expr find_replacement(const string &s){
+        if(in_ghost){
+            return find_replacement_h(s, replace_ghost);
+        } else {
+            return find_replacement_h(s, replace);
+        }
+    }
+
+    Expr find_replacement_h(const string &s, const std::map<string, Expr> &replace) {
+        std::map<string, Expr>::const_iterator iter = replace.find(s);
+        if (iter != replace.end() && !hidden.contains(s)) {
+            return iter->second;
+        } else {
+            return Expr();
+        }
+    }
+
+public:
+    SubstituteWithGhostCall(const std::map<string, Expr> &m, const std::map<string, Expr> &ghost_m)
+        : replace(m), replace_ghost(ghost_m) {
+    }
+
+    using IRMutator::visit;
+
+    Expr visit(const Variable *v) override {
+        Expr r = find_replacement(v->name);
+        if (r.defined()) {
+            return r;
+        } else {
+            return v;
+        }
+    }
+
+    Expr visit(const Let *op) override {
+        Expr new_value = mutate(op->value);
+        hidden.push(op->name);
+        Expr new_body = mutate(op->body);
+        hidden.pop(op->name);
+
+        if (new_value.same_as(op->value) &&
+            new_body.same_as(op->body)) {
+            return op;
+        } else {
+            return Let::make(op->name, new_value, new_body);
+        }
+    }
+
+    Expr visit(const Call *op) override {
+        if(op->call_type == Call::Halide || op->call_type == Call::Image){
+            Expr new_call = IRMutator::visit(op);
+
+            vector<Expr> ghost_args;
+            ghost_args.emplace_back(new_call);
+            bool old_ghost = in_ghost;
+            in_ghost = true;
+            for(const auto &a: op->args){
+                Expr new_a = mutate(a);
+                ghost_args.emplace_back(new_a);
+            }
+            in_ghost = old_ghost;
+            return Call::make(op->type, Call::ghost_args, {ghost_args}, Call::Intrinsic);
+        } else {
+            return IRMutator::visit(op);
+        }
+    }
+};
+
 class Inliner : public IRMutator {
     using IRMutator::visit;
 
     Function func;
+    bool add_ghost;
+    vector<Expr> ghost_args;
 
     Expr visit(const Call *op) override {
         if (op->name == func.name()) {
@@ -113,11 +188,28 @@ class Inliner : public IRMutator {
 
             // Bind the args using Let nodes
             internal_assert(args.size() == func_args.size());
+            internal_assert(!add_ghost || ghost_args.size() == args.size());
+            std::map<string, Expr> replace;
+            std::map<string, Expr> replace_ghost;
+            for (size_t i = 0; i < args.size(); i++) {
+                string name = func.name() + "." + func_args[i];
+                if(add_ghost){
+                    replace_ghost[name] = ghost_args[i];
+                }
+                if (is_const(args[i]) || args[i].as<Variable>()) {
+                    replace[name] = args[i];
+                }
+            }
+            if(add_ghost){
+                internal_assert(ghost_args.size() == args.size());
+                SubstituteWithGhostCall sub(replace, replace_ghost);
+                body = sub.mutate(body);
+            } else {
+                body = substitute(replace, body);
+            }
 
             for (size_t i = 0; i < args.size(); i++) {
-                if (is_const(args[i]) || args[i].as<Variable>()) {
-                    body = substitute(func.name() + "." + func_args[i], args[i], body);
-                } else {
+                if (!(is_const(args[i]) || args[i].as<Variable>())) {
                     body = Let::make(func.name() + "." + func_args[i], args[i], body);
                 }
             }
@@ -126,6 +218,23 @@ class Inliner : public IRMutator {
 
             return body;
 
+        } else if(add_ghost && op->is_intrinsic(Call::ghost_args)){
+            // The call is inlined, so we need to inline the ghost args as well
+            const Call *call = op->args[0].as<Call>();
+            internal_assert(call);
+            if(call->name != func.name()){
+                return IRMutator::visit(op);
+            }
+
+            vector<Expr> ghost_args_here;
+            for (size_t i = 1; i < op->args.size(); i++) {
+                ghost_args_here.emplace_back(op->args[i]);
+            }
+            ghost_args = ghost_args_here;
+            Expr result = mutate(op->args[0]);
+            ghost_args = {};
+            return result;
+        
         } else {
             return IRMutator::visit(op);
         }
@@ -172,21 +281,21 @@ class Inliner : public IRMutator {
 public:
     int found = 0;
 
-    Inliner(const Function &f)
-        : func(f) {
+    Inliner(const Function &f, bool add_ghost)
+        : func(f), add_ghost(add_ghost) {
         internal_assert(f.can_be_inlined()) << "Illegal to inline " << f.name() << "\n";
         validate_schedule_inlined_function(f);
     }
 };
 
-Stmt inline_function(Stmt s, const Function &f) {
-    Inliner i(f);
+Stmt inline_function(Stmt s, const Function &f, bool add_ghost) {
+    Inliner i(f, add_ghost);
     s = i.mutate(s);
     return s;
 }
 
-Expr inline_function(Expr e, const Function &f) {
-    Inliner i(f);
+Expr inline_function(Expr e, const Function &f, bool add_ghost) {
+    Inliner i(f, add_ghost);
     e = i.mutate(e);
     // TODO: making this > 1 should be desirable,
     // but explodes compiletimes in some situations.
@@ -198,7 +307,7 @@ Expr inline_function(Expr e, const Function &f) {
 
 // Inline all calls to 'f' inside 'caller'
 void inline_function(Function caller, const Function &f) {
-    Inliner i(f);
+    Inliner i(f, false);
     caller.mutate(&i);
     if (caller.has_extern_definition()) {
         for (ExternFuncArgument &arg : caller.extern_arguments()) {

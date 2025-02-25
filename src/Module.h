@@ -179,6 +179,9 @@ public:
     void append(const ExternalCode &external_code);
     // @}
 
+    void set_annotation_header(const std::string &header);
+    std::string get_annotation_header() const;
+
     /** Compile a halide Module to variety of outputs, depending on
      * the fields set in output_files. */
     void compile(const std::map<Output, std::string> &output_files) const;

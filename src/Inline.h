@@ -16,8 +16,8 @@ class Function;
  * be inlined, it must not have any specializations (i.e. it can only have one
  * values definition). */
 // @{
-Stmt inline_function(Stmt s, const Function &f);
-Expr inline_function(Expr e, const Function &f);
+Stmt inline_function(Stmt s, const Function &f, bool add_ghost = false);
+Expr inline_function(Expr e, const Function &f, bool add_ghost = false);
 void inline_function(Function caller, const Function &f);
 // @}
 

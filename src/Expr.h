@@ -55,6 +55,7 @@ enum class IRNodeType {
     Not,
     Forall,
     Exists,
+    Predicate,
     Select,
     Load,
     Ramp,
@@ -79,6 +80,7 @@ enum class IRNodeType {
     Evaluate,
     Prefetch,
     Atomic,
+    Ghost,
     //Annotations
     AnnExpr,
     // Forall

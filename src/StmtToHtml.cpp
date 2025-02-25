@@ -324,6 +324,12 @@ private:
         stream << ")";
         stream << close_div();
     }
+    void visit(const Predicate *op) override {
+        stream << "[" << op->perm << "]";
+        stream << open_div("Predicate<" + op->name + ">");
+        print_list(symbol(op->name) + "(", op->args, ")");
+        stream << close_div();
+    }
     void visit(const Select *op) override {
         stream << open_span("Select");
         print_list(symbol("select") + "(", {op->condition, op->true_value, op->false_value}, ")");
@@ -756,6 +762,12 @@ private:
         stream << open_div("Atomic Body Indent", id);
         print(op->body);
         stream << close_div() << matched("}");
+        stream << close_div();
+    }
+
+    void visit(const Ghost *op) override {
+        stream << open_div("Ghost");
+        print(op->ghost);
         stream << close_div();
     }
 

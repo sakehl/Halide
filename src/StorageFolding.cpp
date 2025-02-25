@@ -143,8 +143,10 @@ class FoldStorageOfFunction : public IRMutator {
         internal_assert(op);
         if (op->name == func) {
             vector<Expr> args = op->args;
+            vector<Expr> ghost_args = op->ghost_args;
             args[dim] = is_const_one(factor) ? 0 : (args[dim] % factor);
-            stmt = Provide::make(op->name, op->values, args);
+            ghost_args[dim] = is_const_one(factor) ? 0 : (ghost_args[dim] % factor);
+            stmt = Provide::make(op->name, op->values, args, ghost_args);
         }
         return stmt;
     }

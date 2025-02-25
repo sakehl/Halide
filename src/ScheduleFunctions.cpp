@@ -121,18 +121,6 @@ public:
     Scope<string> free_vars;
 };
 
-Expr make_forall(vector<string> args, Expr select, Expr main){
-    const Forall *pos_forall = main.as<Forall>();
-    Expr res;
-    if(pos_forall){
-        vector<string> new_args = args;
-        new_args.insert(new_args.end(), pos_forall->vars.begin(), pos_forall->vars.end() );
-        res = Forall::make(new_args, And::make(select,pos_forall->select), pos_forall->main);
-    } else 
-        res = Forall::make(args, select, main);
-    return res;
-}
-
 struct VarDim {
     string var;
     Expr min;
@@ -206,8 +194,8 @@ public:
                 bounds = And::make(bounds, new_bound);
         }
         for(const auto & assertion: assertions){
-            Expr forall = make_forall(vars, bounds, assertion);
-            res.emplace_back(AnnExpr::make(atype, forall));
+            Expr f = forall(vars, bounds, assertion);
+            res.emplace_back(AnnExpr::make(atype, f));
         }
         return res;
     }
@@ -216,7 +204,7 @@ public:
         for(const auto &ann: anns){
             const AnnExpr *ae = ann.as<AnnExpr>();
             if(ae && (ae->ann_type == AnnotationType::Ensure || ae->ann_type == AnnotationType::Context 
-                    || ae->ann_type == AnnotationType::ContextEverywhere)){
+                    || ae->ann_type == AnnotationType::ContextEverywhere) && ae->condition.type().is_bool()){
                 add_assertion(ae->condition);
             }
         }
@@ -265,24 +253,17 @@ class LoopInvariantMaker {
 
 public:
     Annotation update_perm(const Annotation &a) {
-        const Permission *p = a.as<Permission>();
-        internal_assert(p);
+        const AnnExpr *p = a.as<AnnExpr>();
+        internal_assert(p->condition.type().is_resource());
         if(is_static(a)){
-            Expr antecedent = And::make(static_bound, p->antecedent);
-            return Permission::make(AnnotationType::Context, antecedent, p->variable, p->permission, p->forall_vars);
+            return context(implies(static_bound, p->condition));
         }
-
         user_assert(p->ann_type == AnnotationType::Context) << "Permission annotations should always be context: " << a;
         
-        Expr new_antecedent = substitute(replacer, p->antecedent);
-        Expr new_variable = substitute(replacer, p->variable);
-        Expr new_permission = substitute(replacer, p->permission);
-        new_antecedent = And::make(bounds, new_antecedent);
+        Expr new_condition = substitute(replacer, p->condition);
+        context(forall(forall_var, bounds, new_condition));
 
-        vector<string> new_forall_vars = p->forall_vars;
-        new_forall_vars.emplace_back(forall_var);
-
-        return Permission::make(AnnotationType::Context, new_antecedent, new_variable, new_permission, new_forall_vars);
+        return context(forall(forall_var, bounds, new_condition));
     }
 
     Expr outside_ann(Expr cond){
@@ -291,7 +272,7 @@ public:
         }
 
         Expr condition = substitute(replacer, cond);
-        return make_forall({forall_var}, bounds, condition);
+        return forall({forall_var}, bounds, condition);
     }
 
     Annotation inside_loop_ann(Expr cond, AnnotationType ann_type){
@@ -307,7 +288,7 @@ public:
         }
 
         Expr condition = substitute(replacer, cond);
-        Expr inside_forall = make_forall({forall_var}, forall_bounds, condition);
+        Expr inside_forall = forall({forall_var}, forall_bounds, condition);
         return AnnExpr::make(AnnotationType::LoopInvariant, inside_forall);
     }
 
@@ -348,8 +329,10 @@ public:
             const Permission *p = a.as<Permission>();
             if(ae && ae->ann_type == AnnotationType::LoopInvariant){
                 reduction_invariants.emplace_back(ae->condition);
-            } else if(ae){
+            } else if(ae && ae->condition.type().is_bool()){
                 anns.emplace_back(a);
+            } else if(ae){
+                perms.emplace_back(a);
             } else if(p){
                 // TODO: Unsure about GPU blocks and redistribution of barriers
                 user_assert(p->ann_type == AnnotationType::Context) << "Permission annotations should always be context: " << a;
@@ -376,13 +359,11 @@ public:
                 result.emplace_back(p);
             }
             Annotation new_p = lim.update_perm(p);
-            const Permission *new_perm = new_p.as<Permission>();
-            internal_assert(new_perm);
+            const AnnExpr *new_perm = new_p.as<AnnExpr>();
+            internal_assert(new_perm && new_perm->condition.type().is_resource());
             p = new_p;
-            if(is_serial){
-                result.emplace_back(Permission::make(
-                    AnnotationType::LoopInvariant, new_perm->antecedent, new_perm->variable,
-                    new_perm->permission, new_perm->forall_vars));
+            if(is_serial) {
+                result.emplace_back(loop_invariant(new_perm->condition));
             }
         }
 
@@ -437,11 +418,9 @@ public:
 
         // Add permissions, but as loop invariants type
         for(auto &p: perms){
-            const Permission *perm = p.as<Permission>();
-            internal_assert(perm);
-            result.emplace_back(Permission::make(
-                AnnotationType::LoopInvariant, perm->antecedent, perm->variable,
-                perm->permission, perm->forall_vars));
+            const AnnExpr *perm = p.as<AnnExpr>();
+            internal_assert(perm && perm->condition.type().is_resource());
+            result.emplace_back(loop_invariant(perm->condition));
             
             // Due to splits of rvars, permissions can have a guard depending on the original rvar, which can go out of scope
             // So we replace it by its min here.
@@ -497,6 +476,63 @@ public:
     }
 };
 
+class AddGhostSplit: public IRMutator{
+    const map<string, Expr> &splits;
+public:
+    AddGhostSplit(const map<string, Expr> &splits)
+        : splits(splits) {
+    }
+    using IRMutator::visit;
+
+    Stmt visit(const Provide * op) override {
+        Stmt new_op = IRMutator::visit(op);
+        const Provide* new_provide = new_op.as<Provide>();
+        internal_assert(new_provide);
+        const auto &args = new_provide->args;
+
+        vector<Expr> ghost_args;
+        for(const auto &a: args){
+            Expr new_a = substitute(splits, a);
+            ghost_args.emplace_back(new_a);
+        }
+        return Provide::make(new_provide->name, new_provide->values, args, ghost_args);
+    }
+
+    Expr visit(const Call *op) override {
+        Expr new_op = IRMutator::visit(op);
+        const Call* new_call = new_op.as<Call>();
+        if(new_call && (new_call->call_type == Call::Halide || new_call->call_type == Call::Image)){
+            vector<Expr> args = new_call->args;
+
+            vector<Expr> ghost_args;
+            ghost_args.emplace_back(new_call);
+            for(const auto &a: args){
+                Expr new_a = substitute(splits, a);
+                ghost_args.emplace_back(new_a);
+            }
+            return Call::make(new_call->type, Call::ghost_args, {ghost_args}, Call::Intrinsic); 
+        }
+        return new_call;
+    }
+};
+
+map<string, Expr> build_splits_replace(const vector<Split> &splits, const string &prefix){
+    map<string, Expr> result;
+    for(const auto &split: splits){
+        if(split.is_split()){
+            Expr old_min = Variable::make(Int(32), prefix + split.old_var + ".loop_min");
+            Expr inner = Variable::make(Int(32), prefix + split.inner);
+            Expr outer = Variable::make(Int(32), prefix + split.outer);
+            Expr split_call = Call::make(Int(32), Call::split, {inner, outer, old_min, split.factor}, Call::Intrinsic);
+            
+            string old_var_name = prefix + split.old_var;
+            result[old_var_name] = split_call;
+        }
+    }
+    return result;
+}
+
+
 // Build a loop nest about a provide node using a schedule
 Stmt build_loop_nest(
     const Stmt &body,
@@ -536,6 +572,11 @@ Stmt build_loop_nest(
     }
 
     vector<Split> splits = stage_s.splits();
+    map<string, Expr> split_replace = build_splits_replace(splits, prefix);
+    AddGhostSplit ags(split_replace);
+    stmt = ags.mutate(stmt);
+    vector<Annotation> cur_anns = qualify(prefix, def.annotations());
+    cur_anns = substitute(split_replace, cur_anns);
 
     // Define the function args in terms of the loop variables using the splits
     for (const Split &split : splits) {
@@ -613,6 +654,8 @@ Stmt build_loop_nest(
         if (Call::as_intrinsic(pred, {Call::likely, Call::likely_if_innermost})) {
             pred = likely(pred);
         }
+        // Add ghost calls
+        pred = ags.mutate(pred);
         pred_container.emplace_back(Container::If, 0, "", pred);
     }
     int n_predicates = (int)(pred_container.size());
@@ -693,7 +736,6 @@ Stmt build_loop_nest(
         }
     }
 
-    vector<Annotation> cur_anns = qualify(prefix, def.annotations());
     // This we added in the automate annotations step, to get correct bounds for reductions
     map<string, Expr> reduction_bound_replacements;
     for(const string &a: func.args()){
@@ -716,6 +758,14 @@ Stmt build_loop_nest(
     }
 
     NestAnnotationMaker nest_annotation_maker(cur_anns, reduction_dims);
+    for (const Split &split : splits) {
+        vector<ApplySplitResult> splits_result = apply_split(split, is_update, prefix, dim_extent_alignment);
+        for(const auto &res: splits_result){
+            if(res.is_substitution()){
+                nest_annotation_maker.substitute(res.name, res.value);
+            }
+        }
+    }
 
 
     // Rewrap the statement in the containing lets and fors.
@@ -824,7 +874,7 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
     }
 
     // Make the (multi-dimensional multi-valued) store node.
-    Stmt body = Provide::make(func.name(), values, site);
+    Stmt body = Provide::make(func.name(), values, site, {});
     if (def.schedule().atomic()) {  // Add atomic node.
         bool any_unordered_parallel = false;
         for (const auto &d : def.schedule().dims()) {
@@ -1352,71 +1402,15 @@ private:
     }
 };
 
-class SubstituteFusedBounds : public IRMutator {
-public:
-    const map<string, Expr> &replacements;
-    explicit SubstituteFusedBounds(const map<string, Expr> &r)
-        : replacements(r) {
-    }
-
-private:
-    using IRMutator::visit;
-
-    Stmt visit(const For *op) override {
-        const auto *min_var = op->min.as<Variable>();
-        const auto *extent_var = op->extent.as<Variable>();
-        if (min_var && extent_var) {
-            Expr min_val, extent_val;
-            {
-                const auto &it = replacements.find(min_var->name);
-                if (it != replacements.end()) {
-                    min_val = it->second;
-                }
-            }
-            {
-                const auto &it = replacements.find(extent_var->name);
-                if (it != replacements.end()) {
-                    extent_val = it->second;
-                }
-            }
-            if (!min_val.defined() || !extent_val.defined()) {
-                return IRMutator::visit(op);
-            }
-
-            Stmt body = mutate(op->body);
-
-            size_t last_dot = op->name.rfind('.');
-            internal_assert(last_dot != string::npos);
-            string new_var = op->name.substr(0, last_dot) + ".fused." + op->name.substr(last_dot + 1);
-
-            ForType for_type = op->for_type;
-            DeviceAPI device_api = op->device_api;
-            if (is_const_one(extent_val)) {
-                // This is the child loop of a fused group. The real loop of the
-                // fused group is the loop of the parent function of the fused
-                // group. This child loop is just a scheduling point, and should
-                // never be a device transition, so we rewrite it to be a simple
-                // serial loop of extent 1."
-                for_type = ForType::Serial;
-                device_api = DeviceAPI::None;
-            }
-
-            Stmt stmt = For::make(new_var, Variable::make(Int(32), new_var + ".loop_min"),
-                                  Variable::make(Int(32), new_var + ".loop_extent"),
-                                  for_type, device_api, body, op->annotations);
-
-            // Add let stmts defining the bound of the renamed for-loop.
-            stmt = LetStmt::make(new_var + ".loop_min", min_val, stmt);
-            stmt = LetStmt::make(new_var + ".loop_max", simplify(min_val + extent_val - 1), stmt);
-            stmt = LetStmt::make(new_var + ".loop_extent", extent_val, stmt);
-            // Replace any reference to the old loop name with the new one.
-            stmt = substitute(op->name, Variable::make(Int(32), new_var), stmt);
-            return stmt;
-        } else {
-            return IRMutator::visit(op);
-        }
-    }
-};
+// Rename a loop var in a compute_with cluster to include '.fused.', to
+// disambiguate its bounds from the original loop bounds. The '.fused.' token is
+// injected somewhere that's not going to change the results of var_name_match,
+// so that it's unchanged as a scheduling point.
+string fused_name(const string &var) {
+    size_t last_dot = var.rfind('.');
+    internal_assert(last_dot != string::npos);
+    return var.substr(0, last_dot) + ".fused." + var.substr(last_dot + 1);
+}
 
 // The bounds of every loop exist in 'replacements' should be replaced. The
 // loop is also renamed by adding '.fused' in the original name before the
@@ -1424,9 +1418,110 @@ private:
 Stmt substitute_fused_bounds(Stmt s, const map<string, Expr> &replacements) {
     if (!s.defined() || replacements.empty()) {
         return s;
-    } else {
-        return SubstituteFusedBounds(replacements).mutate(s);
     }
+
+    class SubstituteFusedBounds : public IRMutator {
+        const map<string, Expr> &replacements;
+
+        using IRMutator::visit;
+
+        Stmt visit(const For *op) override {
+            const auto *min_var = op->min.as<Variable>();
+            const auto *extent_var = op->extent.as<Variable>();
+            if (min_var && extent_var) {
+                Expr min_val, extent_val;
+                {
+                    const auto &it = replacements.find(min_var->name);
+                    if (it != replacements.end()) {
+                        min_val = it->second;
+                    }
+                }
+                {
+                    const auto &it = replacements.find(extent_var->name);
+                    if (it != replacements.end()) {
+                        extent_val = it->second;
+                    }
+                }
+                if (!min_val.defined() || !extent_val.defined()) {
+                    return IRMutator::visit(op);
+                }
+
+                Stmt body = mutate(op->body);
+
+                string new_var = fused_name(op->name);
+
+                ForType for_type = op->for_type;
+                DeviceAPI device_api = op->device_api;
+                if (is_const_one(extent_val)) {
+                    // This is the child loop of a fused group. The real loop of the
+                    // fused group is the loop of the parent function of the fused
+                    // group. This child loop is just a scheduling point, and should
+                    // never be a device transition, so we rewrite it to be a simple
+                    // serial loop of extent 1."
+                    for_type = ForType::Serial;
+                    device_api = DeviceAPI::None;
+                }
+
+                Stmt stmt = For::make(new_var, Variable::make(Int(32), new_var + ".loop_min"),
+                                      Variable::make(Int(32), new_var + ".loop_extent"),
+                                      for_type, device_api, body, op->annotations);
+
+                // Add let stmts defining the bound of the renamed for-loop.
+                stmt = LetStmt::make(new_var + ".loop_min", min_val, stmt);
+                stmt = LetStmt::make(new_var + ".loop_max", simplify(min_val + extent_val - 1), stmt);
+                stmt = LetStmt::make(new_var + ".loop_extent", extent_val, stmt);
+                // Replace any reference to the old loop name with the new one.
+                stmt = substitute(op->name, Variable::make(Int(32), new_var), stmt);
+                return stmt;
+            } else {
+                return IRMutator::visit(op);
+            }
+        }
+
+    public:
+        explicit SubstituteFusedBounds(const map<string, Expr> &r)
+            : replacements(r) {
+        }
+    } subs(replacements);
+
+    return subs.mutate(s);
+}
+
+// Add letstmts inside each parent loop that define the corresponding child loop
+// vars as equal to it. Bounds inference might need a child loop var.
+Stmt add_loop_var_aliases(Stmt s, const map<string, set<string>> &loop_var_aliases) {
+    if (!s.defined() || loop_var_aliases.empty()) {
+        return s;
+    }
+
+    class AddLoopVarAliases : public IRMutator {
+        const map<string, set<string>> &loop_var_aliases;
+
+        using IRMutator::visit;
+
+        Stmt visit(const For *op) override {
+            auto it = loop_var_aliases.find(op->name);
+            if (it == loop_var_aliases.end()) {
+                return IRMutator::visit(op);
+            }
+
+            Expr var = Variable::make(Int(32), op->name);
+            Stmt body = mutate(op->body);
+            for (const string &alias : it->second) {
+                body = LetStmt::make(alias, var, body);
+            }
+
+            return For::make(op->name, op->min, op->extent, op->for_type,
+                             op->device_api, std::move(body), op->annotations);
+        }
+
+    public:
+        explicit AddLoopVarAliases(const map<string, set<string>> &a)
+            : loop_var_aliases(a) {
+        }
+    } add_aliases(loop_var_aliases);
+
+    return add_aliases.mutate(s);
 }
 
 // Shift the iteration domain of a loop nest by some factor.
@@ -1476,29 +1571,62 @@ struct PlaceholderPrefetch {
     }
 };
 
+Expr trigger(Expr e){
+    return Call::make(e.type(), Call::trigger, {e}, Call::Intrinsic);
+}
+
+/** This helps creating permissions to read or write for functions.
+ * The write permission is distributed if the function is stored at a higher place than it is computed, in for-loops of other functions.
+ * The function manages it's own write permission otherwise
+ * 
+ * The read permission is for where this function is used, so we do not have to forall there, and give the whole predicate.
+ */
 class PermCreater {
+public:
+    string f_name;
+private:
     Expr antecedent;
+    std::vector<Expr> pred_args;
+    std::vector<Type> buffer_types;
     std::vector<std::string> forall_vars;
 public:
-    Expr variable;
 
     PermCreater() {}
 
-    PermCreater(Expr antecedent, Expr variable, std::vector<std::string> forall_vars) 
-        : antecedent(antecedent),
-          forall_vars(forall_vars),
-          variable(variable) {
-            internal_assert(antecedent.defined()) << "Permission of undefined\n";
-            internal_assert(variable.defined()) << "Permission of undefined\n";
+    PermCreater(const string &f_name, Expr antecedent, std::vector<Expr> &pred_args, const std::vector<Type> &buffer_types,
+        std::vector<std::string> forall_vars) 
+        : f_name(f_name),
+          antecedent(antecedent),
+          pred_args(pred_args),
+          buffer_types(buffer_types),
+          forall_vars(forall_vars){
+            internal_assert(antecedent.defined()) << "PermCreater of undefined\n";
     }
 
-    Annotation create(Expr factor, bool is_serial = true){
-        return Permission::make(
-            is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, antecedent, variable,Frac::make(make_one(Int(32)), factor) ,forall_vars);
+    vector<Annotation> create(Expr factor, bool is_serial = true){
+        vector<Annotation> result;
+        for(int i=0; i<(int)buffer_types.size();i++){
+            string name = f_name + (buffer_types.size() == 1 ? "" : "." + to_string(i));
+            Expr pred = Predicate::make(name, name, pred_args, read(factor), buffer_types[i], Predicate::PredicateType::Partial);
+            pred = trigger(pred);
+            result.emplace_back(AnnExpr::make(is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, 
+                Forall::make(forall_vars, antecedent, pred)));
+        }
+
+        return result;
     }
 
-    Annotation create_write(){
-        return Permission::make(AnnotationType::LoopInvariant, antecedent, variable,Frac::make(make_one(Int(32)), make_one(Int(32))) ,forall_vars);
+    vector<Annotation> create_write(){
+        vector<Annotation> result;
+        for(int i=0; i<(int)buffer_types.size();i++){
+            string name = f_name + (buffer_types.size() == 1 ? "" : "." + to_string(i));
+            Expr pred = Predicate::make(name, name, pred_args, write(), buffer_types[i], Predicate::PredicateType::Partial);
+            pred = trigger(pred);
+
+            result.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, Forall::make(forall_vars, antecedent, pred)));
+        }
+        
+        return result;
     }
 };
 
@@ -1603,8 +1731,7 @@ protected:
         Stmt body = mutate(for_loop->body);
         
         if(in_consume){
-            vector<Annotation> new_annotations;
-            new_annotations.emplace_back(permission_annotation.create(factor, is_serial));
+            vector<Annotation> new_annotations = permission_annotation.create(factor, is_serial);
             // for(auto &p: proven_conditions)
             //     new_annotations.emplace_back(AnnExpr::make(
             //         is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, p));
@@ -1623,9 +1750,8 @@ protected:
         } else if(!in_produce) {
             user_assert(!for_loop->is_parallel()) 
               << "We cannot have a parallel loop (" << for_loop->name << ") before distributing write permissions for: " 
-              << permission_annotation.variable;
-            vector<Annotation> new_annotations;
-            new_annotations.emplace_back(permission_annotation.create_write());
+              << permission_annotation.f_name << "\n";
+            vector<Annotation> new_annotations = permission_annotation.create_write();
             // After one iteration the post-conditions should hold
 
             // TODO: Add again if we want to make sliding window optimization work
@@ -1663,6 +1789,8 @@ protected:
             Expr extent = Variable::make(Int(32), name + "." + arg + ".extent_realized");
             Expr var = Variable::make(Int(32), arg);
             args.emplace_back(var);
+            args.emplace_back(min);
+            args.emplace_back(extent);
             Expr new_bound = And::make(
                 LE::make(min, var),
                 LT::make(var, Add::make(min, extent))
@@ -1673,15 +1801,7 @@ protected:
                 bound = And::make(bound, new_bound);
         }
 
-        permission_annotation = PermCreater(bound, Call::make(func, args),func_args );
-        // for(const auto& ann :func.func_annotations()){
-        //     if (const auto *ann_expr = ann.as<AnnExpr>()){
-        //         if(ann_expr->ann_type == AnnotationType::Ensure || ann_expr->ann_type == AnnotationType::Context 
-        //             || ann_expr->ann_type == AnnotationType::ContextEverywhere){
-        //             proven_conditions.emplace_back(make_forall(func_args, bound, ann_expr->condition));
-        //         }
-        //     }
-        // }
+        permission_annotation = PermCreater(name, bound, args, func.output_types(), func_args);
     }
 
 };
@@ -1882,14 +2002,20 @@ private:
             Region bounds;
             const string &name = func.name();
             const vector<string> &func_args = func.args();
+            vector<Expr> ghost_args;
+            Expr f = Variable::make(Handle(), name);
+            ghost_args.emplace_back(f);
             for (int i = 0; i < func.dimensions(); i++) {
                 const string &arg = func_args[i];
                 Expr min = Variable::make(Int(32), name + "." + arg + ".min_realized");
                 Expr extent = Variable::make(Int(32), name + "." + arg + ".extent_realized");
                 bounds.emplace_back(min, extent);
+                ghost_args.emplace_back(min);
+                ghost_args.emplace_back(extent);
             }
 
-
+            Stmt ghost_to = Evaluate::make(Call::make(Handle(), Call::to_pred, ghost_args, Call::Intrinsic));
+            s = Block::make(Ghost::make(ghost_to), s);
             s = Realize::make(name, func.output_types(), func.schedule().memory_type(), bounds, const_true(), s);
             InjectProvenAnnotations ipa(func, annotation_map[func.name()]);
             s = ipa.mutate(s);
@@ -1994,7 +2120,9 @@ private:
     }
 
     Stmt build_produce_definition(const Function &f, const string &prefix, const Definition &def, bool is_update,
-                                  map<string, Expr> &replacements, vector<pair<string, Expr>> &add_lets) {
+                                  map<string, Expr> &replacements,
+                                  vector<pair<string, Expr>> &add_lets,
+                                  map<string, set<string>> &aliases) {
         const vector<Dim> &dims = def.schedule().dims();  // From inner to outer
         const LoopLevel &fuse_level = def.schedule().fuse_level().level;
 
@@ -2033,6 +2161,10 @@ private:
                 replacements.emplace(var + ".loop_extent", make_const(Int(32), 1));
                 replacements.emplace(var + ".loop_min", val);
                 replacements.emplace(var + ".loop_max", val);
+
+                string var_fused = fused_name(var_orig);
+                aliases[var_fused].emplace(std::move(var_orig));
+                aliases[var_fused].emplace(std::move(var));
             }
         }
 
@@ -2086,17 +2218,16 @@ private:
 
     // Replace the bounds of the parent fused loop (i.e. the first one to be
     // realized in the group) with union of the bounds of the fused group.
-    Stmt replace_parent_bound_with_union_bound(const Function &f, Stmt produce, const map<string, Expr> &bounds) {
-        string prefix = f.name() + ".s0";
-        const Definition &def = f.definition();
+    Stmt replace_parent_bound_with_union_bound(const string &func, int stage,
+                                               const Definition &def, Stmt produce,
+                                               const map<string, Expr> &bounds,
+                                               map<string, Expr> &replacements) {
 
-        if (!def.defined()) {
+        if (def.schedule().fused_pairs().empty()) {
             return produce;
         }
 
         const vector<Dim> &dims = def.schedule().dims();  // From inner to outer
-
-        map<string, Expr> replacements;
 
         vector<FusedPair> dependence = collect_all_dependence(def);
 
@@ -2118,6 +2249,8 @@ private:
                 // the parent, e.g. y.yi and yi.
                 int dim2_idx = (int)(dims_2.size() - (dims.size() - i));
                 internal_assert(dim2_idx < (int)dims_2.size());
+                string var_1 = func + ".s" + std::to_string(stage) +
+                               "." + dims[i].var;
 
                 string var_2 = pair.func_2 + ".s" + std::to_string(pair.stage_2) +
                                "." + dims_2[dim2_idx].var;
@@ -2128,7 +2261,6 @@ private:
                 Expr max_2 = bounds.find(var_2 + ".loop_max")->second;
                 Expr extent_2 = bounds.find(var_2 + ".loop_extent")->second;
 
-                string var_1 = prefix + "." + dims[i].var;
                 internal_assert(bounds.count(var_1 + ".loop_min"));
                 internal_assert(bounds.count(var_1 + ".loop_max"));
                 internal_assert(bounds.count(var_1 + ".loop_extent"));
@@ -2152,8 +2284,26 @@ private:
             }
         }
 
-        // Now, replace the bounds of the parent fused loops with the union bounds.
+        // Now, replace the bounds of the parent fused loops with the union
+        // bounds.
+        for (const auto &spec : def.specializations()) {
+            produce = replace_parent_bound_with_union_bound(func, stage, spec.definition, produce, bounds, replacements);
+        }
+
+        return produce;
+    }
+
+    Stmt replace_parent_bound_with_union_bound(const Function &f, Stmt produce,
+                                               const map<string, Expr> &bounds) {
+        map<string, Expr> replacements;
+
+        int stage = 0;
+        produce = replace_parent_bound_with_union_bound(f.name(), stage++, f.definition(), produce, bounds, replacements);
+        for (const Definition &def : f.updates()) {
+            produce = replace_parent_bound_with_union_bound(f.name(), stage++, def, produce, bounds, replacements);
+        }
         produce = substitute_fused_bounds(produce, replacements);
+
         return produce;
     }
 
@@ -2285,22 +2435,23 @@ private:
         Stmt producer;
         map<string, Expr> replacements;
         vector<pair<string, Expr>> add_lets;
+        map<string, set<string>> aliases;
 
         for (const auto &func_stage : stage_order) {
             const auto &f = func_stage.first;
 
             if (f.has_extern_definition() && (func_stage.second == 0)) {
-                const Stmt &produceDef = Internal::build_extern_produce(env, f, target);
-                producer = inject_stmt(producer, produceDef, LoopLevel::inlined().lock());
+                const Stmt &produce_def = Internal::build_extern_produce(env, f, target);
+                producer = inject_stmt(producer, produce_def, LoopLevel::inlined().lock());
                 continue;
             }
 
             string def_prefix = f.name() + ".s" + std::to_string(func_stage.second) + ".";
             const auto &def = (func_stage.second == 0) ? f.definition() : f.updates()[func_stage.second - 1];
 
-            const Stmt &produceDef = build_produce_definition(f, def_prefix, def, func_stage.second > 0,
-                                                              replacements, add_lets);
-            producer = inject_stmt(producer, produceDef, def.schedule().fuse_level().level);
+            const Stmt &produce_def = build_produce_definition(f, def_prefix, def, func_stage.second > 0,
+                                                               replacements, add_lets, aliases);
+            producer = inject_stmt(producer, produce_def, def.schedule().fuse_level().level);
         }
 
         internal_assert(producer.defined());
@@ -2328,8 +2479,8 @@ private:
         }
         // TODO Lars vd Haak: Don't know what to do with shifts yet
         internal_assert(shifts.empty());
-        // Todo neither with replacements
-        internal_assert(replacements.empty());
+        // TODO neither with replacements
+        // internal_assert(replacements.empty());
 
         // Shift the loops.
         producer = ShiftLoopNest::apply_shift(shifts, producer);
@@ -2341,7 +2492,13 @@ private:
 
         // Replace the bounds of parent fused loop with union of bounds of
         // the fused loops.
+        Function group_parent = funcs.back();
         producer = replace_parent_bound_with_union_bound(funcs.back(), producer, bounds);
+
+        // Define the old loop var names as equal to the corresponding parent
+        // fused loop var. Bounds inference might refer directly to the original
+        // loop vars.
+        producer = add_loop_var_aliases(producer, aliases);
 
         // Add the producer nodes.
         for (const auto &i : funcs) {
@@ -3027,7 +3184,7 @@ Stmt schedule_functions(const vector<Function> &outputs,
 
         if (group_should_be_inlined(funcs)) {
             debug(1) << "Inlining " << funcs[0].name() << "\n";
-            s = inline_function(s, funcs[0]);
+            s = inline_function(s, funcs[0], true);
         } else {
             debug(1) << "Injecting realization of " << funcs << "\n";
             InjectFunctionRealization injector(funcs, is_output_list, target, env);

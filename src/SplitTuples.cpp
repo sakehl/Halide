@@ -64,21 +64,26 @@ class SplitTuples : public IRMutator {
 
     map<string, set<int>> func_value_indices;
 
-    // Annotation visit(const AnnExpr *op) override {
-    //     return op;
-    // }
-
-    // Annotation visit(const Permission *op) override {
-    //     return op;
-    // }
-
     Stmt visit(const Realize *op) override {
         ScopedBinding<int> bind(realizations, op->name, 0);
         if (op->types.size() > 1) {
+            // Get args for ghost call
+            const Block *block0 = op->body.as<Block>();
+            internal_assert(block0);
+            const Ghost* ghost_to0 = block0->first.as<Ghost>();
+            Stmt inner = block0->rest;
+            const Call *ghost_to = ghost_to0->ghost.as<Evaluate>()->value.as<Call>();            
+            Stmt body = mutate(inner);
+
             // Make a nested set of realize nodes for each tuple element
-            Stmt body = mutate(op->body);
             for (int i = (int)op->types.size() - 1; i >= 0; i--) {
-                body = Realize::make(op->name + "." + std::to_string(i),
+                string new_name = op->name + "." + std::to_string(i);
+                vector<Expr> new_ghost_args = ghost_to->args;
+                new_ghost_args[0] = Variable::make(Handle(), new_name);
+                Stmt ghost_to_new = Evaluate::make(Call::make(Handle(), Call::to_pred, new_ghost_args, Call::Intrinsic));
+                body = Block::make(Ghost::make(ghost_to_new), body);
+
+                body = Realize::make(new_name,
                                      {op->types[i]}, op->memory_type,
                                      op->bounds, op->condition, body);
             }
@@ -156,6 +161,12 @@ class SplitTuples : public IRMutator {
         vector<Expr> args;
         for (const Expr &e : op->args) {
             args.push_back(mutate(e));
+        }
+
+        // Mutate the ghost_args
+        vector<Expr> ghost_args;
+        for (const Expr &e : op->ghost_args) {
+            ghost_args.push_back(mutate(e));
         }
 
         // Get the Function
@@ -278,7 +289,7 @@ class SplitTuples : public IRMutator {
                 // Just make a provide node
                 int i = *c.begin();
                 string name = op->name + "." + std::to_string(i);
-                s = Provide::make(name, {mutate(op->values[i])}, args);
+                s = Provide::make(name, {mutate(op->values[i])}, args, ghost_args);
             } else {
                 // Make a list of let statements that compute the
                 // values (doing any loads), and then a block of
@@ -291,7 +302,7 @@ class SplitTuples : public IRMutator {
                         lets.emplace_back(var_name, val);
                         val = Variable::make(val.type(), var_name);
                     }
-                    provides.push_back(Provide::make(name, {val}, args));
+                    provides.push_back(Provide::make(name, {val}, args, ghost_args));
                 }
 
                 s = Block::make(provides);
@@ -477,6 +488,8 @@ class SplitScatterGather : public IRMutator {
         if (size == 0) {
             return IRMutator::visit(op);
         }
+        // Need to figure out what is happening here
+        internal_error << "Unsupported by HaliVer";
 
         // The LHS should contain at least one scatter op, or our scatters
         // all go to the same place. Is it worth asserting this? It
@@ -502,7 +515,7 @@ class SplitScatterGather : public IRMutator {
                 names.push_back(name);
                 v = Variable::make(v.type(), name);
             }
-            provides.push_back(Provide::make(op->name, values, args));
+            provides.push_back(Provide::make(op->name, values, args, {}));
         }
 
         Stmt s = Block::make(provides);

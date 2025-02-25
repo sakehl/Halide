@@ -331,7 +331,9 @@ Module lower(const vector<Function> &output_funcs,
     }
 
     vector<Annotation> top_level_annotations;
-    std::tie(s, top_level_annotations) = add_pipeline_annotations(s, input_buffers, output_buffers, pipeline_anns);
+    std::tie(s, top_level_annotations) = add_pipeline_annotations(s, input_buffers, outputs, pipeline_anns);
+    string predicates = define_predicates(env, outputs, input_buffers);
+    result_module.set_annotation_header(predicates);
 
     debug(1) << "Unpacking buffer arguments...\n";
     s = unpack_buffers(s);
