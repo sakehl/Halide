@@ -118,9 +118,6 @@ class LiftLoopInvariants : public IRMutator {
                 }
             }
         }
-        if(e.as<Predicate>()){
-            return false;
-        }
         return true;
     }
 
@@ -187,11 +184,6 @@ public:
             return IRMutator::mutate(e);
         }
     }
-
-    Expr visit(const Predicate *p) override {
-        return p;
-    }
-
     Annotation mutate(const Annotation &a) override {
         return a;
     }

@@ -13,31 +13,6 @@ namespace {
 
 using std::string;
 
-class FindGhostArgs : public IRVisitor {
-public:
-    string func;
-    std::vector<Expr> ghost_args;
-    bool found = false;
-
-    FindGhostArgs(string s)
-        : func(std::move(s)) {
-    }
-
-    using IRVisitor::visit;
-
-    void visit(const Ghost *op) override {
-        op->ghost.accept(this);
-    }
-
-    void visit(const Call *op) override {
-        if(op->is_intrinsic(Call::to_pred) && op->args[0].as<Variable>() && op->args[0].as<Variable>()->name == func){
-            found = true;
-            ghost_args = op->args;
-        } else {
-            IRVisitor::visit(op);
-        }
-    }
-};
 
 class FindLastUse : public IRVisitor {
 public:
@@ -119,10 +94,6 @@ private:
             IRVisitor::visit(block);
         } else {
             ScopedValue<Stmt> old_containing_stmt(containing_stmt, block->first);
-            // Fix that we want ghost state to be included before free occurs
-            if(block->rest.as<Ghost>()){
-                containing_stmt = block;
-            }
             block->first.accept(this);
             if (block->rest.defined()) {
                 containing_stmt = block->rest;
@@ -143,7 +114,6 @@ class InjectMarker : public IRMutator {
 public:
     string func;
     Stmt last_use;
-    Stmt ghost;
 
 private:
     bool injected = false;
@@ -156,7 +126,7 @@ private:
         }
         if (s.same_as(last_use)) {
             injected = true;
-            return Block::make(Block::make(s, ghost), Free::make(func));
+            return Block::make(s, Free::make(func));
         } else {
             return mutate(s);
         }
@@ -185,23 +155,17 @@ class InjectEarlyFrees : public IRMutator {
 
         FindLastUse last_use(alloc->name);
         stmt.accept(&last_use);
-        FindGhostArgs ghost_args(alloc->name);
-        stmt.accept(&ghost_args);
-        internal_assert(ghost_args.found);
-        Stmt ghost = 
-            Ghost::make(Evaluate::make(Call::make(Handle(), Call::from_pred, ghost_args.ghost_args, Call::Intrinsic)));
         
 
         if (last_use.last_use.defined()) {
             InjectMarker inject_marker;
             inject_marker.func = alloc->name;
             inject_marker.last_use = last_use.last_use;
-            inject_marker.ghost = ghost;
             stmt = inject_marker.mutate(stmt);
         } else {
             stmt = Allocate::make(alloc->name, alloc->type, alloc->memory_type,
                                   alloc->extents, alloc->condition,
-                                  Block::make(Block::make(alloc->body, ghost), Free::make(alloc->name)),
+                                  Block::make(alloc->body, Free::make(alloc->name)),
                                   alloc->new_expr, alloc->free_function);
         }
         return stmt;

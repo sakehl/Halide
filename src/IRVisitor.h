@@ -59,7 +59,6 @@ protected:
     virtual void visit(const Not *);
     virtual void visit(const Forall *);
     virtual void visit(const Exists *);
-    virtual void visit(const Predicate *);
     virtual void visit(const Select *);
     virtual void visit(const Load *);
     virtual void visit(const Ramp *);
@@ -139,7 +138,6 @@ protected:
     void visit(const Not *) override;
     void visit(const Forall *) override;
     void visit(const Exists *) override;
-    void visit(const Predicate *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -240,8 +238,6 @@ private:
             return ((T *)this)->visit((const Forall *)node, std::forward<Args>(args)...);
         case IRNodeType::Exists:
             return ((T *)this)->visit((const Exists *)node, std::forward<Args>(args)...);
-        case IRNodeType::Predicate:
-            return ((T *)this)->visit((const Predicate *)node, std::forward<Args>(args)...);
         case IRNodeType::Select:
             return ((T *)this)->visit((const Select *)node, std::forward<Args>(args)...);
         case IRNodeType::Load:
@@ -317,7 +313,6 @@ private:
         case IRNodeType::Not:
         case IRNodeType::Forall:
         case IRNodeType::Exists:
-        case IRNodeType::Predicate:
         case IRNodeType::Select:
         case IRNodeType::Load:
         case IRNodeType::Ramp:
@@ -402,7 +397,6 @@ private:
         case IRNodeType::Not:
         case IRNodeType::Forall:
         case IRNodeType::Exists:
-        case IRNodeType::Predicate:
         case IRNodeType::Select:
         case IRNodeType::Load:
         case IRNodeType::Ramp:

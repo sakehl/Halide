@@ -218,26 +218,6 @@ struct Exists : public ExprNode<Exists> {
     static const IRNodeType _node_type = IRNodeType::Exists;
 };
 
-/** Predicate of either a complete pointer or partial pointer that contains its permission */
-struct Predicate: public ExprNode<Predicate> {
-    typedef enum {
-        Partial,
-        Complete,
-    } PredicateType;
-
-    std::string name;
-    std::string called_buffer;
-    std::vector<Expr> args;
-    Expr perm;
-    Type buffer_type;
-    PredicateType pred_type;
-
-    
-    static Expr make(const std::string &name, const std::string &called_buffer, const std::vector<Expr> &args, Expr perm, Type buffer_type, PredicateType pred_type);
-
-    static const IRNodeType _node_type = IRNodeType::Predicate;
-};
-
 /** A ternary operator. Evalutes 'true_value' and 'false_value',
  * then selects between them based on 'condition'. Equivalent to
  * the ternary operator in C. */
@@ -604,8 +584,6 @@ struct Call : public ExprNode<Call> {
         perm,
         pointer_length,
         popcount,
-        predicate,
-        predicate_partial,
         prefetch,
         promise_clamped,
         random,

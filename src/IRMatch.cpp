@@ -256,25 +256,6 @@ public:
 
     }
 
-    void visit(const Predicate *op) override {
-        const Predicate *e = expr.as<Predicate>();
-        if (result && e &&
-            e->name == op->name &&
-            types_match(op->buffer_type, e->buffer_type) &&
-            e->pred_type == op->pred_type &&
-            e->args.size() == op->args.size()) {
-            
-            expr = e->perm;
-            op->perm.accept(this);
-            for (size_t i = 0; result && (i < e->args.size()); i++) {
-                expr = e->args[i];
-                op->args[i].accept(this);
-            }
-        } else {
-            result = false;
-        }
-    }
-
     void visit(const Select *op) override {
         const Select *e = expr.as<Select>();
         if (result && e) {
@@ -504,11 +485,6 @@ bool equal_helper(const BaseExprNode &a, const BaseExprNode &b) noexcept {
         return (equal_helper(((const Exists &)a).vars, ((const Exists &)b).vars) &&
                 equal_helper(((const Exists &)a).select, ((const Exists &)b).select) &&
                 equal_helper(((const Exists &)a).main, ((const Exists &)b).main));
-    case IRNodeType::Predicate:
-        return (((const Predicate &)a).name == ((const Predicate &)b).name &&
-                ((const Predicate &)a).pred_type == ((const Predicate &)b).pred_type &&
-                equal_helper(((const Predicate &)a).perm, ((const Predicate &)b).perm) &&
-                equal_helper(((const Predicate &)a).args, ((const Predicate &)b).args));
     case IRNodeType::Select:
         return (equal_helper(((const Select &)a).condition, ((const Select &)b).condition) &&
                 equal_helper(((const Select &)a).true_value, ((const Select &)b).true_value) &&

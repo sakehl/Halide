@@ -83,9 +83,6 @@ protected:
     void visit(const Exists *op) override {
         internal_error << "Encounter unexpected expression \"Exists\" when differentiating.";
     }
-    void visit(const Predicate *op) override {
-        internal_error << "Encounter unexpected annotation \"Predicate\" when differentiating.";
-    }
     void visit(const Select *op) override;
     void visit(const Let *op) override;
     void visit(const Call *op) override;

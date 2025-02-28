@@ -82,27 +82,14 @@ private:
             pred_args.emplace_back(min);
             pred_args.emplace_back(extent);
         }
-        Expr pred;
-        string fname = split_string(name, ".")[0];
-        if(consume_functions.count(fname) == 1){
-            //pred = Predicate::make(name, name, {}, read(read_factor), {t}, Predicate::PredicateType::Complete);
-            pred = Predicate::make(name, name, pred_args, read(read_factor), {t}, Predicate::PredicateType::Partial);
-        } else if(produce_functions.count(fname) == 1){
-            pred = Predicate::make(name, name, pred_args, (is_read ? read(read_factor) : write()), {t}, Predicate::PredicateType::Partial);
-        } else {
-            // We assume input buffer then
-            pred = Predicate::make(name, name, {}, read(read_factor), {t}, Predicate::PredicateType::Complete);
-            // internal_error << "Function " << name << " is not a producer or consumer\n";
-        }
-        pred = mutate(pred);
         
         if(args.size() <= 1 || in_annotation){
-            return pred;
+            return Expr();
         }
 
         Expr lemma = mutate(Call::make(Int(32), Call::lemma_flattened_array, new_args, Call::PureIntrinsic));
 
-        return Call::make(Int(32), Call::bundle, {lemma, pred}, Call::PureIntrinsic);
+        return lemma;
     }
 
     Expr flatten_args(const string &name, vector<Expr> args,

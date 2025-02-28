@@ -81,7 +81,6 @@ private:
     void visit(const Not *) override;
     void visit(const Forall *) override;
     void visit(const Exists *) override;
-    void visit(const Predicate *) override;
     void visit(const Select *) override;
     void visit(const Load *) override;
     void visit(const Ramp *) override;
@@ -482,15 +481,6 @@ void IRComparer::visit(const Exists *op) {
     for (size_t i = 0; (i < e->vars.size()) && result == Equal; i++) {
         compare_names(e->vars[i], op->vars[i]);
     }
-}
-
-void IRComparer::visit(const Predicate *op) {
-    const Predicate *e = expr.as<Predicate>();
-    compare_names(e->name, op->name);
-    compare_expr(e->perm, op->perm);
-    compare_types(e->buffer_type, op->buffer_type);
-    compare_scalar(e->pred_type, op->pred_type);
-    compare_expr_vector(e->args, op->args);
 }
 
 void IRComparer::visit(const Select *op) {

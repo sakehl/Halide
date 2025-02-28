@@ -3824,8 +3824,6 @@ void CodeGen_C::visit(const Shuffle *op) {
 
 void CodeGen_C::visit(const AnnExpr *op) { }
 
-void CodeGen_C::visit(const Predicate *op) { }
-
 void CodeGen_C::visit(const Permission *op) { }
 
 vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx){
@@ -3881,84 +3879,15 @@ vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, cons
 
 std::tuple<string, vector<string>> CodeGen_C::print_access_annotations(const Expr &access, const string& buf, const string &idx){
     const Call *c = access.as<Call>();
-    const Predicate *p = access.as<Predicate>();
     string after = "";
     vector<string> befores = {};
 
-    if(c == nullptr && p== nullptr){
-        return std::make_tuple(after, befores);
-    }
-
-    if(p){
-        ostringstream rhs;
-        AnnotationPrinter ap(rhs, is_pvl(), false, buffer_types, load_ids);
-        ap.print(p);
-        string pred = rhs.str();
-        after = "fold " + pred;
-        befores = {"unfold " + pred};
+    if(c == nullptr){
         return std::make_tuple(after, befores);
     }
 
     if(c->is_intrinsic(Call::lemma_flattened_array)){
         return std::make_tuple(after, print_lemma(c, buf, idx));
-    }
-
-
-    if(c->is_intrinsic(Call::bundle)){
-        internal_assert(c->args.size() == 2);
-        const Call *c1 = c->args[0].as<Call>();
-        internal_assert(c1 && c1->is_intrinsic(Call::lemma_flattened_array));
-        // befores = print_lemma(c1, buf, idx);
-        befores = {};
-
-        const Predicate *p1 = c->args[1].as<Predicate>();
-        internal_assert(p1);
-
-        if(p1->pred_type == Predicate::PredicateType::Partial){
-            ostringstream assert_s;
-            vector<Expr> args = p1->args;
-            int dim = (args.size())/3;
-            bool constant_dims = true;
-            for(int i = 0; i < dim-1; i++){
-                if(!(is_const(args[3*i+2]))){
-                    constant_dims = false;
-                    break;
-                }
-            } 
-            if(!constant_dims){
-                AnnotationPrinter apa(assert_s, is_pvl(), false, buffer_types, load_ids);
-                assert_s << "assert " << idx << " == ";
-                Expr stride = Expr(1);
-                for(int i = 0; i < dim; i++){
-                    if(i != 0){
-                        assert_s << " + ";
-                    }
-                    apa.print((args[3*i] - args[3*i+1])*stride);
-                    if(i == 0){
-                        stride = args[3*i+2];
-                    } else {
-                        stride = stride * args[3*i+2];
-                    }
-                }
-                assert_s << " && perm(&";
-                apa.print(Variable::make(Handle(),p1->called_buffer));
-                assert_s << "[" << idx << "]) == ";//write";
-                apa.print(p1->perm);
-                string assert = assert_s.str();
-                befores.emplace_back(assert);
-            }
-        } else {
-            befores = print_lemma(c1, buf, idx);
-        }
-
-        ostringstream rhs;
-        AnnotationPrinter ap(rhs, is_pvl(), false, buffer_types, load_ids);
-        ap.print(p1);
-        string pred = rhs.str();
-        
-        after = "fold " + pred;
-        befores.insert(befores.begin(), "unfold " + pred);
-        return std::make_tuple(after, befores);
     }
 
     internal_error << "Unexpected other call instead of lemma: " << c->name;
@@ -4206,33 +4135,6 @@ void AnnotationPrinter::visit(const Exists *op) {
     stream << ")";
 }
 
-void AnnotationPrinter::visit(const Predicate *op) {
-    IRPrinter::visit(op);
-    // if(!is_const_one(op->perm)){
-    //     stream << "[" << op->perm << "]";
-    // }
-    // if(op->pred_type == Predicate::PredicateType::Partial){
-    //     stream << op->name;
-    // } else {
-    //     for(size_t i = 0; i < op->buffer_types.size(); i++){
-    //         stream << "_" << op->buffer_types[i];
-    //     }
-    // }
-    // stream << "_pred(";
-
-    // if(op->buffer_types.size() == 1){
-    //     stream << op->name << ", ";
-    // } else {
-    //     for(size_t i = 0; i < op->buffer_types.size(); i++){
-    //         stream << op->name << "_" << i << ", ";
-    //     }
-    // }
-    
-     
-    // print_list(op->args);
-    // stream << ")";
-}
-
 void AnnotationPrinter::visit(const Permission *op) {
     stream << op->ann_type << " ";
     if(!op->forall_vars.empty()){
@@ -4351,18 +4253,6 @@ void AnnotationPrinter::visit(const Call *op) {
         print_no_parens(op->args[0]);
         stream << " \\in ";
         print_no_parens(op->args[1]);
-        stream << ")";
-    } else if(op->is_intrinsic(Call::to_pred)){
-        stream << "to_pred_";
-        stream << clean_print_name(op->args[0].as<Variable>()->name);
-        stream << "(";
-        print_list(op->args);
-        stream << ")";
-    } else if(op->is_intrinsic(Call::from_pred)){
-        stream << "from_pred_";
-        stream << clean_print_name(op->args[0].as<Variable>()->name);
-        stream << "(";
-        print_list(op->args);
         stream << ")";
     } else if(op->is_intrinsic(Call::trigger)){
         internal_assert(op->args.size() == 1 || op->args.size() == 2);

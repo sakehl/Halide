@@ -33,6 +33,10 @@ using std::tuple;
 
 namespace {
 
+Expr Perm(Expr array, Expr write){
+    return Call::make(Resource(), Call::perm, {array, write}, Call::Intrinsic);
+}
+
 // A structure representing a containing LetStmt, IfThenElse, or For
 // loop. Used in build_provide_loop_nest below. Both If and IfInner represent
 // IfThenElse stmts, however, IfInner should not be reordered to outside of
@@ -1583,21 +1587,18 @@ Expr trigger(Expr e){
  */
 class PermCreater {
 public:
-    string f_name;
+    const Function &func;
 private:
     Expr antecedent;
-    std::vector<Expr> pred_args;
+    std::vector<Expr> args;
     std::vector<Type> buffer_types;
     std::vector<std::string> forall_vars;
 public:
-
-    PermCreater() {}
-
-    PermCreater(const string &f_name, Expr antecedent, std::vector<Expr> &pred_args, const std::vector<Type> &buffer_types,
+    PermCreater(const Function &func, Expr antecedent, std::vector<Expr> &args, const std::vector<Type> &buffer_types,
         std::vector<std::string> forall_vars) 
-        : f_name(f_name),
+        : func(func),
           antecedent(antecedent),
-          pred_args(pred_args),
+          args(args),
           buffer_types(buffer_types),
           forall_vars(forall_vars){
             internal_assert(antecedent.defined()) << "PermCreater of undefined\n";
@@ -1606,11 +1607,10 @@ public:
     vector<Annotation> create(Expr factor, bool is_serial = true){
         vector<Annotation> result;
         for(int i=0; i<(int)buffer_types.size();i++){
-            string name = f_name + (buffer_types.size() == 1 ? "" : "." + to_string(i));
-            Expr pred = Predicate::make(name, name, pred_args, read(factor), buffer_types[i], Predicate::PredicateType::Partial);
-            pred = trigger(pred);
-            result.emplace_back(AnnExpr::make(is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, 
-                Forall::make(forall_vars, antecedent, pred)));
+            Expr call = Call::make(func, args, i);
+            Expr perm = Perm(call, read(factor));
+            Expr f = forall(forall_vars, antecedent, perm);
+            result.emplace_back(AnnExpr::make(is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, f));
         }
 
         return result;
@@ -1619,11 +1619,10 @@ public:
     vector<Annotation> create_write(){
         vector<Annotation> result;
         for(int i=0; i<(int)buffer_types.size();i++){
-            string name = f_name + (buffer_types.size() == 1 ? "" : "." + to_string(i));
-            Expr pred = Predicate::make(name, name, pred_args, write(), buffer_types[i], Predicate::PredicateType::Partial);
-            pred = trigger(pred);
-
-            result.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, Forall::make(forall_vars, antecedent, pred)));
+            Expr call = Call::make(func, args, i);
+            Expr perm = Perm(call, write());
+            Expr f = forall(forall_vars, antecedent, perm);
+            result.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, f));
         }
         
         return result;
@@ -1682,7 +1681,7 @@ public:
 protected:
     // vector<Expr> proven_conditions;
     AnnotationMaker &annMaker;
-    PermCreater permission_annotation;
+    PermCreater* permission_annotation;
     string function;
     Expr factor;
     bool in_produce;
@@ -1731,7 +1730,7 @@ protected:
         Stmt body = mutate(for_loop->body);
         
         if(in_consume){
-            vector<Annotation> new_annotations = permission_annotation.create(factor, is_serial);
+            vector<Annotation> new_annotations = permission_annotation->create(factor, is_serial);
             // for(auto &p: proven_conditions)
             //     new_annotations.emplace_back(AnnExpr::make(
             //         is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, p));
@@ -1750,8 +1749,8 @@ protected:
         } else if(!in_produce) {
             user_assert(!for_loop->is_parallel()) 
               << "We cannot have a parallel loop (" << for_loop->name << ") before distributing write permissions for: " 
-              << permission_annotation.f_name << "\n";
-            vector<Annotation> new_annotations = permission_annotation.create_write();
+              << permission_annotation->func.name() << "\n";
+            vector<Annotation> new_annotations = permission_annotation->create_write();
             // After one iteration the post-conditions should hold
 
             // TODO: Add again if we want to make sliding window optimization work
@@ -1789,8 +1788,8 @@ protected:
             Expr extent = Variable::make(Int(32), name + "." + arg + ".extent_realized");
             Expr var = Variable::make(Int(32), arg);
             args.emplace_back(var);
-            args.emplace_back(min);
-            args.emplace_back(extent);
+            // args.emplace_back(min);
+            // args.emplace_back(extent);
             Expr new_bound = And::make(
                 LE::make(min, var),
                 LT::make(var, Add::make(min, extent))
@@ -1800,8 +1799,9 @@ protected:
             else
                 bound = And::make(bound, new_bound);
         }
+        PermCreater* pc = new PermCreater(func, bound, args, func.output_types(), func.args());
 
-        permission_annotation = PermCreater(name, bound, args, func.output_types(), func_args);
+        permission_annotation = pc;
     }
 
 };
@@ -2002,20 +2002,14 @@ private:
             Region bounds;
             const string &name = func.name();
             const vector<string> &func_args = func.args();
-            vector<Expr> ghost_args;
             Expr f = Variable::make(Handle(), name);
-            ghost_args.emplace_back(f);
             for (int i = 0; i < func.dimensions(); i++) {
                 const string &arg = func_args[i];
                 Expr min = Variable::make(Int(32), name + "." + arg + ".min_realized");
                 Expr extent = Variable::make(Int(32), name + "." + arg + ".extent_realized");
                 bounds.emplace_back(min, extent);
-                ghost_args.emplace_back(min);
-                ghost_args.emplace_back(extent);
             }
 
-            Stmt ghost_to = Evaluate::make(Call::make(Handle(), Call::to_pred, ghost_args, Call::Intrinsic));
-            s = Block::make(Ghost::make(ghost_to), s);
             s = Realize::make(name, func.output_types(), func.schedule().memory_type(), bounds, const_true(), s);
             InjectProvenAnnotations ipa(func, annotation_map[func.name()]);
             s = ipa.mutate(s);

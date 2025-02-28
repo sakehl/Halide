@@ -55,7 +55,6 @@ enum class IRNodeType {
     Not,
     Forall,
     Exists,
-    Predicate,
     Select,
     Load,
     Ramp,

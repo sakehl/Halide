@@ -67,23 +67,11 @@ class SplitTuples : public IRMutator {
     Stmt visit(const Realize *op) override {
         ScopedBinding<int> bind(realizations, op->name, 0);
         if (op->types.size() > 1) {
-            // Get args for ghost call
-            const Block *block0 = op->body.as<Block>();
-            internal_assert(block0);
-            const Ghost* ghost_to0 = block0->first.as<Ghost>();
-            Stmt inner = block0->rest;
-            const Call *ghost_to = ghost_to0->ghost.as<Evaluate>()->value.as<Call>();            
-            Stmt body = mutate(inner);
+            Stmt body = mutate(op->body);
 
             // Make a nested set of realize nodes for each tuple element
             for (int i = (int)op->types.size() - 1; i >= 0; i--) {
-                string new_name = op->name + "." + std::to_string(i);
-                vector<Expr> new_ghost_args = ghost_to->args;
-                new_ghost_args[0] = Variable::make(Handle(), new_name);
-                Stmt ghost_to_new = Evaluate::make(Call::make(Handle(), Call::to_pred, new_ghost_args, Call::Intrinsic));
-                body = Block::make(Ghost::make(ghost_to_new), body);
-
-                body = Realize::make(new_name,
+                body = Realize::make(op->name + "." + std::to_string(i),
                                      {op->types[i]}, op->memory_type,
                                      op->bounds, op->condition, body);
             }

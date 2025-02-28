@@ -324,12 +324,6 @@ private:
         stream << ")";
         stream << close_div();
     }
-    void visit(const Predicate *op) override {
-        stream << "[" << op->perm << "]";
-        stream << open_div("Predicate<" + op->name + ">");
-        print_list(symbol(op->name) + "(", op->args, ")");
-        stream << close_div();
-    }
     void visit(const Select *op) override {
         stream << open_span("Select");
         print_list(symbol("select") + "(", {op->condition, op->true_value, op->false_value}, ")");

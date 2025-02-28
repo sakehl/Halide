@@ -150,35 +150,6 @@ private:
         }
     }
 
-    Expr visit(const Predicate *op) override {
-        vector<Expr> new_args(op->args.size());
-        bool changed = false;
-
-        Expr perm = mutate(op->perm);
-        if(!perm.defined()){
-            return Expr();
-        }
-
-        // Mutate the args
-        for (size_t i = 0; i < op->args.size(); i++) {
-            Expr old_arg = op->args[i];
-            Expr new_arg = mutate(old_arg);
-            if (!new_arg.defined()) {
-                return Expr();
-            }
-            if (!new_arg.same_as(old_arg)) {
-                changed = true;
-            }
-            new_args[i] = new_arg;
-        }
-
-        if (!changed && perm.same_as(op->perm)) {
-            return op;
-        } else {
-            return Predicate::make(op->name, op->called_buffer, new_args, perm, op->buffer_type, op->pred_type);
-        }
-    }
-
     Expr visit(const Select *op) override {
         Expr cond = mutate(op->condition);
         Expr t = mutate(op->true_value);

@@ -29,6 +29,19 @@ Expr add(const Expr &original, const Expr &added){
     return result;
 }
 
+Expr Perm(Expr array, Expr write){
+    return Call::make(Resource(), Call::perm, {array, write}, Call::Intrinsic);
+}
+
+struct BufferInfo {
+    string name;
+    Expr bound;
+    Expr index;
+    vector<Expr> pred_args;
+    vector<string> forall_vars;
+    Type type;
+};
+
 void get_buffer_annotations(const Parameter &buf, vector<Annotation> &res){
     int dim = buf.dimensions();
     Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), buf.name() + ".buffer");
@@ -243,66 +256,43 @@ public:
     bool top_level;
 };
 
-//class AnnotationMaker{
-//public:
-//    virtual void update(UpdateBufferAnnotations &uba) { return; };
-//
-//    virtual Annotation create_annotation(bool is_parallel, Expr &readfactor) const { return AnnExpr::make(); };
-//};
-
-//class PermissionMaker : public AnnotationMaker {
-//    string name;
-//    Type buffer_type;
-//
-//public:
-//    PermissionMaker(string name, Type buffer_type) : name(name), buffer_type(buffer_type) { }
-//
-//    Annotation create_annotation(bool is_parallel, Expr &readfactor) const override {
-//        Expr pred = Predicate::make(name, {}, read(readfactor), {buffer_type}, Predicate::PredicateType::Complete);
-//        AnnotationType anntype = is_parallel ? AnnotationType::Context : AnnotationType::LoopInvariant;
-//        return AnnExpr::make(anntype, pred);
-//    }
-//};
-
 class AnnotationMaker {
     Expr condition;
 
-    bool is_perm;
-    bool is_pure_eq;
+    bool is_perm = false;
 
-    string name;
-    Type buffer_type;
     vector<string> forall_vars;
     Expr bound;
+    Expr load;
 public:
-    AnnotationMaker(string name, Type buffer_type, Expr &condition) : condition(condition), is_perm(false), is_pure_eq(false), name(name), buffer_type(buffer_type) { }
+    AnnotationMaker(BufferInfo &buffer_info) {
+        is_perm = true;
+        load = Load::make(buffer_info.type, buffer_info.name + ".buffer.host", 
+        buffer_info.index, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
+        bound = buffer_info.bound;
+        forall_vars = buffer_info.forall_vars;
+    }
 
-    AnnotationMaker(string name, Type buffer_type) : is_perm(true), name(name), buffer_type(buffer_type) { }
+    AnnotationMaker(BufferInfo &buffer_info, Expr &condition) : AnnotationMaker(buffer_info) {
+        this->condition = condition;
+        is_perm = false;
+     }
 
-    AnnotationMaker(string name, Type buffer_type, vector<string> forall_vars, Expr& bound, Expr &condition) : condition(condition), is_perm(false), is_pure_eq(true),
-     name(name), buffer_type(buffer_type), forall_vars(forall_vars), bound(bound)  { }
 
     Annotation create_annotation(bool is_parallel, Expr &readfactor) const {
         AnnotationType anntype = is_parallel ? AnnotationType::Context : AnnotationType::LoopInvariant;
-        if(is_perm || is_pure_eq){
-            Expr pred = Predicate::make(name, name, {}, read(readfactor), {buffer_type}, Predicate::PredicateType::Complete);
-            if(is_perm){
-                return AnnExpr::make(anntype, pred);
-            } else {
-                Expr f = forall(forall_vars, bound, condition);
-                Expr unfold = Call::make(UInt(1), Call::unfolding_in, {pred, f}, Call::PureIntrinsic);
-                return AnnExpr::make(anntype, unfold);
-            }
+        if(is_perm){
+            Expr perm = forall(forall_vars, bound, Perm(load, readfactor));
+            return AnnExpr::make(anntype, perm);
         } else {
-            Expr pred = Predicate::make(name, name, {}, read(readfactor), {buffer_type}, Predicate::PredicateType::Complete);
-            Expr unfold = Call::make(UInt(1), Call::unfolding_in, {pred, condition}, Call::PureIntrinsic);
-            return AnnExpr::make(anntype, unfold);
+            return AnnExpr::make(anntype, condition);
         }
     }
 
     void update(UpdateBufferAnnotations &uba) {
         condition = simplify(uba.mutate(condition));
         bound = simplify(uba.mutate(bound));
+        load = simplify(uba.mutate(load));
     }
 };
 
@@ -397,13 +387,6 @@ class AddParameterAnnotations : public IRMutator {
                              loop_annotations);
     }
 
-    struct BufferInfo {
-        Expr bound;
-        Expr index;
-        vector<Expr> pred_args;
-        vector<string> forall_vars;
-    };
-
     BufferInfo process_dimensions(const Parameter &par){
         vector<Expr> pred_args;
         vector<string> forall_vars;
@@ -451,28 +434,29 @@ class AddParameterAnnotations : public IRMutator {
         buffer_constraints[par.name()] = buffer_dims;
 
         BufferInfo result;
+        result.name = par.name();
         result.bound = bound;
         result.index = index;
         result.pred_args = pred_args;
         result.forall_vars = forall_vars;
+        result.type = par.type();
 
         return result;
     }
 
     void get_output_annotations(const Function &f){
+        user_assert(f.output_buffers().size()>0) << "Need at least dimension one for output buffer";
         Parameter dim_0 = f.output_buffers()[0];
 
         get_buffer_annotations(dim_0, top_level);
         BufferInfo info = process_dimensions(dim_0);
 
-        // Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(),ModulusRemainder(), Expr());
-        // top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(1,1), info.forall_vars));
         for(int idx=0; idx<f.outputs(); idx++){
             Parameter par = f.output_buffers()[idx];
-            Expr pred = Predicate::make(par.name(), par.name() + ".buffer.host", info.pred_args, write(), {par.type()}, Predicate::PredicateType::Partial);
-            pred = Call::make(pred.type(), Call::trigger, {pred}, Call::PureIntrinsic);
-            Annotation pred_forall = AnnExpr::make(AnnotationType::Context, forall(info.forall_vars, info.bound, pred));
-            top_level.emplace_back(pred_forall);
+            
+            Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
+            Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, write() ));
+            top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
 
             for(const auto& ann :par.annotations()){
                 const auto *ann_expr = ann.as<AnnExpr>();
@@ -490,30 +474,12 @@ class AddParameterAnnotations : public IRMutator {
         get_buffer_annotations(par, top_level);
         BufferInfo info = process_dimensions(par);
 
-        // Expr call = Call::make(par, forall_vars_expr);
-        Expr load = Load::make(par.type(), par.name(), info.index, Buffer<>(), par, const_true(), ModulusRemainder(), Expr());
-        Expr pure_call = Call::make(par.type(), "pure_" + par.name(), {info.index}, Call::Extern);
-        AnnotationMaker pmaker(par.name(), par.type());
+        AnnotationMaker pmaker(info);
         proven_annotations[par.name()].emplace_back(pmaker);
-        //Expr is_pure = forall(info.forall_vars, info.bound, load == pure_call);
-        //AnnotationMaker cmaker(is_pure);
-        //AnnotationMaker(string name, Type buffer_type, vector<string> forall_vars, Expr& bound, Expr &condition)
-        Expr condition = load == pure_call;
-        AnnotationMaker cmaker(par.name(), par.type(), info.forall_vars, info.bound, condition);
-        if(false){
-            proven_annotations[par.name()].emplace_back(cmaker);
-        }
 
-        Expr pred_top_level = Predicate::make(par.name()+".buffer.host", par.name()+".buffer.host" , {}, read(IntImm::make(Int(32), 2)), {par.type()}, Predicate::PredicateType::Complete);
-        load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
-        Expr pure_eq = forall(info.forall_vars, info.bound, load == pure_call);
-        pure_eq = Call::make(UInt(1), Call::unfolding_in, {pred_top_level, pure_eq}, Call::PureIntrinsic);
-        
-        // top_level.emplace_back(Permission::make(AnnotationType::Context, info.bound, load, Frac::make(make_const(Int(32), 1), make_const(Int(32), 2)), info.forall_vars));
-        top_level.emplace_back(AnnExpr::make(AnnotationType::Context, pred_top_level));
-        if(false){
-            top_level.emplace_back(AnnExpr::make(AnnotationType::Context, pure_eq));
-        }
+        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
+        Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, read(make_const(Int(32), 2))) );
+        top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
 
         for(const auto& ann :par.annotations()){
             const auto *ann_expr = ann.as<AnnExpr>();
@@ -524,9 +490,8 @@ class AddParameterAnnotations : public IRMutator {
                 << "Annotation type should be require or context.";
 
             Expr condition = forall(info.forall_vars, info.bound, ann_expr->condition);
-            proven_annotations[par.name()].emplace_back(AnnotationMaker(par.name(), par.type(), condition));
+            proven_annotations[par.name()].emplace_back(AnnotationMaker(info, condition));
             Expr cond = ann_expr->condition;
-            cond = Call::make(UInt(1), Call::unfolding_in, {pred_top_level, cond}, Call::PureIntrinsic);
             top_level.emplace_back(AnnExpr::make(annt, forall(info.forall_vars, info.bound, cond)));
         }
     }
@@ -577,7 +542,8 @@ class UpdateInputBufferCallsToFunction: public IRMutator {
     }
 
     Expr visit(const Load *op) override {
-        if(input.find(op->name) != input.end() && in_annotation){
+        // Disable for now
+        if(false && input.find(op->name) != input.end() && in_annotation){
             internal_assert(!op->predicate.defined() || is_const_true(op->predicate)) << "Cannot have a predicate here.";
             Expr index = mutate(op->index);
             return Call::make(op->type, "pure_" + op->name, {index}, Call::Extern);

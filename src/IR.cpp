@@ -267,24 +267,6 @@ Expr Exists::make(const std::vector<std::string> &vars, Expr select, Expr main) 
     return node;
 }
 
-Expr Predicate::make(const std::string &name, const std::string &called_buffer, const std::vector<Expr> &args, Expr perm, Type buffer_type, PredicateType pred_type){
-    internal_assert(!name.empty()) << "Predicate of undefined name\n";
-    for (size_t i = 0; i < args.size(); i++) {
-        internal_assert(args[i].defined()) << "Predicate of " << name << " with argument " << i << " undefined.\n";
-    }
-    internal_assert(perm.defined()) << "Predicate of undefined perm\n";
-    
-    Predicate *node = new Predicate;
-    node->type = Resource();
-    node->name = name;
-    node->called_buffer = called_buffer;
-    node->args = args;
-    node->perm = perm;
-    node->buffer_type = buffer_type;
-    node->pred_type = pred_type;
-    return node;
-}
-
 Expr Select::make(Expr condition, Expr true_value, Expr false_value) {
     internal_assert(condition.defined()) << "Select of undefined\n";
     internal_assert(true_value.defined()) << "Select of undefined\n";
@@ -721,8 +703,6 @@ const char *const intrinsic_op_names[] = {
     "perm",
     "pointer_length",
     "popcount",
-    "predicate",
-    "predicate_partial",
     "prefetch",
     "promise_clamped",
     "random",
@@ -1186,10 +1166,6 @@ void ExprNode<Exists>::accept(IRVisitor *v) const {
     v->visit((const Exists *)this);
 }
 template<>
-void ExprNode<Predicate>::accept(IRVisitor *v) const {
-    v->visit((const Predicate *)this);
-}
-template<>
 void ExprNode<Select>::accept(IRVisitor *v) const {
     v->visit((const Select *)this);
 }
@@ -1405,10 +1381,6 @@ Expr ExprNode<Forall>::mutate_expr(IRMutator *v) const {
 template<>
 Expr ExprNode<Exists>::mutate_expr(IRMutator *v) const {
     return v->visit((const Exists *)this);
-}
-template<>
-Expr ExprNode<Predicate>::mutate_expr(IRMutator *v) const {
-    return v->visit((const Predicate *)this);
 }
 template<>
 Expr ExprNode<Select>::mutate_expr(IRMutator *v) const {

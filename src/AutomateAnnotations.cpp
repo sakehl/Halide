@@ -276,56 +276,26 @@ class AutomaticAnnotations {
         if(has_rvar){
             // Reduction, just give all write permissions, since loops are serial anyway
             for(int i=0; i<func.outputs(); i++){
-                // Expr call = Call::make(func, call_args, i);
-
-                //TODO: tuples
-                string name = func.outputs() == 1 ? func.name() : func.name() + "." + std::to_string(i);
-                Expr pred = Predicate::make(name, name, call_args, write(), {func.output_types()[i]}, Predicate::PredicateType::Partial);
-                Expr f = forall(forall_vars, bounds, trigger(pred));
-
+                Expr call = Call::make(func, call_args, i);
+                Expr perm = Perm(call, write());
+                Expr f = forall(forall_vars, bounds, perm);
                 new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Context, f));
             }
         } else {
-            vector<Expr> pred_args;
-            for(size_t j = 0; j < def_args.size(); j++){
-                
-                string dim = func.args()[j];
-                Expr min, extent, upper;
-                if(is_output(func)){
-                    min = Variable::make(Int(32), dim + ".loop_min");
-                    extent = Variable::make(Int(32), dim + ".loop_extent");
-                } else {
-                    // Here we fill in this realized after bounds inferencing, since of compute_with scheduling directive
-                    // Makes the loops not say everything
-                    min = Variable::make(Int(32), dim + ".min_realized");
-                    extent = Variable::make(Int(32), dim + ".extent_realized");
-                }
-                upper = min + extent;
-                pred_args.emplace_back(def_args[j]);
-                pred_args.emplace_back(min);
-                pred_args.emplace_back(extent);
-            }
             // Non-reduction case: Add our own write permission
             for(int i=0; i<func.outputs(); i++){
-                // Expr call = Call::make(func, def_args, i);
-                string name = func.outputs() == 1 ? func.name() : func.name() + "." + std::to_string(i);
-                Expr pred = Predicate::make(name, name, pred_args, write(), {func.output_types()[i]}, Predicate::PredicateType::Partial);
-                Expr f = trigger(pred);
-
-                new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Context, f));
+                Expr call = Call::make(func, def_args, i);
+                Expr perm = Perm(call, write());
+                new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Context, perm));
             }
             // Add read permission for everything else (update definitions)
             if(!forall_vars.empty()){
                 for(int i=0; i<func.outputs(); i++){
-                    // Expr call = Call::make(func, call_args, i);
-                    string name = func.outputs() == 1 ? func.name() : func.name() + "." + std::to_string(i);
-                    
-                    Expr pred = Predicate::make(name, name, call_args, Frac::make(1, 2), {func.output_types()[i]}, Predicate::PredicateType::Partial);
-                    Expr f = forall(forall_vars, bounds && not_def_bounds, trigger(pred));
+                    Expr call = Call::make(func, call_args, i);                    
+                    Expr perm = Perm(call, Frac::make(1, 2));
+                    Expr f = forall(forall_vars, bounds && not_def_bounds, perm);
 
                     new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Context, f));
-                    // new_def_annotations.emplace_back(
-                    //     Permission::make(AnnotationType::Context, bounds && not_def_bounds, call, Frac::make(1, 2), forall_vars));
                 }
             }
         }
@@ -520,236 +490,6 @@ public:
 void add_automatic_annotations(map<string, Function> &env, vector<Function> &output_funcs) {
     AutomaticAnnotations aa = AutomaticAnnotations(env, output_funcs);
     aa.add_automatic_annotations();
-}
-
-string define_complete_predicate(const Type &t){
-    std::ostringstream ss;
-    string tt = print_type_helper(t, true, false);
-    ss << "resource _" << t << "_pred(" << tt << "* data) = data != NULL **"
-      << " (\\forall* int i; 0<=i && i< \\pointer_length(data); Perm(&data[i], write) );\n\n";
-
-    return ss.str();
-}
-
-string define_part_predicate(Function &f, int tuple_idx){
-    user_assert( f.dimensions() < 8 ) << "We only made HaliVer generate valid definitions up to 8 dimensions\n";
-    if(f.dimensions() == 0){
-        internal_error << "TODO: dimension 0";
-    }
-    vector<string> dim, mins, extents, full_extents, strides;
-    string data;
-    string full_extent;
-    for(int i=0; i<f.dimensions();i++){
-        string a = f.args()[i];
-        user_assert( a != "idx" && !ends_with(a, "_min") && !ends_with(a, "_extent")
-            && !starts_with(a, "data")
-        ) << "We disallow variable name " << a << "\n";
-        dim.emplace_back(a);
-        mins.emplace_back(a + "_min");
-        extents.emplace_back(a + "_extent");
-        if(i != 0){
-            strides.emplace_back(full_extent);
-            full_extent += " * " + extents[i];
-        } else {
-            strides.emplace_back("1");
-            full_extent = extents[i];
-        }
-        full_extents.emplace_back(full_extent);
-    }
-    // for(int i = 0; i < f.outputs(); i++){
-    //     data.emplace_back("data" + std::to_string(i));
-    // }
-    string suffix = f.outputs() == 1 ? "" : "_" + std::to_string(tuple_idx);
-    data = "data" + suffix;
-
-    std::ostringstream ss;
-    ss
-    << "resource " << clean_print_name(f.name()) << suffix << "_pred(\n ";
-    // for(int i = 0; i < f.outputs(); i++){
-    //     if(i != 0) ss << ", ";
-    //     ss << print_type_helper(f.output_types()[i], true, false) << "* " << data[i];
-    // }
-    ss << print_type_helper(f.output_types()[tuple_idx], true, false) << "* " << data;
-
-    ss << "\n ";
-    for(int i=0; i<f.dimensions();i++){
-        ss << ", int " << dim[i] << ", int " << mins[i] << ", int " << extents[i];
-    }
-    ss << ") = \n (";
-    for(int i=0; i<f.dimensions();i++){
-        ss << " " << dim[i] << " >= " << mins[i] << " && " << dim[i] << " < " << mins[i] << " + " << extents[i] << " && \n ";
-    }
-    // for(int i = 0; i < f.outputs(); i++){
-    //     ss << " " << data[i] << " != NULL && \\pointer_length(" << data[i] << ") == " << full_extents.back();
-    //     if(i != f.outputs()-1){
-    //         ss << " && \n";
-    //     } else {
-    //         ss << " \n ";
-    //     }
-    // }
-    ss << " " << data << " != NULL && \\pointer_length(" << data << ") == " << full_extents.back();
-
-    if(f.dimensions() > 1){
-        ss << " && lemma_" << f.dimensions() << "d_access(";
-        for(int i=0; i<f.dimensions();i++){
-            ss << dim[i] << ", " << mins[i] << ", " << strides[i] << ", " << extents[i];
-            if(i != f.dimensions()-1){
-                ss << ", ";
-            } else {
-                ss << ")";
-            }
-        }
-    }
-    ss << ") ** \n";
-    
-    ss << "  (\\let int idx = ";
-    
-    for(int i=0; i<f.dimensions();i++){
-        ss << "(" << dim[i] << "-" << mins[i] << ")*" << strides[i];
-        if(i != f.dimensions()-1){
-            ss << " + ";
-        } else {
-            ss << ";\n";
-        }
-    }
-    ss << "   Perm(&" << data << "[idx], write));\n\n";
-    // for(int i = 0; i < f.outputs(); i++){
-    //     ss << "   Perm(&" << data[i] << "[idx], write)";
-    //     if(i != f.outputs()-1){
-    //         ss << " ** ";
-    //     } else {
-    //         ss << ");\n\n";
-    //     }
-    // }
-
-    return ss.str();
-}
-
-string define_to_from_predicate(Function &f, int idx){
-    vector<string> vars;
-    vector<Expr> varsE;
-    vector<Expr> mins;
-    vector<Expr> extents;
-    vector<Expr> pred_args;
-    Expr bigger_zero;
-    Expr size;
-    Expr bound;
-    string name = "xs";
-    Expr xs = Variable::make(Handle(), name);
-    for(int i=0; i<(int)f.dimensions(); i++){
-        string a = f.args()[i];
-        mins.emplace_back(Variable::make(Int(32), a + "_min"));
-        extents.emplace_back(Variable::make(Int(32), a + "_extent"));
-        vars.emplace_back(a);
-        varsE.emplace_back(Variable::make(Int(32), a));
-        pred_args.emplace_back(varsE[i]);
-        pred_args.emplace_back(mins[i]);
-        pred_args.emplace_back(extents[i]);
-        if(i>0){
-            bigger_zero = bigger_zero && extents[i] > 0;
-            size = size * extents[i];
-            bound = bound && varsE[i] >= mins[i] && varsE[i] < mins[i] + extents[i];
-        } else {
-            bigger_zero = extents[i] > 0;
-            size = extents[i];
-            bound = varsE[i] >= mins[i] && varsE[i] < mins[i] + extents[i];
-        }
-    }
-    string suffix = f.outputs() == 1 ? "" : "_" + std::to_string(idx);
-    Expr i = Variable::make(Int(32), "i");
-    Expr load = Load::make(Int(32), name, i, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
-    Expr pred = Predicate::make(f.name() + suffix, name, pred_args, write(), f.output_types()[idx], Predicate::PredicateType::Partial);
-    pred = trigger(pred);
-
-    vector<Annotation> anns;
-    anns.emplace_back(context_everywhere(bigger_zero));
-    anns.emplace_back(context_everywhere(xs != null() && pointer_length(xs) == size));
-    Expr perms = forall("i", 0 <= i && i < size, Perm(load, write()));
-    Expr preds = forall(vars, bound, pred);
-
-    std::ostringstream rhs;
-    AnnotationPrinter ap(rhs, false, false, Scope<CodeGen_C::Allocation>());
-    vector<string> funcs = {"from", "to"};
-    for(auto i: funcs){
-        rhs << " ghost\n";
-        for(auto &a: anns){
-            rhs << " ";
-            ap.print(a);
-            rhs << ";\n";
-        }
-        if(i == "to"){
-            rhs << " ";
-            ap.print(requires(perms));
-            rhs << ";\n ";
-            ap.print(ensures(preds));
-            rhs << ";\n";
-        } else {
-            rhs << " ";
-            ap.print(requires(preds));
-            rhs << ";\n ";
-            ap.print(ensures(perms));
-            rhs << ";\n";
-        }
-
-        rhs << "void " << i << "_pred_" << clean_print_name(f.name()) << suffix << "("
-            << print_type_helper(f.output_types()[idx], true)
-            << "* _xs";
-        for(int i=0; i<(int)f.dimensions(); i++){
-            rhs << ", int ";
-            ap.print_no_parens(mins[i]);
-            rhs << ", int ";
-            ap.print_no_parens(extents[i]);
-        }
-        rhs << ");\n\n";
-    }
-
-    return rhs.str();
-}
-
-string process_func(Function &f, set<vector<Type>> &defined_complete_predicates){
-    
-    if(f.has_extern_definition()) return "";
-
-    std::ostringstream ss;
-    for(int i=0; i<f.outputs(); i++){
-        ss << define_part_predicate(f, i);
-        ss << define_to_from_predicate(f, i);
-    }
-
-    for(auto &t: f.output_types()){
-        if(defined_complete_predicates.count({t}) == 0){
-            ss << define_complete_predicate(t);
-            defined_complete_predicates.insert({t});
-        }
-    }
-
-    return ss.str();
-}
-
-string define_predicates(map<string, Function> &env, vector<Function> &output_funcs, vector<Parameter> & input_buffers) {
-    set<vector<Type>> defined_complete_predicates;
-    std::ostringstream ss;
-
-    for(auto &f: env){
-        Function &func = f.second;
-        ss << process_func(func, defined_complete_predicates);
-    }
-
-    // for(auto &func: output_funcs){
-    //     ss << process_func(func, defined_complete_predicates);
-    //     ss << "\n";
-    // }
-
-    for(auto &inp: input_buffers){
-        Type t = inp.type();
-        if(defined_complete_predicates.count({t}) == 0){
-            ss << define_complete_predicate(t);
-            defined_complete_predicates.insert({t});
-        }
-    }
-        
-
-    return ss.str();
 }
 
 }  // namespace Internal

@@ -278,9 +278,6 @@ public:
     void visit(const Exists *) override {
         precedence = 1;
     }
-    void visit(const Predicate *) override {
-        precedence = 1;
-    }
     void visit(const Select *) override {
         precedence = 13;
     }
@@ -916,27 +913,6 @@ void IRPrinter::visit(const Exists *op) {
     print_no_parens(op->select);
     stream << "; ";
     print_no_parens(op->main);
-    stream << ")";
-}
-
-void IRPrinter::visit(const Predicate *op) {
-    if(!is_const_one(op->perm)){
-        stream << "[";
-        print_no_parens(op->perm);
-        stream << "]";
-    }
-    if(op->pred_type == Predicate::PredicateType::Partial){
-        stream << clean_print_name(op->name) << "_pred(";
-    } else {
-        stream << "_" << op->buffer_type;
-        stream << "_pred(";
-    }
-    print_no_parens(Variable::make(Int(32), op->called_buffer));
-    if(op->args.size()>0){
-        stream << ", ";
-        print_list(op->args);
-    }
-    
     stream << ")";
 }
 
