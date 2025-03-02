@@ -1907,10 +1907,10 @@ void CodeGen_C::emit_buffer(Type t) {
         << " buf != NULL **\n"
         << " \\pointer_length(buf) == 1 **\n"
         << " Perm(buf, p) **\n"
-        << " Perm(buf->dim, p) **\n"
+        << " Perm(&buf->dim, p) **\n"
         << " buf->dim != NULL **\n"
         << " \\pointer_length(buf->dim) == n_dims **\n"
-        << " Perm(buf->host, p) **\n"
+        << " Perm(&buf->host, p) **\n"
         << " buf->host != NULL;\n"
         << "@*/\n"
         << "#endif //HALIDE_BUFFER_TYPE_" << type_cap << "\n"
@@ -3690,6 +3690,7 @@ void CodeGen_C::visit(const Allocate *op) {
                    << " *)malloc(sizeof("
                    << op_type
                    << ")*" << size_id << ");\n";
+            stream << get_indent() << "//@ assume " << op_name << " != NULL;\n";
             heap_allocations.push(op->name);
         }
     }

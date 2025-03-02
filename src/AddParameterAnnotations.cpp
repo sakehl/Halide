@@ -42,26 +42,27 @@ struct BufferInfo {
     Type type;
 };
 
-void get_buffer_annotations(const Parameter &buf, vector<Annotation> &res){
-    int dim = buf.dimensions();
+// The constraints of tupled output functions are all put in par0
+void get_buffer_annotations(const Parameter &par0, const Parameter &buf, vector<Annotation> &res){
     Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), buf.name() + ".buffer");
+    int dim = buf.dimensions();
     for(int i=0; i<dim; i++){
         Expr constraint;
-        if(buf.min_constraint(i).defined()){
+        if(par0.min_constraint(i).defined()){
             Expr min_val = Call::make(Int(32), Call::buffer_get_min, {buffer, i}, Call::Extern);
-            Expr new_constraint = min_val == buf.min_constraint(i);
+            Expr new_constraint = min_val == par0.min_constraint(i);
             constraint = add(constraint, new_constraint);
         }
             
-        if(buf.extent_constraint(i).defined()){
+        if(par0.extent_constraint(i).defined()){
             Expr extent_val = Call::make(Int(32), Call::buffer_get_extent, {buffer, i}, Call::Extern);
-            Expr new_constraint = extent_val == buf.extent_constraint(i);
+            Expr new_constraint = extent_val == par0.extent_constraint(i);
             constraint = add(constraint, new_constraint);
         }
 
-        if(buf.stride_constraint(i).defined()){
+        if(par0.stride_constraint(i).defined()){
             Expr stride_val = Call::make(Int(32), Call::buffer_get_stride, {buffer, i}, Call::Extern);
-            Expr new_constraint = stride_val == buf.stride_constraint(i);
+            Expr new_constraint = stride_val == par0.stride_constraint(i);
             constraint = add(constraint, new_constraint);
         }
         if(constraint.defined()){
@@ -267,7 +268,7 @@ class AnnotationMaker {
 public:
     AnnotationMaker(BufferInfo &buffer_info) {
         is_perm = true;
-        load = Load::make(buffer_info.type, buffer_info.name + ".buffer.host", 
+        load = Load::make(buffer_info.type, buffer_info.name, 
         buffer_info.index, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
         bound = buffer_info.bound;
         forall_vars = buffer_info.forall_vars;
@@ -282,7 +283,7 @@ public:
     Annotation create_annotation(bool is_parallel, Expr &readfactor) const {
         AnnotationType anntype = is_parallel ? AnnotationType::Context : AnnotationType::LoopInvariant;
         if(is_perm){
-            Expr perm = forall(forall_vars, bound, Perm(load, readfactor));
+            Expr perm = forall(forall_vars, bound, Perm(load, read(readfactor)));
             return AnnExpr::make(anntype, perm);
         } else {
             return AnnExpr::make(anntype, condition);
@@ -447,12 +448,11 @@ class AddParameterAnnotations : public IRMutator {
     void get_output_annotations(const Function &f){
         user_assert(f.output_buffers().size()>0) << "Need at least dimension one for output buffer";
         Parameter dim_0 = f.output_buffers()[0];
-
-        get_buffer_annotations(dim_0, top_level);
         BufferInfo info = process_dimensions(dim_0);
 
         for(int idx=0; idx<f.outputs(); idx++){
             Parameter par = f.output_buffers()[idx];
+            get_buffer_annotations(dim_0, par, top_level);
             
             Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
             Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, write() ));
@@ -471,14 +471,14 @@ class AddParameterAnnotations : public IRMutator {
         if(!par.is_buffer())
             return;
     
-        get_buffer_annotations(par, top_level);
+        get_buffer_annotations(par, par, top_level);
         BufferInfo info = process_dimensions(par);
 
         AnnotationMaker pmaker(info);
         proven_annotations[par.name()].emplace_back(pmaker);
 
         Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
-        Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, read(make_const(Int(32), 2))) );
+        Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, read(2)) );
         top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
 
         for(const auto& ann :par.annotations()){

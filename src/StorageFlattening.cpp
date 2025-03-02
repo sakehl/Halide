@@ -39,9 +39,7 @@ public:
     using IRMutator::mutate;
 
     Annotation mutate(const Annotation &a) override {
-        in_annotation = true;
         Annotation res = IRMutator::mutate(a);
-        in_annotation = false;
         return res;
     }
 
@@ -52,7 +50,6 @@ private:
     const Target &target;
     Scope<> realizations;
     bool in_gpu = false;
-    bool in_annotation = false;
     map<Expr, vector<Expr>, IRDeepCompare> ghost_args;
 
     set<string> consume_functions;
@@ -83,7 +80,7 @@ private:
             pred_args.emplace_back(extent);
         }
         
-        if(args.size() <= 1 || in_annotation){
+        if(args.size() <= 1){
             return Expr();
         }
 

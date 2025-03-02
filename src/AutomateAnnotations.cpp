@@ -232,8 +232,8 @@ class AutomaticAnnotations {
             } else {
                 call_args.emplace_back(pure_args[i]);
             }
-            call_args.emplace_back(min);
-            call_args.emplace_back(extent);
+            // call_args.emplace_back(min);
+            // call_args.emplace_back(extent);
         }
         if(!bounds.defined())
             bounds = make_bool(true);

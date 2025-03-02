@@ -1365,6 +1365,8 @@ Expr frac(Expr a, Expr b);
 
 Expr read(Expr factor);
 
+Expr read(int factor);
+
 Expr write();
 
 

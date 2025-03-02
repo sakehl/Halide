@@ -2601,6 +2601,10 @@ Expr read(Expr factor) {
     return Internal::Frac::make(Internal::make_one(Int(32)), factor);
 }
 
+Expr read(int factor) {
+    return Internal::Frac::make(Internal::make_one(Int(32)), Internal::make_const(Int(32), factor));
+}
+
 Expr write() {
     return Internal::Frac::make(Internal::make_one(Int(32)), Internal::make_one(Int(32)));
 }
