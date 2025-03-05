@@ -100,6 +100,7 @@ std::ostream &operator<<(std::ostream &stream, const Indentation &);
 std::string to_string(const Expr &);
 std::string to_string(const Stmt &);
 std::string to_string(const Annotation &);
+std::string to_strings(const std::vector<Expr> &exprs);
 
 /** An IRVisitor that emits IR to the given output stream in a human
  * readable form. Can be subclassed if you want to modify the way in

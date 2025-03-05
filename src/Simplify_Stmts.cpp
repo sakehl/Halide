@@ -666,8 +666,9 @@ Stmt Simplify::visit(const Ghost *op) {
 }
 
 Annotation Simplify::visit(const AnnExpr *op) {
+    in_annotation = true;
     Expr condition = mutate(op->condition, nullptr);
-
+    in_annotation = false;
     if (condition.same_as(op->condition)) {
         return op;
     } else {

@@ -585,6 +585,14 @@ std::string to_string(const Expr &e){
     return out.str();
 }
 
+std::string to_strings(const std::vector<Expr> &exprs) {
+    ostringstream out;
+    for (const auto &e : exprs) {
+        out << to_string(e) << ", ";
+    }
+    return out.str();
+}
+
 std::string to_string(const Stmt &s){
     if(!s.defined()) return "(undefined)";
     ostringstream out;

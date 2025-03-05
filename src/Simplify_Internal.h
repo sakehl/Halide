@@ -191,6 +191,8 @@ public:
 
     // Tracked for all let vars
     Scope<VarInfo> var_info;
+    Scope<VarInfo> annotation_var_info;
+    bool in_annotation = false;
 
     // Only tracked for integer let vars
     Scope<ExprInfo> bounds_and_alignment_info;
@@ -251,6 +253,7 @@ public:
 
         std::vector<const Variable *> pop_list;
         std::vector<const Variable *> bounds_pop_list;
+        std::vector<const Variable *> annotation_pop_list;
         std::vector<Expr> truths, falsehoods;
 
         void learn_false(const Expr &fact);

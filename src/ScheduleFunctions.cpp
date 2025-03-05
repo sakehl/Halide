@@ -45,7 +45,8 @@ struct Container {
     enum Type { For,
                 Let,
                 If,
-                IfInner };
+                IfInner,
+                IfPredicate};
     Type type;
     // If it's a for loop, the index in the dims list.
     int dim_idx;
@@ -347,7 +348,6 @@ public:
 
     vector<Annotation> get_for_loop_annotations(string name, Dim dim, Expr min, Expr extent) {
         LoopInvariantMaker lim = LoopInvariantMaker(name, min, extent);
-
         if(dim.is_rvar()){
             return make_reduction_loop(name, min, extent, lim);
         } else {
@@ -467,12 +467,14 @@ public:
         }
     }
 
-    void add_antecedent(Expr ant){
+    void add_antecedent(Expr ant, bool is_predicate=false){
         for(auto &a: anns){
              a = Halide::Internal::add_antecedent(ant, a);
         }
-        for(auto &p: perms){
-            p = Halide::Internal::add_antecedent(ant, p);
+        if(!is_predicate){
+            for(auto &p: perms){
+                p = Halide::Internal::add_antecedent(ant, p);
+            }
         }
         for(auto &i: reduction_invariants){
             i = Halide::implies(ant, i);
@@ -499,6 +501,7 @@ public:
             Expr new_a = substitute(splits, a);
             ghost_args.emplace_back(new_a);
         }
+
         return Provide::make(new_provide->name, new_provide->values, args, ghost_args);
     }
 
@@ -580,7 +583,9 @@ Stmt build_loop_nest(
     AddGhostSplit ags(split_replace);
     stmt = ags.mutate(stmt);
     vector<Annotation> cur_anns = qualify(prefix, def.annotations());
-    cur_anns = substitute(split_replace, cur_anns);
+    for(auto &ann: cur_anns){
+        ann = ags.mutate(ann);
+    }
 
     // Define the function args in terms of the loop variables using the splits
     for (const Split &split : splits) {
@@ -660,7 +665,7 @@ Stmt build_loop_nest(
         }
         // Add ghost calls
         pred = ags.mutate(pred);
-        pred_container.emplace_back(Container::If, 0, "", pred);
+        pred_container.emplace_back(Container::IfPredicate, 0, "", pred);
     }
     int n_predicates = (int)(pred_container.size());
 
@@ -721,7 +726,7 @@ Stmt build_loop_nest(
     for (int i = (int)nest.size() - n_predicates; i < (int)nest.size(); i++) {
         // Only push up IfThenElse.
         internal_assert(nest[i].value.defined());
-        internal_assert(nest[i].type == Container::If);
+        internal_assert(nest[i].type == Container::If || nest[i].type == Container::IfPredicate);
 
         // Cannot lift out the 'if' if it contains call to non-pure function
         if (contains_impure_call(nest[i].value)) {
@@ -771,7 +776,6 @@ Stmt build_loop_nest(
         }
     }
 
-
     // Rewrap the statement in the containing lets and fors.
     for (int i = (int)nest.size() - 1; i >= 0; i--) {
         if (nest[i].type == Container::Let) {
@@ -779,11 +783,11 @@ Stmt build_loop_nest(
             stmt = LetStmt::make(nest[i].name, nest[i].value, stmt);
 
             nest_annotation_maker.substitute(nest[i].name, nest[i].value);
-        } else if ((nest[i].type == Container::If) || (nest[i].type == Container::IfInner)) {
+        } else if ((nest[i].type == Container::If) || (nest[i].type == Container::IfInner) || (nest[i].type == Container::IfPredicate)) {
             internal_assert(nest[i].value.defined());
             stmt = IfThenElse::make(nest[i].value, stmt, Stmt());
 
-            nest_annotation_maker.add_antecedent(nest[i].value);
+            nest_annotation_maker.add_antecedent(nest[i].value, nest[i].type == Container::IfPredicate);
         } else {
             internal_assert(nest[i].type == Container::For);
             const Dim &dim = stage_s.dims()[nest[i].dim_idx];
@@ -1609,6 +1613,15 @@ public:
         for(int i=0; i<(int)buffer_types.size();i++){
             Expr call = Call::make(func, args, i);
             Expr perm = Perm(call, read(factor));
+            
+            vector<Expr> ghost_args;
+            ghost_args.emplace_back(perm);
+            for(const auto &a: args){
+                ghost_args.emplace_back(a);
+            }
+            perm = Call::make(Resource(), Call::ghost_args, {ghost_args}, Call::Intrinsic); 
+
+
             Expr f = forall(forall_vars, antecedent, perm);
             result.emplace_back(AnnExpr::make(is_serial ? AnnotationType::LoopInvariant : AnnotationType::Context, f));
         }
@@ -1621,6 +1634,14 @@ public:
         for(int i=0; i<(int)buffer_types.size();i++){
             Expr call = Call::make(func, args, i);
             Expr perm = Perm(call, write());
+            
+            vector<Expr> ghost_args;
+            ghost_args.emplace_back(perm);
+            for(const auto &a: args){
+                ghost_args.emplace_back(a);
+            }
+            perm = Call::make(Resource(), Call::ghost_args, {ghost_args}, Call::Intrinsic); 
+            
             Expr f = forall(forall_vars, antecedent, perm);
             result.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, f));
         }
@@ -1726,6 +1747,8 @@ protected:
 
         if(for_loop->is_parallel())
             factor = Mul::make(factor, for_loop->extent);
+        else 
+            factor = Mul::make(factor,  make_const(Int(32), 2));
 
         Stmt body = mutate(for_loop->body);
         

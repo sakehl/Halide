@@ -20,7 +20,7 @@ int Simplify::debug_indent = 0;
 #endif
 
 Simplify::Simplify(bool r, const Scope<Interval> *bi, const Scope<ModulusRemainder> *ai)
-    : remove_dead_lets(r), no_float_simplify(false) {
+    : remove_dead_lets(r), no_float_simplify(false), in_annotation(false) {
 
     // Only respect the constant bounds from the containing scope.
     for (auto iter = bi->cbegin(); iter != bi->cend(); ++iter) {
@@ -190,6 +190,33 @@ void Simplify::ScopedFact::learn_lower_bound(const Variable *v, int64_t val) {
     bounds_pop_list.push_back(v);
 }
 
+bool is_simple(const Expr &e) {
+    if(is_const(e)) return true;
+    if(e.as<Variable>()) return true;
+    Expr a, b;
+    const Add* add = e.as<Add>();
+    const Sub* sub = e.as<Sub>();
+    const Mod* mod = e.as<Mod>();
+    const Mul* mul = e.as<Mul>();
+    const Div* div = e.as<Div>();
+    const Frac* frac = e.as<Frac>();
+
+    if(add){
+        return is_simple(add->a) && is_simple(add->b);
+    } else if(sub){
+        return is_simple(sub->a) && is_simple(sub->b);
+    } else if(mod){
+        return is_simple(mod->a) && is_simple(mod->b);
+    } else if(mul){
+        return is_simple(mul->a) && is_simple(mul->b);
+    } else if(div){
+        return is_simple(div->a) && is_simple(div->b);
+    } else if(frac){
+        return is_simple(frac->a) && is_simple(frac->b);
+    }
+    return false;
+}
+
 void Simplify::ScopedFact::learn_true(const Expr &fact) {
     Simplify::VarInfo info;
     info.old_uses = info.new_uses = 0;
@@ -221,6 +248,13 @@ void Simplify::ScopedFact::learn_true(const Expr &fact) {
                 simplify->bounds_and_alignment_info.push(v->name, expr_info);
                 bounds_pop_list.push_back(v);
             }
+            // If the expression is simple we want to inline it in annotations
+            if(is_simple(eq->b)){
+                info.replacement = eq->b;
+                simplify->annotation_var_info.push(v->name, info);
+                annotation_pop_list.push_back(v);
+            }
+            
         } else if (const Variable *vb = eq->b.as<Variable>()) {
             // y % 2 == x
             // We know that LHS is not a const due to

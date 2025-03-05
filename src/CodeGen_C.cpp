@@ -182,6 +182,15 @@ inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) =
 pure bool lemma_nonlinear(int a, int b, int max_a);// = b>1 ? lemma_nonlinear(a, b-1, max_a) : true;
  
  requires a-min_a >= 0 && a-min_a<extent_a;
+ requires stride_a > 0;
+
+ ensures 0 <= (a-min_a)*stride_a;
+ ensures (a-min_a)*stride_a <= (extent_a-1)*stride_a;
+ ensures \result;
+ decreases;
+pure bool lemma_1d_access(int a, int min_a, int stride_a, int extent_a);// = lemma_nonlinear(a-min_a, stride_a, extent_a);
+
+ requires a-min_a >= 0 && a-min_a<extent_a;
  requires b-min_b >= 0 && b-min_b<extent_b;
  requires stride_a > 0;
  requires stride_b >= extent_a*stride_a;
@@ -4170,7 +4179,7 @@ void AnnotationPrinter::visit(const Let *op) {
 
 void AnnotationPrinter::visit(const Div *op) {
     if(op->type.is_int_or_uint()){
-        stream << "hdiv(";
+        stream << "\\euclidean_div(";
         print_no_parens(op->a);
         stream << ", ";
         print_no_parens(op->b);
@@ -4289,6 +4298,32 @@ void AnnotationPrinter::visit(const Call *op) {
         print_buffer_stride(op->args[0], op->args[1]);
     } else if(op->name == Call::buffer_get_max){
         print_buffer_max(op->args[0], op->args[1]);
+        
+    } else if(op->is_intrinsic(Call::lemma_flattened_array)){
+        ostringstream lemma_s, assert_s;
+        int size = op->args.size();
+        internal_assert(size % 4 == 0);
+        int dim = size / 4;
+
+        bool constant_dims = true;
+        // If the first n-1 dimensions only have constant strides and extents, we do not need the lemma
+        for(int i = 0; i < dim-1; i++){
+            if(!(is_const(op->args[4*i+2]) 
+                && is_const(op->args[4*i+3])) ){
+                constant_dims = false;
+                break;
+            }
+        }
+        // If the last dimension has constant stride and extent, we do not need the lemma (one can be non-constant)
+        constant_dims = constant_dims && (is_const(op->args[4*(dim-1)+2]) || is_const(op->args[4*(dim-1)+3]));
+        if(constant_dims){
+            stream << "true";
+            return;
+        }
+        string name = "lemma_" + std::to_string(dim) + "d_access";
+        stream << name << "(";
+        print_list(op->args);
+        stream << ")";
     } else {
         stream << op->name << "(";
         print_list(op->args);

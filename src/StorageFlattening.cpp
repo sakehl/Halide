@@ -24,6 +24,29 @@ using std::vector;
 
 namespace {
 
+class HasForallVars : public IRGraphVisitor {
+public:
+    HasForallVars(Scope<> &forall_vars): forall_vars(forall_vars) {}
+
+    Scope<> &forall_vars;
+    bool has_forall_vars = false;
+
+protected:
+    using IRVisitor::visit;
+
+    void visit(const Variable *op) override {
+        if(forall_vars.contains(op->name)){
+            has_forall_vars = true;
+        }
+    }
+};
+
+bool has_forall_vars(Expr e, Scope<> &forall_vars) {
+    HasForallVars h(forall_vars);
+    e.accept(&h);
+    return h.has_forall_vars;
+}
+
 class FlattenDimensions : public IRMutator {
 public:
     FlattenDimensions(const map<string, pair<Function, int>> &e,
@@ -32,29 +55,33 @@ public:
         : env(e), target(t) {
         for (const auto &f : o) {
             outputs.insert(f.name());
-            read_factor = IntImm::make(Int(32), 2);
         }
     }
 
     using IRMutator::mutate;
 
-    Annotation mutate(const Annotation &a) override {
-        Annotation res = IRMutator::mutate(a);
-        return res;
-    }
-
 private:
+    struct ghostDim {
+        string name;
+        Expr arg;
+        Expr min;
+        Expr extent;
+        Expr stride;
+    };
+
     const map<string, pair<Function, int>> &env;
     set<string> outputs;
     set<string> textures;
     const Target &target;
     Scope<> realizations;
     bool in_gpu = false;
+    bool in_annotation = false;
     map<Expr, vector<Expr>, IRDeepCompare> ghost_args;
+    vector<ghostDim> ghost_dims;
+    Scope<> forall_vars;
 
     set<string> consume_functions;
     set<string> produce_functions;
-    Expr read_factor;
 
     Expr make_shape_var(string name, const string &field, size_t dim,
                         const Buffer<> &buf, const Parameter &param) {
@@ -69,22 +96,30 @@ private:
             Expr min = make_shape_var(name, "min", i, buf, param);
             Expr stride = make_shape_var(name, "stride", i, buf, param);
             Expr extent = make_shape_var(name, "extent", i, buf, param);
+            Expr new_arg = mutate(args[i]);
+            
+            if(in_annotation && !has_forall_vars(new_arg, forall_vars)){
+                struct ghostDim dim;
+                dim.name = name;
+                dim.arg = new_arg;
+                dim.min = min;
+                dim.extent = extent;
+                dim.stride = stride;
+                ghost_dims.emplace_back(dim);
+            }
 
-            new_args.emplace_back(args[i]);
+            new_args.emplace_back(new_arg);
             new_args.emplace_back(min);
             new_args.emplace_back(stride);
             new_args.emplace_back(extent);
-
-            pred_args.emplace_back(args[i]);
-            pred_args.emplace_back(min);
-            pred_args.emplace_back(extent);
         }
         
-        if(args.size() <= 1){
+        
+        if(in_annotation || args.size() <= 1){
             return Expr();
         }
 
-        Expr lemma = mutate(Call::make(Int(32), Call::lemma_flattened_array, new_args, Call::PureIntrinsic));
+        Expr lemma = Call::make(Bool(), Call::lemma_flattened_array, new_args, Call::PureIntrinsic);
 
         return lemma;
     }
@@ -327,6 +362,17 @@ private:
         }
     }
 
+    Expr visit(const Forall *op) override {
+        for(auto const &s: op->vars){
+            forall_vars.push(s);
+        }
+        Expr e = IRMutator::visit(op);
+        for(auto const &s: op->vars){
+            forall_vars.pop(s);
+        }
+        return e;
+    }
+
     Expr visit(const Call *op) override {
         if (op->call_type == Call::Halide ||
             op->call_type == Call::Image) {
@@ -455,14 +501,52 @@ private:
             op->for_type == ForType::GPUThread) {
             in_gpu = true;
         }
-        Expr old_factor = read_factor;
-        if(op->is_parallel()) read_factor = op->extent * read_factor;
 
-        Stmt stmt = IRMutator::visit(op);
+        Expr min = mutate(op->min);
+        Expr extent = mutate(op->extent);
+        Stmt body = mutate(op->body);
+        bool same = true;
+
+        vector<Annotation> annotations;
+        ghost_dims.clear();
+        in_annotation = true;
+
+        for(const Annotation &a : op->annotations){
+            Annotation new_a = mutate(a);
+            same = same && new_a.same_as(a);
+            annotations.emplace_back(new_a);
+        }
         
-        read_factor = old_factor;
+        Expr lemma;
+        for(auto &g : ghost_dims){
+            vector<Expr> new_args;
+            new_args.emplace_back(g.arg);
+            new_args.emplace_back(g.min);
+            new_args.emplace_back(g.stride);
+            new_args.emplace_back(g.extent);
+            Expr new_lemma = Call::make(Bool(), Call::lemma_flattened_array, new_args, Call::PureIntrinsic);
+            if(lemma.defined()){
+                lemma = new_lemma && lemma;
+            } else {
+                lemma = new_lemma;
+            }
+        }
+        if(lemma.defined()){
+            AnnotationType t = op->for_type == ForType::Serial ? AnnotationType::LoopInvariant : AnnotationType::Context;
+            annotations.emplace(annotations.begin(), AnnExpr::make(t, lemma));
+            same = false;
+        }
+        
+        ghost_dims.clear();
+        in_annotation = false;
         in_gpu = old_in_gpu;
-        return stmt;
+        if (min.same_as(op->min) &&
+            extent.same_as(op->extent) &&
+            body.same_as(op->body) && same) {
+            return op;
+        }
+        return For::make(op->name, std::move(min), std::move(extent),
+                        op->for_type, op->device_api, std::move(body), std::move(annotations));
     }
 };
 

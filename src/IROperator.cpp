@@ -1431,6 +1431,10 @@ Annotation context(Expr cond){
     return make_ann(Internal::AnnotationType::Context, cond);
 }
 
+Annotation context_everywhere(Expr cond){
+    return make_ann(Internal::AnnotationType::ContextEverywhere, cond);
+}
+
 Annotation loop_invariant(Expr cond){
     return make_ann(Internal::AnnotationType::LoopInvariant, cond);
 }

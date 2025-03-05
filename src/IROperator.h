@@ -816,6 +816,8 @@ Annotation ensures(Expr cond);
 
 Annotation context(Expr cond);
 
+Annotation context_everywhere(Expr cond);
+
 Annotation loop_invariant(Expr cond);
 
 /** Returns an expression similar to the ternary operator in C, except

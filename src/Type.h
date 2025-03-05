@@ -279,6 +279,7 @@ public:
     static const halide_type_code_t Float = halide_type_float;
     static const halide_type_code_t BFloat = halide_type_bfloat;
     static const halide_type_code_t Handle = halide_type_handle;
+    // Type which models read/write permission for HaliVer
     static const halide_type_code_t Resource = halide_type_resource;
     // @}
 
@@ -515,7 +516,7 @@ inline Type UInt(int bits, int lanes = 1) {
     return Type(Type::UInt, bits, lanes);
 }
 
-/** Constructing an unsigned integer type */
+/** Constructing a resource type (type which holds read/write permission) */
 inline Type Resource(int bits, int lanes = 1) {
     return Type(Type::Resource, bits, lanes);
 }

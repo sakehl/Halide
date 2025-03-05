@@ -218,6 +218,10 @@ Expr Simplify::visit(const Variable *op, ExprInfo *bounds) {
             return make_const(op->type, b.min);
         }
     }
+    if(in_annotation && annotation_var_info.contains(op->name)){
+        auto &info = annotation_var_info.ref(op->name);
+        return info.replacement;
+    }
 
     if (var_info.contains(op->name)) {
         auto &info = var_info.ref(op->name);

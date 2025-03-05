@@ -354,6 +354,8 @@ class AddParameterAnnotations : public IRMutator {
     Stmt visit(const For *for_loop) override {
         if(for_loop->is_parallel()){
             parallel_read_factor.push_back(for_loop->extent);
+        } else {
+            parallel_read_factor.push_back(make_const(Int(32), 2));
         }
         Expr currentFactor = make_const(Int(32), 2);
         for(auto f : parallel_read_factor){
@@ -375,9 +377,7 @@ class AddParameterAnnotations : public IRMutator {
 
         Stmt body = mutate(for_loop->body);
 
-        if(for_loop->is_parallel()){
-            parallel_read_factor.pop_back();
-        }
+        parallel_read_factor.pop_back();
 
         return For::make(for_loop->name,
                              for_loop->min,
