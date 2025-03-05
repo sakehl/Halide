@@ -281,8 +281,10 @@ void PVLPrinter::visit(const AnnExpr *op) {
         stream << "ensures ";
         break;
     case AnnotationType::Context:
-    case AnnotationType::ContextEverywhere:
         stream << "context ";
+        break;
+    case AnnotationType::ContextEverywhere:
+        stream << "context_everywhere ";
         break;
     }
 
@@ -630,6 +632,9 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
     }
 
     stream << ");\n\n";
+    // We have now printed the outer function call
+
+
     in_annotations = true;
     print_reduction_ann(def.annotations(), rvars);
     in_annotations = false;
@@ -642,6 +647,8 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
     stream << ";\n";
     indent--;
     print_lhs_def(new_args, output_types, reduction_func);
+    // We printed the annotations and type signature, now we need to define the function
+
     stream << " = ";
     // First the part where all the reduction variables are at the minimum
     for (size_t i = 0; i < rvars.size(); i++) {
@@ -696,14 +703,17 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
         // Close function call
         stream << ") : ";
     }
-    
-    if(!different_args.empty()){
-        // If there are different arguments, we only go conditionally to the actual definition
+    // If there are different arguments or a predicate we only go conditionally to the actual definition
+    if(!different_args.empty() || def.predicate().defined()){
+        
         for(size_t i = 0; i < different_args.size(); i++) {
             print(different_args[i]);
-            if (i + 1 < different_args.size()) {
+            if (i + 1 < different_args.size() || def.predicate().defined()) {
                 stream << " && ";
             }
+        }
+        if(def.predicate().defined()){
+            print(def.predicate());
         }
 
         stream << " ? ";
@@ -727,7 +737,7 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
 
     in_reduction = false;
 
-    if(!different_args.empty()){
+    if(!different_args.empty() || def.predicate().defined()){
         stream << " : " << c_print_name_pvl(reduction_func) << "(";
 
         for (size_t i = 0; i < original_args.size(); i++) {
