@@ -86,12 +86,17 @@ void PVLPrinter::visit(const Call *op) {
         name = prev_def_name;
         // The reduction function needs extra arguments (rx-1, ry-1, ...)
         if(in_reduction){
+            stream << c_print_name_pvl(name) << "(";
+            print_list(args);
+            if(!args.empty() && !rvars.empty()) stream << ", ";
             for(size_t i=0; i<rvars.size(); i++){
-                // We explicitely do not make a Variable with reduction domain, since we want the -1 only for the first rvar
-                Expr arg = Variable::make(Int(32), rvars[i]);
-                if(i==0) arg = arg - make_one(Int(32));
-                args.emplace_back(arg);
+                //We want the -1 only for the first rvar
+                stream << c_print_name_pvl(rvars[i]);
+                if(i==0) stream << " - 1";
+                if(i<rvars.size()-1) stream << ", ";
             }
+            stream <<")";
+            return;
         }
     }
 
@@ -230,8 +235,7 @@ bool PVLPrinter::ends_on_dimension(string name){
 }
 
 void PVLPrinter::visit(const Variable *op) {
-    // string result;
-    if(op->reduction_domain.defined() && !in_annotations){
+    if((op->reduction_domain.defined() || reduction_vars.contains(op->name)) && !in_annotations){
         // Reduction domains variable in definitions should be called with -1
         stream << "(" << c_print_name_pvl(op->name) << " - 1)";
     } else if(ends_on_dimension(op->name)) {
@@ -486,10 +490,10 @@ void PVLPrinter::print_ann(const vector<Annotation> &anns, bool has_reduction){
     indent--;
 }
 
-void PVLPrinter::print_reduction_ann(const vector<Annotation> &anns, const vector<ReductionVariable> &rvars){
+void PVLPrinter::print_reduction_ann(const vector<Annotation> &anns, const vector<ReductionVariable> &red_vars){
     indent++;
 
-    for(const auto &r: rvars){
+    for(const auto &r: red_vars){
         stream << get_indent() << "requires ";
         print(r.min);
         stream << " <= " << c_print_name_pvl(r.var) << " && " << c_print_name_pvl(r.var) << " <= ";
@@ -527,10 +531,7 @@ void PVLPrinter::print_def(Definition def, vector<string> original_args, vector<
     }
 
     // Check for reduction variables
-    vector<ReductionVariable> rvars = def.schedule().rvars();
-    bool has_rvar = !rvars.empty();
-
-    if(has_rvar){
+    if(!def.schedule().rvars().empty()){
         // Go make the reduction function here
         return print_red_func(def, original_args, different_args, output_types, func_name, old_func_name);
     }
@@ -613,22 +614,21 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
         stream << c_print_name_pvl(original_args[i]) << ", ";
     }
 
-    vector<ReductionVariable> rvars = def.schedule().rvars();
-
-    this->rvars = vector<string>();
-
+    vector<ReductionVariable> red_vars = def.schedule().rvars();
+    rvars.clear();
     vector<string> new_args = original_args;
-    for (size_t i = 0; i < rvars.size(); i++) {
-        print(rvars[i].min);
-        if(i + 1 == rvars.size()){
+    for (size_t i = 0; i < red_vars.size(); i++) {
+        print(red_vars[i].min);
+        if(i + 1 == red_vars.size()){
             stream << " + ";
-            print(rvars[i].extent);
+            print(red_vars[i].extent);
         } else {
             stream << ", ";
         }
         
-        new_args.emplace_back(rvars[i].var);
-        this->rvars.emplace_back(rvars[i].var);
+        new_args.emplace_back(red_vars[i].var);
+        reduction_vars.push(red_vars[i].var);
+        rvars.emplace_back(red_vars[i].var);
     }
 
     stream << ");\n\n";
@@ -636,12 +636,12 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
 
 
     in_annotations = true;
-    print_reduction_ann(def.annotations(), rvars);
+    print_reduction_ann(def.annotations(), red_vars);
     in_annotations = false;
     indent++;
     stream << get_indent() << "decreases ";
-    for (int i = (int) rvars.size()-1; i >=0; i--) {
-        stream << c_print_name_pvl(rvars[i].var);
+    for (int i = (int) red_vars.size()-1; i >=0; i--) {
+        stream << c_print_name_pvl(red_vars[i].var);
         if(i != 0) stream << ", ";
     }
     stream << ";\n";
@@ -651,10 +651,10 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
 
     stream << " = ";
     // First the part where all the reduction variables are at the minimum
-    for (size_t i = 0; i < rvars.size(); i++) {
-        stream << c_print_name_pvl(rvars[i].var) << " == ";
-        print(rvars[i].min);
-        if (i + 1 < rvars.size()) {
+    for (size_t i = 0; i < red_vars.size(); i++) {
+        stream << c_print_name_pvl(red_vars[i].var) << " == ";
+        print(red_vars[i].min);
+        if (i + 1 < red_vars.size()) {
             stream << " && ";
         }
     }
@@ -669,11 +669,11 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
     stream << ") : ";
 
     // We go from the last rvar to the first
-    for(int i = (int)rvars.size()-1; i>0; i--){
+    for(int i = (int)red_vars.size()-1; i>0; i--){
         // The vars r_0, r_1, ..., r_{i-1} are zero (and r_i is not zero)
         for(int j = 0; j<i; j++){
-            stream << c_print_name_pvl(rvars[j].var) << " == ";
-            print(rvars[j].min);
+            stream << c_print_name_pvl(red_vars[j].var) << " == ";
+            print(red_vars[j].min);
             if (j + 1 < i) {
                 stream << " && ";
             }
@@ -686,35 +686,33 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
         // Reset variables r_0 to r_{i-2} to minimum
         // and variables r_{i-1} to the maximum 
         for(int j = 0; j<i; j++){
-            print(rvars[j].min);
+            print(red_vars[j].min);
             if(j+1 == i){
                 stream << " + ";
-                print(rvars[j].extent);
+                print(red_vars[j].extent);
             }
             stream << ", ";
         }
         
 
         // Substract one from r_i
-        stream << c_print_name_pvl(rvars[i].var) << " - 1";
+        stream << c_print_name_pvl(red_vars[i].var) << " - 1";
         // The remaining reduction variables are placed as is
-        for(int k=i+1; k<(int)rvars.size(); k++)
-            stream << ", " << c_print_name_pvl(rvars[k].var);
+        for(int k=i+1; k<(int)red_vars.size(); k++)
+            stream << ", " << c_print_name_pvl(red_vars[k].var);
         // Close function call
         stream << ") : ";
     }
     // If there are different arguments or a predicate we only go conditionally to the actual definition
     if(!different_args.empty() || def.predicate().defined()){
-        
+        Expr condition;
         for(size_t i = 0; i < different_args.size(); i++) {
-            print(different_args[i]);
-            if (i + 1 < different_args.size() || def.predicate().defined()) {
-                stream << " && ";
-            }
+            condition = i == 0 ? different_args[i] : (condition && different_args[i]);
         }
         if(def.predicate().defined()){
-            print(def.predicate());
+            condition = condition.defined() ? (condition && def.predicate()) : def.predicate();
         }
+        print_no_parens(condition);
 
         stream << " ? ";
     }
@@ -743,11 +741,11 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
         for (size_t i = 0; i < original_args.size(); i++) {
             stream << c_print_name_pvl(original_args[i]) << ", ";
         }
-        for (size_t i = 0; i < rvars.size(); i++) {
-            stream << c_print_name_pvl(rvars[i].var);
+        for (size_t i = 0; i < red_vars.size(); i++) {
+            stream << c_print_name_pvl(red_vars[i].var);
             // Only the first one gets reduced
             if(i==0) stream << " - 1";
-            if (i + 1 < rvars.size()) {
+            if (i + 1 < red_vars.size()) {
                 stream << ", ";
             }
         }
@@ -755,6 +753,9 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
     }
     stream << ";\n";
 
+    for (size_t i = 0; i < red_vars.size(); i++) {
+        reduction_vars.pop(red_vars[i].var);
+    }
 }
 
 void PVLPrinter::print_type(const Type &type) {

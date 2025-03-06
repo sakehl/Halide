@@ -352,6 +352,30 @@ public:
     SimplifyUsingBounds() = default;
 };
 
+class HasHeapDependentCall: public IRVisitor {
+    using IRVisitor::visit;
+
+    void visit(const Call *op) override {
+        if (op->call_type == Call::Image) {
+            result = true;
+        }
+        IRVisitor::visit(op);
+    }
+
+    void visit(const Load *op) override {
+        result = true;
+        IRVisitor::visit(op);
+    }
+public:
+    bool result{false};
+};
+
+bool is_heap_dependent(Expr &e) {
+    HasHeapDependentCall h;
+    e.accept(&h);
+    return h.result;
+}
+
 class TrimNoOps : public IRMutator {
     using IRMutator::visit;
 
@@ -418,6 +442,7 @@ class TrimNoOps : public IRMutator {
             i.max = i.max + 1;
         }
 
+        vector<Annotation> new_annotations;
         // Truncate the loop bounds to the region over which it's not
         // a no-op.
         Expr old_max = op->min + op->extent;
@@ -432,10 +457,42 @@ class TrimNoOps : public IRMutator {
         } else {
             new_max = old_max;
         }
+        if(is_heap_dependent(new_min)){
+            new_annotations.emplace_back(AnnExpr::make(
+                op->is_parallel() ? AnnotationType::Context : AnnotationType::LoopInvariant,
+                new_min_var == new_min
+                // Call::make(Bool(), Call::no_simp, {new_min_var == new_min}, Call::PureIntrinsic)
+                ));
+        }
+        if(is_heap_dependent(new_max)){
+            new_annotations.emplace_back(AnnExpr::make(
+                op->is_parallel() ? AnnotationType::Context : AnnotationType::LoopInvariant,
+                new_max_var == new_max
+                // Call::make(Bool(), Call::no_simp, {new_max_var == new_max}, Call::PureIntrinsic)
+                ));
+        }
 
         Expr new_extent = new_max_var - new_min_var;
+        vector<Annotation> all_annotations;
+        // Insert new annotations after the last resource annotation
+        int pos = -1;
+        for(int j=0; j<(int)op->annotations.size(); j++){
+            if(op->annotations[j].as<AnnExpr>()->condition.type() == Resource()){
+                pos = j;
+            }
+        }
+        if(pos == -1){
+            all_annotations.insert(all_annotations.end(), new_annotations.begin(), new_annotations.end());
+        }
 
-        Stmt stmt = For::make(op->name, new_min_var, new_extent, op->for_type, op->device_api, body, op->annotations);
+        for(int j=0; j<(int)op->annotations.size(); j++){
+            all_annotations.emplace_back(std::move(op->annotations[j]));
+            if(j == pos){
+                all_annotations.insert(all_annotations.end(), new_annotations.begin(), new_annotations.end());
+            }
+        }
+
+        Stmt stmt = For::make(op->name, new_min_var, new_extent, op->for_type, op->device_api, body, all_annotations);
         stmt = LetStmt::make(new_max_name, new_max, stmt);
         stmt = LetStmt::make(new_min_name, new_min, stmt);
         stmt = LetStmt::make(old_max_name, old_max, stmt);

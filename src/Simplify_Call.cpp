@@ -814,6 +814,9 @@ Expr Simplify::visit(const Call *op, ExprInfo *bounds) {
         // There are other PureExterns we don't bother with (e.g. fast_inverse_f32)...
         // just fall thru and take the general case.
         debug(2) << "Simplifier: unhandled PureExtern: " << op->name;
+    } else if (op->is_intrinsic(Call::no_simp)) {
+        // We do not want to simplify the argument of a no_simp intrinsic.
+        return op;
     }
 
     // No else: we want to fall thru from the PureExtern clause.

@@ -4324,6 +4324,8 @@ void AnnotationPrinter::visit(const Call *op) {
         stream << name << "(";
         print_list(op->args);
         stream << ")";
+    } else if(op->is_intrinsic(Call::no_simp)){
+        print(op->args[0]);
     } else {
         stream << op->name << "(";
         print_list(op->args);

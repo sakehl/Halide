@@ -468,16 +468,17 @@ public:
     }
 
     void add_antecedent(Expr ant, bool is_predicate=false){
-        for(auto &a: anns){
-             a = Halide::Internal::add_antecedent(ant, a);
-        }
+        
         if(!is_predicate){
+            for(auto &a: anns){
+                a = Halide::Internal::add_antecedent(ant, a);
+            }
             for(auto &p: perms){
                 p = Halide::Internal::add_antecedent(ant, p);
             }
-        }
-        for(auto &i: reduction_invariants){
-            i = Halide::implies(ant, i);
+            for(auto &i: reduction_invariants){
+                i = Halide::implies(ant, i);
+            }
         }
     }
 };
@@ -1746,9 +1747,9 @@ protected:
         bool is_serial = for_loop->for_type == ForType::Serial;
 
         if(for_loop->is_parallel())
-            factor = Mul::make(factor, for_loop->extent);
+            factor = factor*for_loop->extent * 2;
         else 
-            factor = Mul::make(factor,  make_const(Int(32), 2));
+            factor = factor*2;
 
         Stmt body = mutate(for_loop->body);
         

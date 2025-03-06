@@ -700,6 +700,7 @@ const char *const intrinsic_op_names[] = {
     "mulhi_shr",
     "mux",
     "null",
+    "no_simp",
     "perm",
     "pointer_length",
     "popcount",

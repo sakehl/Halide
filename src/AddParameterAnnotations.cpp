@@ -353,7 +353,7 @@ class AddParameterAnnotations : public IRMutator {
 
     Stmt visit(const For *for_loop) override {
         if(for_loop->is_parallel()){
-            parallel_read_factor.push_back(for_loop->extent);
+            parallel_read_factor.push_back(for_loop->extent * 2);
         } else {
             parallel_read_factor.push_back(make_const(Int(32), 2));
         }

@@ -32,6 +32,7 @@ private:
     bool in_annotations;
     bool in_reduction;
     bool buffer_annotation;
+    Scope<> reduction_vars;
 
     // The function name we are currently translating
     std::string func_name;
@@ -77,7 +78,7 @@ private:
 
     void print_ann(const std::vector<Annotation> &anns, bool has_reduction = false);
 
-    void print_reduction_ann(const std::vector<Annotation> &anns, const std::vector<ReductionVariable> &rvars);
+    void print_reduction_ann(const std::vector<Annotation> &anns, const std::vector<ReductionVariable> &red_vars);
 
     void print_type(const Type &type);
 
