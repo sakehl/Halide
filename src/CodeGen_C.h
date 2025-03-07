@@ -42,7 +42,8 @@ public:
     CodeGen_C(std::ostream &dest,
               const Target &target,
               OutputKind output_kind = CImplementation,
-              const std::string &include_guard = "");
+              const std::string &include_guard = "",
+              bool const_unique_buffers = false);
     ~CodeGen_C() override;
 
     /** Emit the declarations contained in the module as C code. */
@@ -77,6 +78,10 @@ protected:
 
     // Instead of making new variables for each calculation, inline as much as possible.
     bool inl = true;
+    bool const_unique_buffers = false;
+    int unique_id = 1;
+    std::map<std::string, int> unique_buffer_ids;
+    std::set<std::string> input_buffers;
 
     /** An ID for the most recently generated ssa variable */
     std::string id;
@@ -172,10 +177,12 @@ protected:
     bool is_pvl() {
         return output_kind == PVL;
     }
+    
+    void emit_shape_struct();
 
-    void emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitted);
+    void emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitted, std::set<Type> *const_buffers_emitted);
 
-    void emit_buffer(Type t);
+    void emit_buffer(Type t, bool const_buffer);
 
     /** Open a new C scope (i.e. throw in a brace, increase the indent) */
     void open_scope();

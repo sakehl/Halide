@@ -940,7 +940,8 @@ public:
                       const std::vector<Annotation> &pipeline_anns,
                       const std::string &fn_name = "",
                       const Target &target = get_target_from_environment(),
-                      bool check_only_memory_safety = false);
+                      bool check_only_memory_safety = false,
+                      bool const_unique_buffers = true);
 
     void translate_to_pvl(const std::string &filename,
                       const std::vector<Argument> &args,

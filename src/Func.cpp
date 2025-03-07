@@ -3178,10 +3178,11 @@ void Func::compile_to_header(const string &filename, const vector<Argument> &arg
 }
 
 void Func::compile_to_c(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,
-                        const string &fn_name, const Target &target, bool check_only_memory_safety) {
+                        const string &fn_name, const Target &target, bool check_only_memory_safety,
+                        bool const_unique_buffers) {
     // For HaliVer the targets must contain this
     Target newt = target.with_feature(Halide::Target::NoAsserts).with_feature(Halide::Target::NoBoundsQuery);
-    pipeline().compile_to_c(filename, args, fn_name, pipeline_anns, newt, check_only_memory_safety);
+    pipeline().compile_to_c(filename, args, fn_name, pipeline_anns, newt, check_only_memory_safety, const_unique_buffers);
 }
 
 void Func::compile_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns,

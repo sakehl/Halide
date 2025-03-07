@@ -275,7 +275,8 @@ public:
                       const std::string &fn_name,
                       const std::vector<Annotation> &pipeline_anns,
                       const Target &target = get_target_from_environment(),
-                      bool check_only_memory_safety = false);
+                      bool check_only_memory_safety = false,
+                      bool const_unique_buffers = false);
 
     void compile_to_pvl(const std::string &filename,
                       const std::vector<Argument> &,
@@ -351,7 +352,8 @@ public:
                              const Target &target = get_target_from_environment(),
                              LinkageType linkage_type = LinkageType::ExternalPlusMetadata,
                              bool remove_annotations = false,
-                             const std::vector<Annotation> &pipeline_anns = {});
+                             const std::vector<Annotation> &pipeline_anns = {},
+                             bool const_unique_buffers = false);
 
     /** Eagerly jit compile the function to machine code. This
      * normally happens on the first call to realize. If you're

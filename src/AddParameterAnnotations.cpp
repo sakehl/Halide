@@ -347,6 +347,9 @@ class AddParameterAnnotations : public IRMutator {
     map<string,vector<AnnotationMaker>> proven_annotations;
     map<string, vector<tuple<Expr,Expr,Expr>>> buffer_constraints;
 
+    // Input buffers are used as constants, thus no permissions necessary
+    bool const_input_buffers = false;
+
     vector<Expr> parallel_read_factor;
 
     using IRMutator::visit;
@@ -475,11 +478,14 @@ class AddParameterAnnotations : public IRMutator {
         BufferInfo info = process_dimensions(par);
 
         AnnotationMaker pmaker(info);
-        proven_annotations[par.name()].emplace_back(pmaker);
-
-        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
-        Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, read(2)) );
-        top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
+        if(!const_input_buffers){
+            proven_annotations[par.name()].emplace_back(pmaker);
+            
+            Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(),
+                par,const_true(), ModulusRemainder(), Expr());
+            Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, read(2)) );
+            top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
+        }
 
         for(const auto& ann :par.annotations()){
             const auto *ann_expr = ann.as<AnnExpr>();
@@ -499,7 +505,8 @@ class AddParameterAnnotations : public IRMutator {
 public:
     vector<Annotation> top_level;
 
-    AddParameterAnnotations(vector<Parameter> input, vector<Function> output, vector<Annotation> pipeline_annotations) {
+    AddParameterAnnotations(vector<Parameter> input, vector<Function> output
+        , vector<Annotation> pipeline_annotations, bool const_input_buffers): const_input_buffers(const_input_buffers) {
         for(auto &i: input){
             get_input_annotations(i);
         }
@@ -564,11 +571,12 @@ public:
 
 }  // namespace
 
-pair<Stmt, vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, vector<Parameter> input, vector<Function> output, vector<Annotation> pipeline_anns) {
+pair<Stmt, vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, vector<Parameter> input,
+     vector<Function> output, vector<Annotation> pipeline_anns, bool const_input_buffers) {
     UpdateInputBufferCallsToFunction uibctf(input);
     Stmt s = uibctf.mutate(stmt);
 
-    AddParameterAnnotations apa(input, output, pipeline_anns);
+    AddParameterAnnotations apa(input, output, pipeline_anns, const_input_buffers);
     s = apa.mutate(s);
     return pair<Stmt, vector<Annotation>>(s, apa.top_level);
 }

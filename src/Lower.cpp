@@ -91,7 +91,8 @@ Module lower(const vector<Function> &output_funcs,
              bool trace_pipeline,
              const vector<IRMutator *> &custom_passes,
              bool remove_annotations,
-             const vector<Annotation> &pipeline_anns) {
+             const vector<Annotation> &pipeline_anns,
+             bool const_unique_buffers) {
     auto time_start = std::chrono::high_resolution_clock::now();
 
     std::vector<std::string> namespaces;
@@ -331,7 +332,7 @@ Module lower(const vector<Function> &output_funcs,
     }
 
     vector<Annotation> top_level_annotations;
-    std::tie(s, top_level_annotations) = add_pipeline_annotations(s, input_buffers, outputs, pipeline_anns);
+    std::tie(s, top_level_annotations) = add_pipeline_annotations(s, input_buffers, outputs, pipeline_anns, const_unique_buffers);
 
     debug(1) << "Unpacking buffer arguments...\n";
     s = unpack_buffers(s);

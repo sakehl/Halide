@@ -39,6 +39,18 @@ bool endsWith(const string &str, const string &suffix) {
     return str.size() >= suffix.size() && 0 == str.compare(str.size() - suffix.size(), suffix.size(), suffix);
 }
 
+string get_original_buf(const Expr &buf){
+    const Variable *v = buf.as<Variable>();
+    internal_assert(v && ends_with(v->name, ".buffer"));
+    string output = v->name;
+    output.erase(output.length() - string(".buffer").length());
+    return  output;
+}
+
+string get_buf(const Expr &buf){
+    return  c_print_name(get_original_buf(buf));
+}
+
 // HALIDE_MUST_USE_RESULT defined here is intended to exactly
 // duplicate the definition in HalideRuntime.h (so that either or
 // both can be present, in any order).
@@ -511,7 +523,7 @@ string buffer_header(string type){
     return ss.str();
 }
 
-string buffer_annotations(string buffer_name, Type t, int dimensions, Indentation indent, bool is_pvl){
+string buffer_annotations(string buffer_name, Type t, int dimensions, Indentation indent, bool is_pvl, bool is_const){
     std::ostringstream o;
 
     // std::ostringstream min_val_s;
@@ -533,15 +545,23 @@ string buffer_annotations(string buffer_name, Type t, int dimensions, Indentatio
         }
         o << ";\n";
     } else {
-        o << indent << "context buffer_"<< type_to_c_type(t, false) << "(" << buffer_name << ", 1\\2, " << dimensions << ");\n";
+        string type;
+        if(is_const){
+            type = "const_";
+        } else {
+            type = "";
+        }
+        type += type_to_c_type(t, false);
+
+        o << indent << "context buffer_"<< type << "(" << buffer_name << ", 1\\2, " << dimensions << ");\n";
         for(int i =0; i< dimensions; i++){
-            o << indent << "context dim_perm(" << buffer_name << "->dim, 1\\2, "<< i <<");\n";
+            o << indent << "context dim_perm(" << buffer_name << "->shape.dim, 1\\2, "<< i <<");\n";
         } 
         o << indent << "context \\pointer_length(" << buffer_name << "->host) == "
-        << buffer_name << "->dim[" << dimensions-1 <<"].extent"
-        << " * " << buffer_name << "->dim[" << dimensions-1 <<"].stride";
+        << buffer_name << "->shape.dim[" << dimensions-1 <<"].extent"
+        << " * " << buffer_name << "->shape.dim[" << dimensions-1 <<"].stride";
         // for(int i =0; i< dimensions; i++){
-        //     o << " + abs(" << buffer_name << "->dim[" << i <<"].stride"  ") * (" << buffer_name << "->dim[" << i <<"].extent"  " - 1)";
+        //     o << " + abs(" << buffer_name << "->shape.dim[" << i <<"].stride"  ") * (" << buffer_name << "->shape.dim[" << i <<"].extent"  " - 1)";
         // }
         o << ";\n";
     }
@@ -657,9 +677,10 @@ string find_load_id(Expr load, std::vector<std::map<Expr, std::string, IRDeepCom
 
 }  // namespace
 
-CodeGen_C::CodeGen_C(ostream &s, const Target &t, OutputKind output_kind, const std::string &guard)
-    : IRPrinter(s), id("$$ BAD ID $$"), target(t), output_kind(output_kind),
-      extern_c_open(false), inside_atomic_mutex_node(false), emit_atomic_stores(false), using_vector_typedefs(false) {
+CodeGen_C::CodeGen_C(ostream &s, const Target &t, OutputKind output_kind, const std::string &guard, bool const_unique_buffers)
+    : IRPrinter(s), const_unique_buffers(const_unique_buffers), id("$$ BAD ID $$"), target(t), output_kind(output_kind),
+      extern_c_open(false), inside_atomic_mutex_node(false), emit_atomic_stores(false), using_vector_typedefs(false)
+      {
     load_ids.push_back({});
     
     if(is_pvl()){
@@ -1832,18 +1853,79 @@ void CodeGen_C::forward_declare_type_if_needed(const Type &t) {
     forward_declared.insert(t.handle_type);
 }
 
-void CodeGen_C::emit_buffer(Type t) {
-    string type = print_type(t);
-    string type_cap = type;
-    for (auto & c: type_cap) c = (char)toupper(c);
+void CodeGen_C::emit_shape_struct() {
+    // /** The dimensionality of the buffer. */
+    // int32_t dimensions;
 
-    const char *buffer_decl = R"INLINE_CODE(
+    // /** The shape of the buffer. Halide does not own this array - you
+    const char *shape_decl = R"INLINE_CODE(
+struct halide_shape {
+
     /** The dimensionality of the buffer. */
     int32_t dimensions;
 
     /** The shape of the buffer. Halide does not own this array - you
      * must manage the memory for it yourself. */
     struct halide_dimension_t *dim;
+};
+
+/*@ 
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
+    requires 0 <= d && d < \pointer_length(buf->dim);
+    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d].min, 1\2);
+@*/
+/*@ pure @*/ inline int _halide_buffer_get_min(struct halide_shape *buf , int d) {
+    return buf->dim[d].min;
+}
+
+/*@ 
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
+    requires 0 <= d && d < \pointer_length(buf->dim);
+    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d].min, 1\2) ** Perm(buf->dim[d].extent, 1\2);
+@*/
+/*@ pure @*/ inline int _halide_buffer_get_max(struct halide_shape *buf , int d) {
+    return buf->dim[d].min + buf->dim[d].extent - 1;
+}
+
+/*@ 
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
+    requires 0 <= d && d < \pointer_length(buf->dim);
+    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d].extent, 1\2);
+@*/
+/*@ pure @*/ inline int _halide_buffer_get_extent(struct halide_shape *buf , int d) {
+    return buf->dim[d].extent;
+}
+
+/*@ 
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
+    requires 0 <= d && d < \pointer_length(buf->dim);
+    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d].stride, 1\2);
+@*/
+/*@ pure @*/ inline int _halide_buffer_get_stride(struct halide_shape *buf , int d) {
+    return buf->dim[d].stride;
+}
+)INLINE_CODE";
+    stream << shape_decl;
+}
+
+void CodeGen_C::emit_buffer(Type t, bool const_buffer) {
+    string type = (const_unique_buffers ? (const_buffer ? "const " : "/*@unique<0>@*/ ") : "") + print_type(t);
+    string type_cap = type;
+    for (auto & c: type_cap) c = (char)toupper(c);
+    std::string type_name = (const_buffer ? "const_" : "") + print_type(t);
+
+    const char *buffer_decl = R"INLINE_CODE(
+    /** Contains dimensionality and shape of the buffer. Halide does not own this array - you
+     * must manage the memory for it yourself. */
+    struct halide_shape shape;
 
     /** A pointer to the start of the data in main memory. In terms of
      * the Halide coordinate system, this is the address of the min
@@ -1852,78 +1934,34 @@ void CodeGen_C::emit_buffer(Type t) {
 )INLINE_CODE";
     stream
         << "#ifndef HALIDE_BUFFER_TYPE_" << type_cap << "\n"
-        << "#define HALIDE_BUFFER_TYPE_" << type_cap << "\n";
-    stream << "struct halide_buffer_" << type << " {\n"
-        << buffer_decl
-        << "    " << type << " *host;\n"
-        << "};\n\n";
-        ;
-    stream 
+        << "#define HALIDE_BUFFER_TYPE_" << type_cap << "\n"
+        << "struct halide_buffer_" << type_name << " {\n"
+        << buffer_decl << "    " << type << " *host;\n"
+        << "};\n\n"
         << "/*@ \n"
-        << " requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
-        << " requires Perm(buf->host, 1\\2);\n"
+        << " requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n";
+    if(!const_buffer){
+        stream << " requires Perm(buf->host, 1\\2);\n";
+    }
+    stream
         << " @*/\n"
-        << "/*@ pure @*/ inline " << type << " *_halide_buffer_get_host_" << type << "(struct halide_buffer_" << type << " *buf) {\n"
+        << "/*@ pure @*/ inline " << type << " *_halide_buffer_get_host_" << type_name << "(struct halide_buffer_" << type_name << " *buf) {\n"
         << "    return buf->host;\n"
         << "}\n"
         << "\n"
-        << "/*@ \n"
-        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
-        << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
-        << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
-        << "    requires Perm(&buf->dim[d], 1\\2);\n"
-        << "    requires Perm(buf->dim[d].min, 1\\2);\n"
-        << "@*/\n"
-        << "/*@ pure @*/ inline int _halide_buffer_get_min_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
-        << "    return buf->dim[d].min;\n"
-        << "}\n"
-        << "\n"
-        << "/*@ \n"
-        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
-        << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
-        << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
-        << "    requires Perm(&buf->dim[d], 1\\2);\n"
-        << "    requires Perm(buf->dim[d].min, 1\\2) ** Perm(buf->dim[d].extent, 1\\2);\n"
-        << "@*/\n"
-        << "/*@ pure @*/ inline int _halide_buffer_get_max_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
-        << "    return buf->dim[d].min + buf->dim[d].extent - 1;\n"
-        << "}\n"
-        << "\n"
-        << "/*@ \n"
-        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
-        << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
-        << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
-        << "    requires Perm(&buf->dim[d], 1\\2);\n"
-        << "    requires Perm(buf->dim[d].extent, 1\\2);\n"
-        << "@*/\n"
-        << "/*@ pure @*/ inline int _halide_buffer_get_extent_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
-        << "    return buf->dim[d].extent;\n"
-        << "}\n"
-        << "\n"
-        << "/*@ \n"
-        << "    requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n"
-        << "    requires Perm(buf->dim, 1\\2) ** buf->dim != NULL;\n"
-        << "    requires 0 <= d && d < \\pointer_length(buf->dim);\n"
-        << "    requires Perm(&buf->dim[d], 1\\2);\n"
-        << "    requires Perm(buf->dim[d].stride, 1\\2);\n"
-        << "@*/\n"
-        << "/*@ pure @*/ inline int _halide_buffer_get_stride_" << type << "(struct halide_buffer_" << type << " *buf, int d) {\n"
-        << "    return buf->dim[d].stride;\n"
-        << "}\n"
-        << "\n"
         << "/*@\n"
-        << "inline resource buffer_"<< type <<"(struct halide_buffer_" << type << " *buf, rational p, int n_dims) = \n"
+        << "inline resource buffer_"<< type_name <<"(struct halide_buffer_" << type_name << " *buf, rational p, int n_dims) = \n"
         << " buf != NULL **\n"
         << " \\pointer_length(buf) == 1 **\n"
         << " Perm(buf, p) **\n"
-        << " Perm(&buf->dim, p) **\n"
-        << " buf->dim != NULL **\n"
-        << " \\pointer_length(buf->dim) == n_dims **\n"
+        << " Perm(&buf->shape, p) **\n"
+        << " Perm(&buf->shape.dim, p) **\n"
+        << " buf->shape.dim != NULL **\n"
+        << " \\pointer_length(buf->shape.dim) == n_dims **\n"
         << " Perm(&buf->host, p) **\n"
         << " buf->host != NULL;\n"
         << "@*/\n"
-        << "#endif //HALIDE_BUFFER_TYPE_" << type_cap << "\n"
-        ;
+        << "#endif //HALIDE_BUFFER_TYPE_" << type_cap << "\n";
 }
 
 string get_simple_type(Type t){
@@ -1933,17 +1971,19 @@ string get_simple_type(Type t){
     return "";
 }
 
-void CodeGen_C::emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitted){
+void CodeGen_C::emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitted, std::set<Type> *const_buffers_emitted){
     for(const auto &a: f.args){
-        if(a.is_buffer() && buffers_emitted->count(a.type) == 0){
+        if(const_unique_buffers){
+            if(a.is_input() && a.is_buffer() && const_buffers_emitted->count(a.type) == 0){
+                const_buffers_emitted->insert(a.type);
+                emit_buffer(a.type, true);
+            } else if(a.is_buffer() && buffers_emitted->count(a.type) == 0){
+                buffers_emitted->insert(a.type);
+                emit_buffer(a.type, false);
+            }
+        } else if(a.is_buffer() && buffers_emitted->count(a.type) == 0){
             buffers_emitted->insert(a.type);
-            emit_buffer(a.type);
-        }
-    }
-
-    for(const auto &a: f.args){
-        if(a.is_buffer()){
-            stream << "//@ pure " << get_simple_type(a.type) << " pure" << print_name(a.name) << "(int x);\n";
+            emit_buffer(a.type, false);
         }
     }
 }
@@ -1958,9 +1998,11 @@ void CodeGen_C::compile(const Module &input) {
     stream << "\n@*/\n";
 
     if(!is_pvl()){
+        emit_shape_struct();
         std::set<Type> buffers_emitted;
+        std::set<Type> const_buffers_emitted;
         for (const auto &f : input.functions()) {
-            emit_buffers(f, &buffers_emitted);
+            emit_buffers(f, &buffers_emitted, &const_buffers_emitted);
         }
     }
 
@@ -2078,7 +2120,8 @@ void CodeGen_C::compile(const LoweredFunc &f) {
 
         for (size_t i = 0; i < args.size(); i++) {
             if (args[i].is_buffer()) {
-                stream << buffer_annotations(print_name(args[i].name) + "_buffer", args[i].type, args[i].dimensions, get_indent(), is_pvl());
+                stream << buffer_annotations(print_name(args[i].name) + "_buffer", 
+                args[i].type, args[i].dimensions, get_indent(), is_pvl(), const_unique_buffers && args[i].is_input());
             }
         }
 
@@ -2170,19 +2213,23 @@ void CodeGen_C::compile(const LoweredFunc &f) {
     for (size_t i = 0; i < args.size(); i++) {
         string name = print_name(args[i].name);
         if (args[i].is_buffer()) {
-            stream << buffer_annotations(name + "_buffer", args[i].type, args[i].dimensions, get_indent(), is_pvl());
+            stream << buffer_annotations(name + "_buffer", args[i].type, args[i].dimensions, 
+                get_indent(), is_pvl(), const_unique_buffers && args[i].is_input());
         }
     }
 
     // Needed for VerCors, otherwise it cannot always instantiate that buffers must be different 
     // Strictly speaking different input buffers can be the same, but we don't allow that here
-    for (size_t i = 0; i < args.size(); i++) {
-        if (args[i].is_buffer()) {
-            for( size_t j = 0; j<i; j++){
-                if(args[j].is_buffer() && compare_halide_type_codes(args[i].type.code(), args[j].type.code()) ){
-                    stream << get_indent() << "context " 
-                        << print_name(args[i].name) << "_buffer->host != "
-                        << print_name(args[j].name) << "_buffer->host;\n";
+    if(!const_unique_buffers){
+        for (size_t i = 0; i < args.size(); i++) {
+            if (args[i].is_buffer() ) {
+                for( size_t j = 0; j<i; j++){
+                    if(args[j].is_buffer()
+                        && compare_halide_type_codes(args[i].type.code(), args[j].type.code()) ){
+                        stream << get_indent() << "context " 
+                            << print_name(args[i].name) << "_buffer->host != "
+                            << print_name(args[j].name) << "_buffer->host;\n";
+                    }
                 }
             }
         }
@@ -2206,8 +2253,18 @@ void CodeGen_C::compile(const LoweredFunc &f) {
     stream << "int " << simple_name << "(";
     for (size_t i = 0; i < args.size(); i++) {
         if (args[i].is_buffer()) {
+            if(const_unique_buffers && args[i].is_output()){
+                stream << "/*@unique_pointer_field<host, " << unique_id << ">@*/ ";
+                unique_buffer_ids[args[i].name] = unique_id;
+                unique_id++;
+            }
+
             stream << "struct halide_buffer_";
             if(args[i].type.is_int_or_uint() || args[i].type.is_float()){
+                if(const_unique_buffers && args[i].is_input()){
+                    stream << "const_";
+                    input_buffers.insert(args[i].name);
+                }
                 stream << print_type(args[i].type, AppendSpace);
             } else {
                 internal_error << "Unsupported type " << args[i].type << " for buffer.\n";
@@ -3074,14 +3131,23 @@ string CodeGen_C::print_extern_call(const Call *op) {
         args.insert(args.begin(), "_ucon");
     }
     rhs << op->name;
-
-    if(starts_with(op->name, "_halide_buffer_")){
+    if(op->name.compare(Call::buffer_get_host) == 0){
         const Variable *v = op->args[0].as<Variable>();
         Type t = buffer_types.get(v->name).type;
         rhs << "_" << print_type(t);
+        rhs << "(" << with_commas(args) << ")";
+    } else if(starts_with(op->name, "_halide_buffer_get_")){
+        // It tries to access to shape of the buffer
+        rhs << "(";
+        rhs <<"&" << args[0] << "->shape";
+        for (size_t i = 1; i < op->args.size(); ++i) {
+            rhs << ", " << args[i];
+        }
+        rhs << ")";
+    } else {
+        rhs << "(" << with_commas(args) << ")";
     }
     
-    rhs << "(" << with_commas(args) << ")";
     return rhs.str();
 }
 
@@ -3232,6 +3298,16 @@ void CodeGen_C::visit(const Store *op) {
 void CodeGen_C::visit(const Let *op) {
     string id_value = print_expr(op->value);
     Expr body = op->body;
+    const Call *c = op->value.as<Call>();
+    if(const_unique_buffers && c && c->name.compare(Call::buffer_get_host) == 0){
+        // Get host buffer, so we want the correct qualifier
+        string buf = get_original_buf(c->args[0]);
+        if(input_buffers.count(buf) != 0){
+            stream << "const ";
+        } else {
+            stream << "/*@unique<"<< unique_buffer_ids[buf] << ">@*/ ";
+        } 
+    }
     if (inl || is_pvl() || op->value.type().is_handle()) {
         // The body might contain a Load that references this directly
         // by name, so we can't rewrite the name.
@@ -3308,8 +3384,20 @@ void CodeGen_C::visit(const LetStmt *op) {
             }
             const Variable *v = c->args[0].as<Variable>();
             Type t = buffer_types.get(v->name).type;
-            stream << get_indent() << print_type(t) << "* " << print_name(op->name) << " = " 
-                << "_halide_buffer_get_host_" << print_type(t) << "(" << with_commas(args) << ");\n";
+            string buf = get_original_buf(c->args[0]);
+            stream << get_indent();
+            string type = "";
+            if(const_unique_buffers){
+                if(input_buffers.count(buf) != 0){
+                    stream << "const ";
+                    type = "const_";
+                } else {
+                    stream << "/*@unique<"<< unique_buffer_ids[buf] << ">@*/ ";
+                }
+            }
+            type += print_type(t);
+            stream << print_type(t) << "* " << print_name(op->name) << " = " 
+                << "_halide_buffer_get_host_" << type << "(" << with_commas(args) << ");\n";
 
             op->body.accept(this);
             return;
@@ -4203,14 +4291,6 @@ void AnnotationPrinter::visit(const Mod *op) {
     stream << ")";
 }
 
-string get_buf(const Expr &buf){
-    const Variable *v = buf.as<Variable>();
-    internal_assert(v && ends_with(v->name, ".buffer"));
-    string output = v->name;
-    output.erase(output.length() - string(".buffer").length());
-    return  c_print_name(output);
-}
-
 void AnnotationPrinter::print_buffer_helper(const Expr &buf, const Expr &dim, string content){
     const IntImm *dimn = dim.as<IntImm>();
     internal_assert(dimn && dimn->value >= 0);
@@ -4223,7 +4303,7 @@ void AnnotationPrinter::print_buffer_helper(const Expr &buf, const Expr &dim, st
         internal_assert(dimn->value<=3);
         stream << "." << content << "_" << dimn->value;
     } else {
-        stream << "->dim[" << dimn->value << "]." << content << "";
+        stream << "->shape.dim[" << dimn->value << "]." << content << "";
     }
 }
 

@@ -312,10 +312,12 @@ void Pipeline::compile_to_c(const string &filename,
                             const string &fn_name,
                             const vector<Annotation> &pipeline_anns,
                             const Target &target,
-                            bool check_only_memory_safety) {
+                            bool check_only_memory_safety,
+                            bool const_unique_buffers) {
     contents->invalidate_cache();                    
-    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, check_only_memory_safety, pipeline_anns);
-    m.compile(single_output(filename, m, Output::c_source));
+    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, check_only_memory_safety, pipeline_anns,
+        const_unique_buffers);
+    m.compile(single_output(filename, m, Output::c_source), const_unique_buffers);
 }
 
 void Pipeline::compile_to_pvl(const string &filename,
@@ -552,7 +554,8 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
                                    const Target &target,
                                    const LinkageType linkage_type,
                                    bool remove_annotations,
-                                   const vector<Annotation> &pipeline_anns) {
+                                   const vector<Annotation> &pipeline_anns,
+                                   bool const_unique_buffers) {
     user_assert(defined()) << "Can't compile undefined Pipeline.\n";
 
     for (const Function &f : contents->outputs) {
@@ -615,7 +618,7 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
 
         contents->module = lower(contents->outputs, new_fn_name, target, lowering_args,
                                  linkage_type, contents->requirements, contents->trace_pipeline,
-                                 custom_passes, remove_annotations, pipeline_anns);
+                                 custom_passes, remove_annotations, pipeline_anns, const_unique_buffers);
     }
 
     return contents->module;

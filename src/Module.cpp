@@ -566,7 +566,7 @@ std::map<std::string, std::string> Module::get_metadata_name_map() const {
     return contents->metadata_name_map;
 }
 
-void Module::compile(const std::map<Output, std::string> &output_files) const {
+void Module::compile(const std::map<Output, std::string> &output_files, bool const_unique_buffers) const {
     validate_outputs(output_files);
 
     // output stmt and html prior to resolving submodules. We need to
@@ -654,7 +654,8 @@ void Module::compile(const std::map<Output, std::string> &output_files) const {
         Internal::CodeGen_C cg(file,
                                target(),
                                target().has_feature(Target::CPlusPlusMangling) ? Internal::CodeGen_C::CPlusPlusHeader : Internal::CodeGen_C::CHeader,
-                               output_files.at(Output::c_header));
+                               output_files.at(Output::c_header),
+                               const_unique_buffers);
         cg.compile(*this);
     }
     if (contains(output_files, Output::c_source)) {
@@ -662,7 +663,10 @@ void Module::compile(const std::map<Output, std::string> &output_files) const {
         std::ofstream file(output_files.at(Output::c_source));
         Internal::CodeGen_C cg(file,
                                target(),
-                               target().has_feature(Target::CPlusPlusMangling) ? Internal::CodeGen_C::CPlusPlusImplementation : Internal::CodeGen_C::CImplementation);
+                               target().has_feature(Target::CPlusPlusMangling) ? Internal::CodeGen_C::CPlusPlusImplementation : Internal::CodeGen_C::CImplementation,
+                               "",
+                               const_unique_buffers
+                               );
         cg.compile(*this);
     }
     if (contains(output_files, Output::pvl)) {
@@ -670,7 +674,9 @@ void Module::compile(const std::map<Output, std::string> &output_files) const {
         std::ofstream file(output_files.at(Output::pvl));
         Internal::CodeGen_C cg(file,
                                target(),
-                               Internal::CodeGen_C::PVL);
+                               Internal::CodeGen_C::PVL,
+                               "",
+                               const_unique_buffers);
         cg.compile(*this);
     }
     if (contains(output_files, Output::python_extension)) {
