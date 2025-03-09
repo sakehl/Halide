@@ -614,11 +614,6 @@ bool apply_split_directive(const Split &s, vector<ReductionVariable> &rvars,
 
 }  // anonymous namespace
 
-Stage &Stage::annotate(const Annotation &a){
-      definition.add_annotation(a);
-      return *this;
-}
-
 Func Stage::rfactor(const RVar &r, const Var &v) {
     return rfactor({{r, v}});
 }
@@ -2041,11 +2036,6 @@ Func Func::copy_to_host() {
     return copy_to_device(DeviceAPI::Host);
 }
 
-Func &Func::annotate(const Annotation &a) {
-    invalidate_cache();
-    Stage(func, func.definition(), 0).annotate(a);
-    return *this;
-}
 
 Func &Func::split(const VarOrRVar &old, const VarOrRVar &outer, const VarOrRVar &inner, const Expr &factor, TailStrategy tail) {
     invalidate_cache();
@@ -2677,7 +2667,7 @@ Func::operator Stage() const {
 
 Func &Func::requires(const Expr &condition) {
     invalidate_cache();
-    func.add_annotation(AnnotationType::Require,condition);
+    func.add_annotation(AnnotationType::Require, condition);
     return *this;
 }
 

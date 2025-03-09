@@ -794,7 +794,10 @@ Stmt build_loop_nest(
             const Dim &dim = stage_s.dims()[nest[i].dim_idx];
             Expr min = Variable::make(Int(32), nest[i].name + ".loop_min");
             Expr extent = Variable::make(Int(32), nest[i].name + ".loop_extent");
-            vector<Annotation> anns = nest_annotation_maker.get_for_loop_annotations(nest[i].name, dim, min, extent);
+            
+            vector<Annotation> anns;
+            if(!ends_with(nest[i].name, ".__outermost")) 
+                anns = nest_annotation_maker.get_for_loop_annotations(nest[i].name, dim, min, extent);
             
             stmt = For::make(nest[i].name, min, extent, dim.for_type, dim.device_api, stmt, anns);
         }
@@ -1339,9 +1342,10 @@ public:
     const Stmt &injected_stmt;
     bool found_level;
     const LoopLevel &level;
+    map<string,vector<Annotation>> &collected_annotations;
 
-    InjectStmt(const Stmt &s, const LoopLevel &level)
-        : injected_stmt(s), found_level(false), level(level) {
+    InjectStmt(const Stmt &s, const LoopLevel &level, map<string,vector<Annotation>> &collected_annotations)
+        : injected_stmt(s), found_level(false), level(level), collected_annotations(collected_annotations) {
     }
 
 private:
@@ -1350,12 +1354,21 @@ private:
     Stmt visit(const For *for_loop) override {
         Stmt body = mutate(for_loop->body);
 
+        bool same = true;
+        vector<Annotation> new_annotations = for_loop->annotations;
+        if(collected_annotations.find(for_loop->name) != collected_annotations.end()){
+            for(const auto &ann: collected_annotations[for_loop->name]){
+                new_annotations.emplace_back(ann);
+                same = false;
+            }
+        }
+
         if (level.match(for_loop->name)) {
             body = Block::make(body, injected_stmt);
             found_level = true;
         }
 
-        if (body.same_as(for_loop->body)) {
+        if (same && body.same_as(for_loop->body)) {
             return for_loop;
         } else {
             return For::make(for_loop->name,
@@ -1364,13 +1377,13 @@ private:
                              for_loop->for_type,
                              for_loop->device_api,
                              body,
-                             for_loop->annotations);
+                             new_annotations);
         }
     }
 };
 
 // Inject 'injected' into 'root' at 'level'.
-Stmt inject_stmt(Stmt root, Stmt injected, const LoopLevel &level) {
+Stmt inject_stmt(Stmt root, Stmt injected, const LoopLevel &level, map<string,vector<Annotation>> &collected_annotations) {
     if (!root.defined()) {
         return injected;
     }
@@ -1380,7 +1393,7 @@ Stmt inject_stmt(Stmt root, Stmt injected, const LoopLevel &level) {
     if (level.is_inlined() || level.is_root()) {
         return Block::make(root, injected);
     }
-    InjectStmt injector(injected, level);
+    InjectStmt injector(injected, level, collected_annotations);
     root = injector.mutate(root);
     internal_assert(injector.found_level);
     return root;
@@ -1830,6 +1843,35 @@ protected:
 
 };
 
+class CollectAnnotationsComputeWith: public IRVisitor {
+public:
+    CollectAnnotationsComputeWith(map<string, string> &loops,
+        map<string,vector<Annotation>> &collected_annotations) : loops(loops), collected_annotations(collected_annotations) { }
+
+    map<string, string> &loops;
+    map<string,vector<Annotation>> &collected_annotations;
+    
+    void check_correct(){
+        for(const auto &l: loops){
+            internal_assert(collected_annotations.find(l.second) != collected_annotations.end());
+        }
+    }
+private:    
+    using IRVisitor::visit;
+
+    void visit(const For *op) override {
+        if(loops.find(op->name) != loops.end()){
+            string new_loop_name = loops[op->name];
+            for(const auto &a: op->annotations){
+                Expr new_var = Variable::make(Int(32), new_loop_name);
+                collected_annotations[new_loop_name].emplace_back(substitute(op->name, new_var, a));
+            }
+        }
+
+        IRVisitor::visit(op);
+    }    
+};
+
 class InjectFunctionRealization : public IRMutator {
 public:
     InjectFunctionRealization(const vector<Function> &funcs,
@@ -2140,7 +2182,8 @@ private:
     Stmt build_produce_definition(const Function &f, const string &prefix, const Definition &def, bool is_update,
                                   map<string, Expr> &replacements,
                                   vector<pair<string, Expr>> &add_lets,
-                                  map<string, set<string>> &aliases) {
+                                  map<string, set<string>> &aliases,
+                                  map<string, string> &loops) {
         const vector<Dim> &dims = def.schedule().dims();  // From inner to outer
         const LoopLevel &fuse_level = def.schedule().fuse_level().level;
 
@@ -2181,8 +2224,10 @@ private:
                 replacements.emplace(var + ".loop_max", val);
 
                 string var_fused = fused_name(var_orig);
+                loops[var] = var_orig;
                 aliases[var_fused].emplace(std::move(var_orig));
                 aliases[var_fused].emplace(std::move(var));
+                
             }
         }
 
@@ -2454,22 +2499,40 @@ private:
         map<string, Expr> replacements;
         vector<pair<string, Expr>> add_lets;
         map<string, set<string>> aliases;
+        map<string, string> loops;
 
+        int stage_nr = 0;
         for (const auto &func_stage : stage_order) {
             const auto &f = func_stage.first;
+            map<string,vector<Annotation>> collected_annotations;
 
             if (f.has_extern_definition() && (func_stage.second == 0)) {
                 const Stmt &produce_def = Internal::build_extern_produce(env, f, target);
-                producer = inject_stmt(producer, produce_def, LoopLevel::inlined().lock());
+                internal_assert(stage_nr == 0) << "Not supported by HaliVer";
+                producer = inject_stmt(producer, produce_def, LoopLevel::inlined().lock(), collected_annotations);
                 continue;
             }
 
             string def_prefix = f.name() + ".s" + std::to_string(func_stage.second) + ".";
             const auto &def = (func_stage.second == 0) ? f.definition() : f.updates()[func_stage.second - 1];
-
+            
+            
             const Stmt &produce_def = build_produce_definition(f, def_prefix, def, func_stage.second > 0,
-                                                               replacements, add_lets, aliases);
-            producer = inject_stmt(producer, produce_def, def.schedule().fuse_level().level);
+                                                               replacements, add_lets, aliases, loops);
+            
+            
+            if(stage_nr>0){
+                // Loops contains the names of the outer dimensions which are shared.
+                // removed_loop: The first elements are the original loop. (which we remove)
+                // kept_loop: The second elements are the loop we are injecting towards (kept loop)
+                // So we need to get all the annotations of the removed_loop, insert them into the kept_loop
+                // And substitute the removed_loop var with the kept_loop var
+                CollectAnnotationsComputeWith ca(loops, collected_annotations);
+                produce_def.accept(&ca);
+            }
+
+            producer = inject_stmt(producer, produce_def, def.schedule().fuse_level().level, collected_annotations);
+            stage_nr++;
         }
 
         internal_assert(producer.defined());
@@ -2496,7 +2559,7 @@ private:
             }
         }
         // TODO Lars vd Haak: Don't know what to do with shifts yet
-        internal_assert(shifts.empty());
+        internal_assert(shifts.empty()) << "Shifts not supported for HaliVer";
         // TODO neither with replacements
         // internal_assert(replacements.empty());
 

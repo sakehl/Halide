@@ -108,15 +108,15 @@ pure int abs(int x) = x >= 0 ? x : -x;
 pure float abs(float x) = x >= 0 ? x : -x;
 
 // Euclidean division is defined internally in VerCors
-pure int hdiv(int x, int y) = y == 0 ? 0 : \euclidean_div(x, y);
-pure int hmod(int x, int y) = y == 0 ? 0 : \euclidean_mod(x, y);
+inline pure int hdiv(int x, int y) = y == 0 ? 0 : \euclidean_div(x, y);
+inline pure int hmod(int x, int y) = y == 0 ? 0 : \euclidean_mod(x, y);
 @*/
 
 /*@
   requires y != 0;
   ensures \result == \euclidean_div(x, y);
 @*/
-inline int /*@ pure @*/ div_eucl(int x, int y)
+inline /*@ pure @*/ int div_eucl(int x, int y)
 {
     int q = x/y;
     int r = x%y;
@@ -127,55 +127,59 @@ inline int /*@ pure @*/ div_eucl(int x, int y)
   requires y != 0;
   ensures \result == \euclidean_mod(x, y);
 @*/
-inline int /*@ pure @*/ mod_eucl(int x, int y)
+inline /*@ pure @*/ int mod_eucl(int x, int y)
 {
     int r = x%y;
     return (x >= 0 || r == 0) ? r : r + abs(y);
 }
 
-static inline int /*@ pure @*/ min(int x, int y) {return x < y ? x : y;}
-static inline float /*@ pure @*/ fast_inverse_f32(float x) {return 1.0f/x;}
+static inline /*@ pure @*/ int min(int x, int y) {return x < y ? x : y;}
+static inline /*@ pure @*/ float fast_inverse_f32(float x) {return 1.0f/x;}
 
-static inline float /*@ pure @*/ sqrt_f32(float x) {return sqrtf(x);}
-static inline float /*@ pure @*/ sin_f32(float x) {return sinf(x);}
-static inline float /*@ pure @*/ asin_f32(float x) {return asinf(x);}
-static inline float /*@ pure @*/ cos_f32(float x) {return cosf(x);}
-static inline float /*@ pure @*/ acos_f32(float x) {return acosf(x);}
-static inline float /*@ pure @*/ tan_f32(float x) {return tanf(x);}
-static inline float /*@ pure @*/ atan_f32(float x) {return atanf(x);}
-static inline float /*@ pure @*/ atan2_f32(float x, float y) {return atan2f(x, y);}
-static inline float /*@ pure @*/ sinh_f32(float x) {return sinhf(x);}
-static inline float /*@ pure @*/ cosh_f32(float x) {return coshf(x);}
-static inline float /*@ pure @*/ tanh_f32(float x) {return tanhf(x);}
-static inline float /*@ pure @*/ hypot_f32(float x, float y) {return hypotf(x, y);}
-static inline float /*@ pure @*/ exp_f32(float x) {return expf(x);}
-static inline float /*@ pure @*/ log_f32(float x) {return logf(x);}
-static inline float /*@ pure @*/ pow_f32(float x, float y) {return powf(x, y);}
-static inline float /*@ pure @*/ floor_f32(float x) {return floorf(x);}
-static inline float /*@ pure @*/ ceil_f32(float x) {return ceilf(x);}
-static inline float /*@ pure @*/ round_f32(float x) {return roundf(x);}
+static inline /*@ pure @*/ float sqrt_f32(float x) {return sqrtf(x);}
+static inline /*@ pure @*/ float sin_f32(float x) {return sinf(x);}
+static inline /*@ pure @*/ float asin_f32(float x) {return asinf(x);}
+static inline /*@ pure @*/ float cos_f32(float x) {return cosf(x);}
+static inline /*@ pure @*/ float acos_f32(float x) {return acosf(x);}
+static inline /*@ pure @*/ float tan_f32(float x) {return tanf(x);}
+static inline /*@ pure @*/ float atan_f32(float x) {return atanf(x);}
+static inline /*@ pure @*/ float atan2_f32(float x, float y) {return atan2f(x, y);}
+static inline /*@ pure @*/ float sinh_f32(float x) {return sinhf(x);}
+static inline /*@ pure @*/ float cosh_f32(float x) {return coshf(x);}
+static inline /*@ pure @*/ float tanh_f32(float x) {return tanhf(x);}
+static inline /*@ pure @*/ float hypot_f32(float x, float y) {return hypotf(x, y);}
+static inline /*@ pure @*/ float exp_f32(float x) {return expf(x);}
+static inline /*@ pure @*/ float log_f32(float x) {return logf(x);}
+static inline /*@ pure @*/ float pow_f32(float x, float y) {return powf(x, y);}
+static inline /*@ pure @*/ float floor_f32(float x) {return floorf(x);}
+static inline /*@ pure @*/ float ceil_f32(float x) {return ceilf(x);}
+static inline /*@ pure @*/ float round_f32(float x) {return roundf(x);}
 
-static inline double /*@ pure @*/ sqrt_f64(double x) {return sqrt(x);}
-static inline double /*@ pure @*/ sin_f64(double x) {return sin(x);}
-static inline double /*@ pure @*/ asin_f64(double x) {return asin(x);}
-static inline double /*@ pure @*/ cos_f64(double x) {return cos(x);}
-static inline double /*@ pure @*/ acos_f64(double x) {return acos(x);}
-static inline double /*@ pure @*/ tan_f64(double x) {return tan(x);}
-static inline double /*@ pure @*/ atan_f64(double x) {return atan(x);}
-static inline double /*@ pure @*/ atan2_f64(double x, double y) {return atan2(x, y);}
-static inline double /*@ pure @*/ sinh_f64(double x) {return sinh(x);}
-static inline double /*@ pure @*/ cosh_f64(double x) {return cosh(x);}
-static inline double /*@ pure @*/ tanh_f64(double x) {return tanh(x);}
-static inline double /*@ pure @*/ hypot_f64(double x, double y) {return hypot(x, y);}
-static inline double /*@ pure @*/ exp_f64(double x) {return exp(x);}
-static inline double /*@ pure @*/ log_f64(double x) {return log(x);}
-static inline double /*@ pure @*/ pow_f64(double x, double y) {return pow(x, y);}
-static inline double /*@ pure @*/ floor_f64(double x) {return floor(x);}
-static inline double /*@ pure @*/ ceil_f64(double x) {return ceil(x);}
-static inline double /*@ pure @*/ round_f64(double x) {return round(x);}
+static inline /*@ pure @*/ double sqrt_f64(double x) {return sqrt(x);}
+static inline /*@ pure @*/ double sin_f64(double x) {return sin(x);}
+static inline /*@ pure @*/ double asin_f64(double x) {return asin(x);}
+static inline /*@ pure @*/ double cos_f64(double x) {return cos(x);}
+static inline /*@ pure @*/ double acos_f64(double x) {return acos(x);}
+static inline /*@ pure @*/ double tan_f64(double x) {return tan(x);}
+static inline /*@ pure @*/ double atan_f64(double x) {return atan(x);}
+static inline /*@ pure @*/ double atan2_f64(double x, double y) {return atan2(x, y);}
+static inline /*@ pure @*/ double sinh_f64(double x) {return sinh(x);}
+static inline /*@ pure @*/ double cosh_f64(double x) {return cosh(x);}
+static inline /*@ pure @*/ double tanh_f64(double x) {return tanh(x);}
+static inline /*@ pure @*/ double hypot_f64(double x, double y) {return hypot(x, y);}
+static inline /*@ pure @*/ double exp_f64(double x) {return exp(x);}
+static inline /*@ pure @*/ double log_f64(double x) {return log(x);}
+static inline /*@ pure @*/ double pow_f64(double x, double y) {return pow(x, y);}
+static inline /*@ pure @*/ double floor_f64(double x) {return floor(x);}
+static inline /*@ pure @*/ double ceil_f64(double x) {return ceil(x);}
+static inline /*@ pure @*/ double round_f64(double x) {return round(x);}
 
-//inline float nan_f32() {return NAN;}
-inline float nan_f32() {return 0.0f;}
+//@ ghost const float NAN;
+
+inline float nan_f32() {return NAN;}
+
+//@  
+float nan_f32() {return 0.0f;}
 /*@
 inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) = 
  Perm(&dim[i], 1\2) **
@@ -1876,7 +1880,7 @@ struct halide_shape {
     requires Perm(&buf->dim[d], 1\2);
     requires Perm(buf->dim[d].min, 1\2);
 @*/
-/*@ pure @*/ inline int _halide_buffer_get_min(struct halide_shape *buf , int d) {
+inline /*@ pure @*/ int _halide_buffer_get_min(struct halide_shape *buf , int d) {
     return buf->dim[d].min;
 }
 
@@ -1887,7 +1891,7 @@ struct halide_shape {
     requires Perm(&buf->dim[d], 1\2);
     requires Perm(buf->dim[d].min, 1\2) ** Perm(buf->dim[d].extent, 1\2);
 @*/
-/*@ pure @*/ inline int _halide_buffer_get_max(struct halide_shape *buf , int d) {
+inline /*@ pure @*/ int _halide_buffer_get_max(struct halide_shape *buf , int d) {
     return buf->dim[d].min + buf->dim[d].extent - 1;
 }
 
@@ -1898,7 +1902,7 @@ struct halide_shape {
     requires Perm(&buf->dim[d], 1\2);
     requires Perm(buf->dim[d].extent, 1\2);
 @*/
-/*@ pure @*/ inline int _halide_buffer_get_extent(struct halide_shape *buf , int d) {
+inline /*@ pure @*/ int _halide_buffer_get_extent(struct halide_shape *buf , int d) {
     return buf->dim[d].extent;
 }
 
@@ -1909,7 +1913,7 @@ struct halide_shape {
     requires Perm(&buf->dim[d], 1\2);
     requires Perm(buf->dim[d].stride, 1\2);
 @*/
-/*@ pure @*/ inline int _halide_buffer_get_stride(struct halide_shape *buf , int d) {
+inline /*@ pure @*/ int _halide_buffer_get_stride(struct halide_shape *buf , int d) {
     return buf->dim[d].stride;
 }
 )INLINE_CODE";
@@ -1918,9 +1922,9 @@ struct halide_shape {
 
 void CodeGen_C::emit_buffer(Type t, bool const_buffer) {
     string type = (const_unique_buffers ? (const_buffer ? "const " : "/*@unique<0>@*/ ") : "") + print_type(t);
-    string type_cap = type;
-    for (auto & c: type_cap) c = (char)toupper(c);
     std::string type_name = (const_buffer ? "const_" : "") + print_type(t);
+    string type_cap = type_name;
+    for (auto & c: type_cap) c = (char)toupper(c);
 
     const char *buffer_decl = R"INLINE_CODE(
     /** Contains dimensionality and shape of the buffer. Halide does not own this array - you
@@ -1945,7 +1949,7 @@ void CodeGen_C::emit_buffer(Type t, bool const_buffer) {
     }
     stream
         << " @*/\n"
-        << "/*@ pure @*/ inline " << type << " *_halide_buffer_get_host_" << type_name << "(struct halide_buffer_" << type_name << " *buf) {\n"
+        << "inline /*@ pure @*/ " << type << " *_halide_buffer_get_host_" << type_name << "(struct halide_buffer_" << type_name << " *buf) {\n"
         << "    return buf->host;\n"
         << "}\n"
         << "\n"
@@ -2554,6 +2558,7 @@ void CodeGen_C::visit(const Div *op) {
     }
 
     int bits;
+    // HaliVer does not support bit shifts
     if (false && is_const_power_of_two_integer(op->b, &bits)) {
         visit_binop(op->type, op->a, make_const(op->a.type(), bits), ">>");
     } else if (op->type.is_int_or_uint()) {
@@ -3658,6 +3663,9 @@ void CodeGen_C::visit(const Allocate *op) {
 
     string op_name = print_name(op->name);
     string op_type = print_type(op->type, AppendSpace);
+    // Add unique type towards allocation
+    string unique_type = "/*@unique<"+to_string(unique_id)+">@*/ " + op_type;
+    unique_id++;
 
     if(is_pvl()){
         string size_id;
@@ -3702,6 +3710,7 @@ void CodeGen_C::visit(const Allocate *op) {
         allocations.push(op->name, alloc);
         heap_allocations.push(op->name);
         string newe = print_expr(op->new_expr);
+        // Not sure if uniqueness is correct, so lets not add it
         stream << get_indent() << op_type << "*" << op_name << " = (" << op_type << "*)" << newe << ";\n";
     } else {
         constant_size = op->constant_allocation_size();
@@ -3774,7 +3783,7 @@ void CodeGen_C::visit(const Allocate *op) {
 
         string type_no_space = print_type(op->type);
 
-        stream << get_indent() << op_type;
+        stream << get_indent() << unique_type;
 
         if (on_stack) {
             stream << op_name << "[" << size_id << "];\n";
@@ -3782,7 +3791,7 @@ void CodeGen_C::visit(const Allocate *op) {
             stream << "*"
                    << op_name
                    << " = ("
-                   << op_type
+                   << unique_type
                 //    << " *)halide_malloc(_ucon, sizeof("
                    << " *)malloc(sizeof("
                    << op_type
@@ -4267,11 +4276,15 @@ void AnnotationPrinter::visit(const Let *op) {
 
 void AnnotationPrinter::visit(const Div *op) {
     if(op->type.is_int_or_uint()){
-        stream << "\\euclidean_div(";
-        print_no_parens(op->a);
-        stream << ", ";
-        print_no_parens(op->b);
-        stream << ")";
+        if(can_prove(op->b != 0)){
+            stream << "\\euclidean_div(";
+        } else {
+            stream << "hdiv(";
+        }
+            print_no_parens(op->a);
+            stream << ", ";
+            print_no_parens(op->b);
+            stream << ")";
     } else {
         IRPrinter::visit(op);
     }
@@ -4279,7 +4292,11 @@ void AnnotationPrinter::visit(const Div *op) {
 
 void AnnotationPrinter::visit(const Mod *op) {
     if(op->type.is_int_or_uint()){   
-        stream << "hmod("; 
+        if(can_prove(op->b != 0)){
+            stream << "\\euclidean_mod(";
+        } else {
+            stream << "hmod(";
+        }
     } else if(op->type.is_float()) {
         stream << "fmod(";
     } else {

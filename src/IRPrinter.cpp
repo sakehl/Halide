@@ -986,6 +986,13 @@ void IRPrinter::visit(const Call *op) {
             stream << "(" << op->type << ")";
         }
     }
+    if(op->is_intrinsic(Call::ghost_args)){
+        print(op->args[0]);
+        return;
+    } else if(op->is_intrinsic(Call::lemma_flattened_array)){
+        return;
+    }
+
     stream << op->name << "(";
     print_list(op->args);
     stream << ")";

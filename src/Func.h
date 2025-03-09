@@ -109,8 +109,6 @@ public:
         return definition.schedule();
     }
 
-    Stage &annotate(const Annotation &a);
-
     /** Return a string describing the current var list taking into
      * account all the splits, reorders, and tiles. */
     std::string dump_argument_list() const;
@@ -2474,9 +2472,6 @@ public:
 
     /** Add the condition to the as reduction invariant, needed when using reduction domains. */
     Func &invariant(const Expr &condition);
-
-    /** Allows to add annotation to pure definition */
-    Func &annotate(const Annotation &a);
 };
 
 namespace Internal {

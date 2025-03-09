@@ -1034,6 +1034,7 @@ public:
         // bounds inference results so that we don't needlessly
         // complicate our bounds expressions.
         vector<pair<string, Expr>> wrappers;
+        vector<ScopedBinding<>> bindings;
         while (true) {
             if (const LetStmt *let = body.as<LetStmt>()) {
                 if (depends_on_bounds_inference(let->value)) {
@@ -1042,6 +1043,7 @@ public:
 
                 body = let->body;
                 wrappers.emplace_back(let->name, let->value);
+                bindings.emplace_back(let_vars_in_scope, let->name);
             } else if (const IfThenElse *if_then_else = body.as<IfThenElse>()) {
                 if (depends_on_bounds_inference(if_then_else->condition) ||
                     if_then_else->else_case.defined()) {
@@ -1096,39 +1098,43 @@ public:
         // Note that even though the loops are fused, the boxes touched of A and B might be totally different,
         // because e.g. B could be double-resolution (as happens when fusing yuv computations), so this
         // is not just a matter of giving A's box B's name as an alias.
+        set<pair<string, int>> fused_group;
         map<string, Box> boxes_for_fused_group;
         map<string, Function> stage_name_to_func;
+        if (producing >= 0) {
+            fused_group.insert(make_pair(f.name(), stage_index));
+        }
         if (!no_pipelines && producing >= 0 && !f.has_extern_definition()) {
             Scope<Interval> empty_scope;
             size_t last_dot = op->name.rfind('.');
             string var = op->name.substr(last_dot + 1);
 
-            set<pair<string, int>> fused_with_f;
+            // set<pair<string, int>> fused_with_f;
             for (const auto &pair : fused_pairs_in_groups[stages[producing].fused_group_index]) {
                 if (!((pair.func_1 == stages[producing].name) && ((int)pair.stage_1 == stage_index)) && is_fused_with_others(fused_groups, fused_pairs_in_groups,
                                                                                                                              f, stage_index,
                                                                                                                              pair.func_1, pair.stage_1, var)) {
-                    fused_with_f.insert(make_pair(pair.func_1, pair.stage_1));
+                    fused_group.insert(make_pair(pair.func_1, pair.stage_1));
                 }
                 if (!((pair.func_2 == stages[producing].name) && ((int)pair.stage_2 == stage_index)) && is_fused_with_others(fused_groups, fused_pairs_in_groups,
                                                                                                                              f, stage_index,
                                                                                                                              pair.func_2, pair.stage_2, var)) {
-                    fused_with_f.insert(make_pair(pair.func_2, pair.stage_2));
+                    fused_group.insert(make_pair(pair.func_2, pair.stage_2));
                 }
             }
 
-            if (fused_with_f.empty()) {
+            if (fused_group.size() == 1) {
                 boxes_for_fused_group[stage_name] = box_provided(body, stages[producing].name, empty_scope, func_bounds);
                 stage_name_to_func[stage_name] = f;
                 internal_assert((int)boxes_for_fused_group[stage_name].size() == f.dimensions());
             } else {
                 auto boxes = boxes_provided(body, empty_scope, func_bounds);
-                boxes_for_fused_group[stage_name] = boxes[stages[producing].name];
-                stage_name_to_func[stage_name] = f;
-                internal_assert((int)boxes_for_fused_group[stage_name].size() == f.dimensions());
-                for (const auto &fused : fused_with_f) {
+                for (const auto &fused : fused_group) {
                     string fused_stage_name = fused.first + ".s" + std::to_string(fused.second);
-                    boxes_for_fused_group[fused_stage_name] = boxes[fused.first];
+                    auto it = boxes.find(fused.first);
+                    if (it != boxes.end()) {
+                        boxes_for_fused_group[fused_stage_name] = it->second;
+                    }
                     for (const auto &fn : funcs) {
                         if (fn.name() == fused.first) {
                             stage_name_to_func[fused_stage_name] = fn;
@@ -1193,38 +1199,57 @@ public:
             // And the current bounds on its reduction variables, and
             // variables from extern for loops.
             if (producing >= 0) {
-                const Stage &s = stages[producing];
-                vector<string> vars;
-                if (s.func.has_extern_definition()) {
-                    vars = s.func.args();
-                }
-                if (stages[producing].stage > 0) {
-                    for (const ReductionVariable &rv : s.rvars) {
-                        vars.push_back(rv.var);
-                    }
-                }
-                for (const string &i : vars) {
-                    string var = s.stage_prefix + i;
-                    Interval in = bounds_of_inner_var(var, body);
-                    if (in.is_bounded()) {
-                        // bounds_of_inner_var doesn't understand
-                        // GuardWithIf, but we know split rvars never
-                        // have inner bounds that exceed the outer
-                        // ones.
-                        if (!s.rvars.empty()) {
-                            in.min = max(in.min, Variable::make(Int(32), var + ".min"));
-                            in.max = min(in.max, Variable::make(Int(32), var + ".max"));
+                // Iterate over all fused stages to make sure that bounds for their reduction variables
+                // are included as well (see a detailed explanation of bounds for fused functions in the
+                // long comment above).
+                for (const auto &fused : fused_group) {
+                    size_t si = 0;
+                    // Find a Stage structure corresponding to a current fused stage.
+                    for (si = 0; si < stages.size(); si++) {
+                        if ((fused.first == stages[si].name) && fused.second == (int)stages[si].stage) {
+                            break;
                         }
+                    }
+                    internal_assert(si < stages.size());
+                    const Stage &s = stages[si];
 
-                        body = LetStmt::make(var + ".min", in.min, body);
-                        body = LetStmt::make(var + ".max", in.max, body);
-                    } else {
-                        // If it's not found, we're already in the
-                        // scope of the injected let. The let was
-                        // probably lifted to an outer level.
-                        Expr val = Variable::make(Int(32), var);
-                        body = LetStmt::make(var + ".min", val, body);
-                        body = LetStmt::make(var + ".max", val, body);
+                    vector<string> vars;
+                    if (s.func.has_extern_definition()) {
+                        vars = s.func.args();
+                    }
+                    if (s.stage > 0) {
+                        for (const ReductionVariable &rv : s.rvars) {
+                            vars.push_back(rv.var);
+                        }
+                    }
+                    for (const string &i : vars) {
+                        string var = s.stage_prefix + i;
+                        Interval in = bounds_of_inner_var(var, body);
+                        if (in.is_bounded()) {
+                            // bounds_of_inner_var doesn't understand
+                            // GuardWithIf, but we know split rvars never
+                            // have inner bounds that exceed the outer
+                            // ones.
+                            if (!s.rvars.empty()) {
+                                in.min = max(in.min, Variable::make(Int(32), var + ".min"));
+                                in.max = min(in.max, Variable::make(Int(32), var + ".max"));
+                            }
+                            body = LetStmt::make(var + ".min", in.min, body);
+                            body = LetStmt::make(var + ".max", in.max, body);
+                        } else {
+                            // If it's not found, we're already in the
+                            // scope of the injected let. The let was
+                            // probably lifted to an outer level.
+                            Expr val;
+                            if (let_vars_in_scope.contains(var + ".guarded")) {
+                                // Use a guarded version if it exists, for tighter bounds inference.
+                                val = Variable::make(Int(32), var + ".guarded");
+                            } else {
+                                val = Variable::make(Int(32), var);
+                            }
+                            body = LetStmt::make(var + ".min", val, body);
+                            body = LetStmt::make(var + ".max", val, body);
+                        }
                     }
                 }
             }
@@ -1244,6 +1269,12 @@ public:
         }
 
         return For::make(op->name, op->min, op->extent, op->for_type, op->device_api, body, op->annotations);
+    }
+
+    Scope<> let_vars_in_scope;
+    Stmt visit(const LetStmt *op) override {
+        ScopedBinding<> bind(let_vars_in_scope, op->name);
+        return IRMutator::visit(op);
     }
 
     Stmt visit(const ProducerConsumer *p) override {

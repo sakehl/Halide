@@ -1415,6 +1415,10 @@ Expr forall(const std::vector<std::string> &xs, Expr select, Expr main){
     return res;
 }
 
+Expr no_simp(Expr e){
+    return Internal::Call::make(e.type(), Internal::Call::no_simp, {e}, Internal::Call::PureIntrinsic);
+}
+
 Annotation make_ann(Internal::AnnotationType t, Expr cond){
     return Internal::AnnExpr::make(t, cond);
 }

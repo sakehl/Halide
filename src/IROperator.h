@@ -810,6 +810,8 @@ Expr forall(std::string x, Expr select, Expr main);
  */
 Expr forall(const std::vector<std::string> &xs, Expr select, Expr main);
 
+Expr no_simp(Expr e);
+
 Annotation requires(Expr cond);
 
 Annotation ensures(Expr cond);
