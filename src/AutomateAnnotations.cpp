@@ -318,8 +318,6 @@ class AutomaticAnnotations {
                     user_assert(ae->ann_type == AnnotationType::Ensure) 
                         << "Only ensure or invariant annotations are allowed for reduction functions";
                     new_ann_type = AnnotationType::Ensure;
-                    // new_ann_type = AnnotationType::LoopInvariant;
-                    // new_condition = implies(rvar_condition_after, new_condition);
                 }
             } else {
                 user_assert(ae->ann_type == AnnotationType::Ensure) << "Only ensure annotations are allowed for normal functions";
@@ -342,14 +340,7 @@ class AutomaticAnnotations {
             }
 
             if(!is_const_true(new_cond)){
-                if(has_rvar){
-                    // new_cond = implies(rvar_condition_before, new_cond);
-                    // Since it is an rvar, make it loop invariant directly
-                    // new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::LoopInvariant, new_cond));
-                    new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Require, new_cond));
-                } else {
-                    new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Require, new_cond));
-                }
+                new_def_annotations.emplace_back(AnnExpr::make(AnnotationType::Require, new_cond));
             }
         }
 

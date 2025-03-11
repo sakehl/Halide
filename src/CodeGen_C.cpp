@@ -220,67 +220,6 @@ pure bool lemma_2d_access(
  int a, int min_a, int stride_a, int extent_a,
  int b, int min_b, int stride_b, int extent_b);// = lemma_nonlinear(a-min_a, stride_a, extent_a) && lemma_nonlinear(b-min_b, stride_b, extent_b);
 
- requires a-min_a >= 0 && a-min_a < extent_a;
- requires b-min_b >= 0 && b-min_b < extent_b;
- requires c-min_c >= 0 && c-min_c < extent_c;
- requires stride_a > 0;
- requires stride_b >= extent_a * stride_a;
- requires stride_c >= extent_b * stride_b;
- 
- ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c;
- ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c < stride_c * extent_c;
- ensures \result;
- decreases;
-pure bool lemma_3d_access(
-  int a, int min_a, int stride_a, int extent_a,
-  int b, int min_b, int stride_b, int extent_b,
-  int c, int min_c, int stride_c, int extent_c
-);// = lemma_2d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b) && lemma_nonlinear(c-min_c, stride_c, extent_c);
-
-
- requires a-min_a >= 0 && a-min_a < extent_a;
- requires b-min_b >= 0 && b-min_b < extent_b;
- requires c-min_c >= 0 && c-min_c < extent_c;
- requires d-min_d >= 0 && d-min_d < extent_d;
- requires stride_a > 0;
- requires stride_b >= extent_a * stride_a;
- requires stride_c >= extent_b * stride_b;
- requires stride_d >= extent_c * stride_c;
-
- ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d;
- ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d < stride_d * extent_d;
- ensures \result;
- decreases;
-pure bool lemma_4d_access(
-  int a, int min_a, int stride_a, int extent_a,
-  int b, int min_b, int stride_b, int extent_b,
-  int c, int min_c, int stride_c, int extent_c,
-  int d, int min_d, int stride_d, int extent_d
-);// = lemma_3d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c) && lemma_nonlinear(d-min_d, stride_d, extent_d);
-
- requires a-min_a >= 0 && a-min_a < extent_a;
- requires b-min_b >= 0 && b-min_b < extent_b;
- requires c-min_c >= 0 && c-min_c < extent_c;
- requires d-min_d >= 0 && d-min_d < extent_d;
- requires e-min_e >= 0 && e-min_e < extent_e;
- requires stride_a > 0;
- requires stride_b >= extent_a * stride_a;
- requires stride_c >= extent_b * stride_b;
- requires stride_d >= extent_c * stride_c;
- requires stride_e >= extent_d * stride_d;
-
- ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e;
- ensures (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c + (d-min_d) * stride_d + (e-min_e) * stride_e < stride_e * extent_e;
- ensures \result;
- decreases;
-pure bool lemma_5d_access(
-  int a, int min_a, int stride_a, int extent_a,
-  int b, int min_b, int stride_b, int extent_b,
-  int c, int min_c, int stride_c, int extent_c,
-  int d, int min_d, int stride_d, int extent_d,
-  int e, int min_e, int stride_e, int extent_e
-);// = lemma_4d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b, c, min_c, stride_c, extent_c, d, min_d, stride_d, extent_d) && lemma_nonlinear(e-min_e, stride_e, extent_e);
-
 pure int split(int xi, int xo, int xmin, int factor) = xo*factor + xi +xmin;
 @*/
 #endif // HALIVER_GLOBALS
@@ -739,6 +678,68 @@ CodeGen_C::CodeGen_C(ostream &s, const Target &t, OutputKind output_kind, const 
 //            << halide_internal_initmod_inlined_c << "\n";
         ;           
         stream << "\n";
+        // generate non linear lemmas
+        stream << "// Non linear lemma's\n/*@\n";
+        for(int i=3; i<10; i++){
+            indent++;
+            vector<string> vars;
+            string vl = "x" + std::to_string(i-1);
+            for(int j=0; j<i; j++){
+                vars.emplace_back("x" + std::to_string(j));
+            }
+            for(const auto& v: vars){
+                //requires a-min_a >= 0 && a-min_a < extent_a;
+                stream << get_indent() << "requires "<< v <<"-min_"<< v <<" >= 0 && "
+                       << v <<"-min_"<< v <<" < extent_"<< v <<";\n";
+            }
+            stream << get_indent()<< "requires stride_x0 > 0;\n";
+            for(int j=1; j<i; j++){
+                string w = vars[j-1];
+                string v = vars[j];
+                // requires b-min_b >= 0 && b-min_b < extent_b;
+                stream << get_indent() << "requires stride_" << v << " >= " << "extent_" << w << " * stride_" << w << ";\n";
+            }
+            // ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c;
+            string access = "";
+            for(int j=1; j<i; j++){
+                string v = vars[j];
+                access = access + "(" + v + "-min_" + v + ") * stride_" + v;
+                if(j < i-1){
+                    access = access + " + ";
+                }
+            }
+            stream 
+                << get_indent() << "ensures 0 <= " << access << ";\n"
+                << get_indent() << "ensures " << access << "< stride_" << vl <<"* extent_" << vl << ";\n"
+                << "ensures \\result;\n"
+                << "decreases;\n";
+            indent--;
+            stream << get_indent() << "pure bool lemma_" << i << "d_access(\n";
+            indent++;
+            for(int j=0; j<i; j++){
+                string v = vars[j];
+                //int a, int min_a, int stride_a, int extent_a,
+                stream << get_indent() << "int " << v << ", int min_" << v << ", int stride_" << v 
+                    << ", int extent_" << v;
+                if(j < i-1)
+                    stream << ",\n";
+            }
+            indent--;
+            stream <<"\n"
+                << get_indent() << "); //="
+                << "lemma_" << i-1 << "d_access(";
+            // lemma_2d_access(a, min_a, stride_a, extent_a, b, min_b, stride_b, extent_b) &&
+            for(int j=0; j<i-1; j++){
+                string v = vars[j];
+                stream << v << ", min_" << v << ", stride_" << v << ", extent_" << v;
+                if(j < i-2)
+                    stream << ", ";
+            }
+            stream << ") && lemma_nonlinear("
+                << vl << "-min_" << vl << ", stride_" << vl << ", extent_" << vl << ");\n\n";
+
+        }
+        stream << "@*/\n";
     }
 
     // stream << kDefineMustUseResult << "\n";

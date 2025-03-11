@@ -150,6 +150,10 @@ public:
             if(!a.same_as(new_a)){
                 same = false;
             }
+            if(new_a.as<AnnExpr>() && is_const_true(new_a.as<AnnExpr>()->condition)){
+                // Skip annotations that are always true
+                continue;
+            }
             new_anns.emplace_back(new_a);
         }
         if(same){

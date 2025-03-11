@@ -1396,6 +1396,16 @@ Expr implies(Expr a, Expr b){
     return Internal::Implies::make(a,b);
 }
 
+Annotation implies(Expr a, Annotation b){
+    user_assert(b.defined()) << "Implies of undefined annotation.\n";
+    user_assert(a.type().is_bool()) << "Implies arguments must be of a boolean type.\n";
+    
+    const Internal::AnnExpr *ann = b.as<Internal::AnnExpr>();
+    user_assert(ann) << "Implies of undefined annotation.\n";
+    Expr new_condition = implies(a, ann->condition);
+    return Internal::AnnExpr::make(ann->ann_type, new_condition);
+}
+
 Expr forall(std::string x, Expr select, Expr main){
     std::vector<std::string> xs = {x};
     return forall(xs, select, main);

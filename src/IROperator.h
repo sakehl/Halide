@@ -800,6 +800,10 @@ Expr absd(Expr a, Expr b);
  */
 Expr implies(Expr a, Expr b);
 
+/** A logical construct where expression a implies b, used in annotations
+ */
+Annotation implies(Expr a, Annotation b);
+
 /** A logical construct we quantify over variable x, constrained by `cond`
  * for the main part. Used in annotations
  */

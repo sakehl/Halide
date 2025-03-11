@@ -275,6 +275,8 @@ Expr Simplify::visit(const Forall *op, ExprInfo *bounds) {
     Expr select = gfb.simplify_antecedent_and_push(op->select);
     Expr main = mutate(op->main, nullptr);
     gfb.pop();
+    if(is_const_true(main))
+        return const_true();
 
     if(const Forall* old_forall = main.as<Forall>()){
         std::vector<std::string> new_forall_vars = op->vars;

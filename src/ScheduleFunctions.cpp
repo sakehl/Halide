@@ -307,11 +307,10 @@ public:
 
         replacer[for_loop_v] = forall;
 
-        bounds = And::make(LE::make(loop_min, forall), LT::make(forall, Add::make(loop_min, extent)));
-        through_out_bounds = And::make(LE::make(loop_min, forall), LT::make(forall, for_loop));
-
-        up_to_bounds = And::make(LE::make(for_loop, forall), LT::make(forall, Add::make(loop_min, extent)));
-        static_bound = GT::make(extent, make_zero(extent.type()));
+        bounds =             loop_min <= forall && forall < loop_min + extent;
+        through_out_bounds = loop_min <= forall && forall < for_loop;
+        up_to_bounds =       for_loop <= forall && forall < loop_min + extent;
+        static_bound = extent > 0;
     }   
 };
 
@@ -326,7 +325,8 @@ class NestAnnotationMaker {
     tuple<string, Expr, Expr> last_reduction;
 
 public:
-    NestAnnotationMaker(vector<Annotation> &given_anns, vector<string> &rvars) : remaining_rvars(rvars), is_reduction_nest(!rvars.empty()){
+    NestAnnotationMaker(vector<Annotation> &given_anns, vector<string> &rvars) :
+        remaining_rvars(rvars), is_reduction_nest(!rvars.empty()){
         // Put all the different annotations in the correct vectors
         first_reduction_done = false;
         for(auto const &a: given_anns){
@@ -346,7 +346,7 @@ public:
         }
     }
 
-    vector<Annotation> get_for_loop_annotations(string name, Dim dim, Expr min, Expr extent) {
+    vector<Annotation> get_for_loop_annotations(string name, Dim dim, Expr min, Expr extent){
         LoopInvariantMaker lim = LoopInvariantMaker(name, min, extent);
         if(dim.is_rvar()){
             return make_reduction_loop(name, min, extent, lim);
@@ -355,7 +355,7 @@ public:
         }
     }
 
-    vector<Annotation> make_loop(bool is_serial, LoopInvariantMaker lim){
+    vector<Annotation> make_loop(bool is_serial, LoopInvariantMaker &lim){
         vector<Annotation> result;
 
         for(auto &p: perms){
@@ -417,7 +417,7 @@ public:
         return result;
     }
 
-    vector<Annotation> make_reduction_loop(string name, Expr min, Expr extent, LoopInvariantMaker lim){
+    vector<Annotation> make_reduction_loop(string name, Expr min, Expr extent, LoopInvariantMaker &lim){
         vector<Annotation> result;
 
         // Add permissions, but as loop invariants type
@@ -652,8 +652,10 @@ Stmt build_loop_nest(
         // Use 'var', the variable which bounds we're constraining as the
         // container name, so that we can use it later to check if a LetStmt
         // value depends on 'var'.
-        nest.emplace_back(Container::IfInner, 0, dim_var, likely(var >= min));
-        nest.emplace_back(Container::IfInner, 0, dim_var, likely(var <= max));
+        // rvars bounds bounds should not be added towards annotations
+        Container::Type t = stage_s.dims()[i].is_rvar() ? Container::IfPredicate : Container::IfInner;
+        nest.emplace_back(t, 0, dim_var, likely(var >= min));
+        nest.emplace_back(t, 0, dim_var, likely(var <= max));
         n_predicates_inner += 2;
     }
 
@@ -697,7 +699,7 @@ Stmt build_loop_nest(
          i++) {
         // Only push up IfThenElse.
         internal_assert(nest[i].value.defined());
-        internal_assert(nest[i].type == Container::IfInner);
+        internal_assert(nest[i].type == Container::IfInner || nest[i].type == Container::IfPredicate);
 
         // Cannot lift out the predicate guard if it contains call to non-pure function
         if (contains_impure_call(nest[i].value)) {
