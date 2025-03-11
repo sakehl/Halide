@@ -178,8 +178,6 @@ static inline /*@ pure @*/ double round_f64(double x) {return round(x);}
 
 inline float nan_f32() {return NAN;}
 
-//@  
-float nan_f32() {return 0.0f;}
 /*@
 inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) = 
  Perm(&dim[i], 1\2) **
@@ -1864,6 +1862,8 @@ void CodeGen_C::emit_shape_struct() {
 
     // /** The shape of the buffer. Halide does not own this array - you
     const char *shape_decl = R"INLINE_CODE(
+#ifndef HALIDE_BUFFER_SHAPE
+#define HALIDE_BUFFER_SHAPE
 struct halide_shape {
 
     /** The dimensionality of the buffer. */
@@ -1917,6 +1917,7 @@ inline /*@ pure @*/ int _halide_buffer_get_extent(struct halide_shape *buf , int
 inline /*@ pure @*/ int _halide_buffer_get_stride(struct halide_shape *buf , int d) {
     return buf->dim[d].stride;
 }
+#endif // HALIDE_BUFFER_SHAPE
 )INLINE_CODE";
     stream << shape_decl;
 }
