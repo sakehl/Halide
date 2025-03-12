@@ -918,7 +918,11 @@ Stmt build_provide_loop_nest(const map<string, Function> &env,
         const Specialization &s = specializations[i - 1];
         if (s.failure_message.empty()) {
             AnnotationMaker am;
-            Stmt then_case = build_provide_loop_nest(env, prefix, func, s.definition, start_fuse, is_update, am);
+            Definition s_def = s.definition.get_copy();
+            for(const auto &a: def.annotations()){
+                s_def.add_annotation(a);
+            }
+            Stmt then_case = build_provide_loop_nest(env, prefix, func, s_def, start_fuse, is_update, am);
             stmt = IfThenElse::make(s.condition, then_case, stmt);
         } else {
             internal_assert(equal(s.condition, const_true()));
