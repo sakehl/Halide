@@ -116,7 +116,7 @@ inline pure int hmod(int x, int y) = y == 0 ? 0 : \euclidean_mod(x, y);
   requires y != 0;
   ensures \result == \euclidean_div(x, y);
 @*/
-inline /*@ pure @*/ int div_eucl(int x, int y)
+/*@ pure @*/ int div_eucl(int x, int y)
 {
     int q = x/y;
     int r = x%y;
@@ -127,7 +127,7 @@ inline /*@ pure @*/ int div_eucl(int x, int y)
   requires y != 0;
   ensures \result == \euclidean_mod(x, y);
 @*/
-inline /*@ pure @*/ int mod_eucl(int x, int y)
+/*@ pure @*/ int mod_eucl(int x, int y)
 {
     int r = x%y;
     return (x >= 0 || r == 0) ? r : r + abs(y);
