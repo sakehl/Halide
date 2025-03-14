@@ -103,9 +103,11 @@ protected:
      * resulting var */
     std::string print_expr(const Expr &);
 
-    std::vector<std::string> print_lemma(const Expr &e, const std::string& buf, const std::string &idx);
+    bool alt_lemma = true;
+    std::vector<std::string> print_lemma(const Expr &e, const std::string& buf, const std::string &idx, std::string& result_idx);
 
-    std::tuple<std::string, std::vector<std::string>> print_access_annotations(const Expr &e, const std::string& buf, const std::string &idx);
+    std::tuple<std::string, std::vector<std::string>> print_access_annotations(const Expr &e, const std::string& buf, 
+        const std::string &idx, std::string& result_idx);
 
     /** Like print_expr, but cast the Expr to the given Type */
     std::string print_cast_expr(const Type &, const Expr &);

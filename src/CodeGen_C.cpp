@@ -699,7 +699,7 @@ CodeGen_C::CodeGen_C(ostream &s, const Target &t, OutputKind output_kind, const 
             }
             // ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c;
             string access = "";
-            for(int j=1; j<i; j++){
+            for(int j=0; j<i; j++){
                 string v = vars[j];
                 access = access + "(" + v + "-min_" + v + ") * stride_" + v;
                 if(j < i-1){
@@ -710,7 +710,7 @@ CodeGen_C::CodeGen_C(ostream &s, const Target &t, OutputKind output_kind, const 
                 << get_indent() << "ensures 0 <= " << access << ";\n"
                 << get_indent() << "ensures " << access << "< stride_" << vl <<"* extent_" << vl << ";\n"
                 << "ensures \\result;\n"
-                << "decreases;\n";
+                << get_indent() << "decreases;\n";
             indent--;
             stream << get_indent() << "pure bool lemma_" << i << "d_access(\n";
             indent++;
@@ -738,6 +738,69 @@ CodeGen_C::CodeGen_C(ostream &s, const Target &t, OutputKind output_kind, const 
 
         }
         stream << "@*/\n";
+
+        // Generate concrete access by these lemmas
+        for(int i=1; i<10; i++){
+            vector<string> vars;
+            string vl = "x" + std::to_string(i-1);
+            for(int j=0; j<i; j++){
+                vars.emplace_back("x" + std::to_string(j));
+            }
+            stream << get_indent()<< "/*@\n";
+            indent++;
+            for(const auto& v: vars){
+                //requires a-min_a >= 0 && a-min_a < extent_a;
+                stream << get_indent() << "requires "<< v <<"-min_"<< v <<" >= 0 && "
+                       << v <<"-min_"<< v <<" < extent_"<< v <<";\n";
+            }
+            stream << get_indent()<< "requires stride_x0 > 0;\n";
+            for(int j=1; j<i; j++){
+                string w = vars[j-1];
+                string v = vars[j];
+                // requires b-min_b >= 0 && b-min_b < extent_b;
+                stream << get_indent() << "requires stride_" << v << " >= " << "extent_" << w << " * stride_" << w << ";\n";
+            }
+            // ensures 0 <= (a-min_a) * stride_a + (b-min_b) * stride_b + (c-min_c) * stride_c;
+            string access = "";
+            for(int j=0; j<i; j++){
+                string v = vars[j];
+                access = access + "(" + v + "-min_" + v + ") * stride_" + v;
+                if(j < i-1){
+                    access = access + " + ";
+                }
+            }
+            stream 
+                << get_indent() << "requires idx == " << access << ";\n"
+                << get_indent() << "ensures \\result == idx;\n"
+                << get_indent() << "ensures lemma_" << i << "d_access(";
+            for(int j=0; j<i; j++){
+                string v = vars[j];
+                stream << v << ", min_" << v << ", stride_" << v << ", extent_" << v;
+                if(j < i-1)
+                    stream << ", ";
+            }
+            stream
+                << ");\n"
+                << get_indent() << "ensures 0 <= \\result;\n"
+                << get_indent() << "ensures \\result < stride_" << vl <<"* extent_" << vl << ";\n"
+                << get_indent() <<  "decreases;\n";
+            indent--;
+            stream << get_indent()<< "@*/\n";
+            stream << get_indent() << "/*@ pure @*/ int lemma_" << i << "d_access_concrete(int idx, \n";
+            indent++;
+            for(int j=0; j<i; j++){
+                string v = vars[j];
+                //int a, int min_a, int stride_a, int extent_a,
+                stream << get_indent() << "int " << v << ", int min_" << v << ", int stride_" << v 
+                    << ", int extent_" << v;
+                if(j < i-1)
+                    stream << ",\n";
+            }
+            indent--;
+            stream <<"\n"
+                << get_indent() << "){\n"
+                << get_indent() << " return idx;\n}\n";
+        }
     }
 
     // stream << kDefineMustUseResult << "\n";
@@ -3184,7 +3247,8 @@ void CodeGen_C::visit(const Load *op) {
         string id_index = print_expr(op->index);
         string after_ghost;
         vector<string> befores_ghost;
-        std::tie(after_ghost, befores_ghost) = print_access_annotations(op->lemma, name, id_index);
+        string result_idx;
+        std::tie(after_ghost, befores_ghost) = print_access_annotations(op->lemma, name, id_index, result_idx);
         if(!befores_ghost.empty()){
             rhs << "\n" << get_indent() << "/*@ with";
             indent++;
@@ -3205,7 +3269,7 @@ void CodeGen_C::visit(const Load *op) {
         } else {
             rhs << name;
         }
-        rhs << "[" << id_index << "]";
+        rhs << "[" << result_idx << "]";
         if(after_ghost != ""){
             rhs << "\n" << get_indent() << "/*@ then";
             indent++;
@@ -3254,12 +3318,12 @@ void CodeGen_C::visit(const Store *op) {
     // If we're writing a contiguous ramp, just store the vector.
     Expr dense_ramp_base = strided_ramp_base(op->index, 1);
     if (dense_ramp_base.defined()) {
-        // internal_error << "Unsupported Store by HaliVer";
+        user_warning << "Unsupported Store by HaliVer";
         internal_assert(op->value.type().is_vector());
         string id_ramp_base = print_expr(dense_ramp_base);
         stream << get_indent() << print_type(t) + "_ops::store(" << id_value << ", " << name << ", " << id_ramp_base << ");\n";
     } else if (op->index.type().is_vector()) {
-        // internal_error << "Unsupported Store by HaliVer";
+        user_warning << "Unsupported Store by HaliVer";
         // If index is a vector, scatter vector elements.
         internal_assert(t.is_vector());
         string id_index = print_expr(op->index);
@@ -3268,7 +3332,8 @@ void CodeGen_C::visit(const Store *op) {
         string id_index = print_expr(op->index);
         string after_ghost;
         vector<string> befores_ghost;
-        std::tie(after_ghost, befores_ghost) = print_access_annotations(op->lemma, name, id_index);
+        string result_idx;
+        std::tie(after_ghost, befores_ghost) = print_access_annotations(op->lemma, name, id_index, result_idx);
         if(!befores_ghost.empty()){
             stream << get_indent() << "/*@";
             indent++;
@@ -3292,7 +3357,7 @@ void CodeGen_C::visit(const Store *op) {
         } else {
             stream << name;
         }
-        stream << "[" << id_index << "]";
+        stream << "[" << result_idx << "]";
         stream << "= " << id_value << ";\n";
         if(after_ghost != ""){
             stream << get_indent() << "/*@ " << after_ghost << ";";
@@ -3935,7 +4000,7 @@ void CodeGen_C::visit(const AnnExpr *op) { }
 
 void CodeGen_C::visit(const Permission *op) { }
 
-vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx){
+vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx, string& result_idx){
     const Call *c = lemma.as<Call>();
     if(!c->is_intrinsic(Call::lemma_flattened_array)) internal_error << "Unexpected other call instead of lemma: " << c->name;
 
@@ -3943,6 +4008,7 @@ vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, cons
     int size = c->args.size();
     internal_assert(size % 4 == 0);
     int dim = size / 4;
+    vector<string> res;
 
     bool constant_dims = true;
     // If the first n-1 dimensions only have constant strides and extents, we do not need the lemma
@@ -3956,47 +4022,51 @@ vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, cons
     // If the last dimension has constant stride and extent, we do not need the lemma (one can be non-constant)
     constant_dims = constant_dims && (is_const(c->args[4*(dim-1)+2]) || is_const(c->args[4*(dim-1)+3]));
     if(constant_dims) return {};
-    Expr lem_cal = Call::make(UInt(1), "lemma_" + std::to_string(dim) + "d_access", c->args, Call::PureExtern);
-    AnnotationPrinter ap(lemma_s, is_pvl(), false, buffer_types, load_ids);
-    lemma_s << "ghost ";
-    ap.print(lem_cal);
 
-    // lemma_" << dim <<"d_access(";  
-    // for(int i = 0; i < size; i++){
-    //     ap.print(c->args[i]);
-    //     if(i != size - 1){
-    //         lemma_s << ", ";
-    //     }
-    // }
-    // lemma_s << ");";
-
-    // assert_s << "assert (" << idx << ") >= 0 && (" << idx << ") < \\pointer_length("
-    //     << buf << ")";
-
-    AnnotationPrinter apa(assert_s, is_pvl(), false, buffer_types, load_ids);
-    assert_s << "assert " << idx << " == ";
-    for(int i = 0; i < dim; i++){
-        if(i != 0){
-            assert_s << " + ";
+    if(!alt_lemma){
+        Expr lem_cal = Call::make(UInt(1), "lemma_" + std::to_string(dim) + "d_access", c->args, Call::PureExtern);
+        AnnotationPrinter ap(lemma_s, is_pvl(), false, buffer_types, load_ids);
+        lemma_s << "ghost ";
+        ap.print(lem_cal);
+        AnnotationPrinter apa(assert_s, is_pvl(), false, buffer_types, load_ids);
+        assert_s << "assert " << idx << " == ";
+        for(int i = 0; i < dim; i++){
+            if(i != 0){
+                assert_s << " + ";
+            }
+            apa.print((c->args[4*i] - c->args[4*i+1])*c->args[4*i+2]);
         }
-        apa.print((c->args[4*i] - c->args[4*i+1])*c->args[4*i+2]);
+        
+        res = {assert_s.str(), lemma_s.str()};
+    } else {
+        lemma_s << "lemma_" << std::to_string(dim) << "d_access_concrete(" << idx;
+        AnnotationPrinter ap(lemma_s, is_pvl(), false, buffer_types, load_ids);
+        for(int i = 0; i < size; i++){
+            lemma_s << ", ";
+            ap.print(c->args[i]);
+        }
+        lemma_s << ")";
+        result_idx = lemma_s.str();
+        res = {};
     }
-    
-    vector<string> res = {assert_s.str(), lemma_s.str()};
+
+
     return res;
 }
 
-std::tuple<string, vector<string>> CodeGen_C::print_access_annotations(const Expr &access, const string& buf, const string &idx){
+std::tuple<string, vector<string>> CodeGen_C::print_access_annotations(const Expr &access, const string& buf, const string &idx,
+    string &result_idx){
     const Call *c = access.as<Call>();
     string after = "";
     vector<string> befores = {};
+    result_idx = idx;
 
     if(c == nullptr){
         return std::make_tuple(after, befores);
     }
 
     if(c->is_intrinsic(Call::lemma_flattened_array)){
-        return std::make_tuple(after, print_lemma(c, buf, idx));
+        return std::make_tuple(after, print_lemma(c, buf, idx, result_idx));
     }
 
     internal_error << "Unexpected other call instead of lemma: " << c->name;
