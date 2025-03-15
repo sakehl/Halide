@@ -142,7 +142,7 @@ class Module {
     Internal::IntrusivePtr<Internal::ModuleContents> contents;
 
 public:
-    Module(const std::string &name, const Target &target);
+    Module(const std::string &name, const Target &target, bool const_unique_buffers=false);
 
     /** Get the target this module has been lowered for. */
     const Target &target() const;
@@ -150,6 +150,8 @@ public:
     /** The name of this module. This is used as the default filename
      * for output operations. */
     const std::string &name() const;
+
+    bool const_unique_buffers;
 
     /** If this Module had an auto-generated schedule, return a read-only pointer
      * to the AutoSchedulerResults. If not, return nullptr. */
@@ -184,7 +186,7 @@ public:
 
     /** Compile a halide Module to variety of outputs, depending on
      * the fields set in output_files. */
-    void compile(const std::map<Output, std::string> &output_files, bool const_unique_buffers=false) const;
+    void compile(const std::map<Output, std::string> &output_files) const;
 
     /** Compile a halide Module to in-memory object code. Currently
      * only supports LLVM based compilation, but should be extended to

@@ -372,8 +372,8 @@ LoweredFunc::LoweredFunc(const std::string &name,
 
 using namespace Halide::Internal;
 
-Module::Module(const std::string &name, const Target &target)
-    : contents(new Internal::ModuleContents) {
+Module::Module(const std::string &name, const Target &target, bool const_unique_buffers)
+    : contents(new Internal::ModuleContents), const_unique_buffers(const_unique_buffers) {
     contents->name = name;
     contents->target = target;
 }
@@ -566,7 +566,7 @@ std::map<std::string, std::string> Module::get_metadata_name_map() const {
     return contents->metadata_name_map;
 }
 
-void Module::compile(const std::map<Output, std::string> &output_files, bool const_unique_buffers) const {
+void Module::compile(const std::map<Output, std::string> &output_files) const {
     validate_outputs(output_files);
 
     // output stmt and html prior to resolving submodules. We need to

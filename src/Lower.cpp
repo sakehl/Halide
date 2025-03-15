@@ -98,7 +98,7 @@ Module lower(const vector<Function> &output_funcs,
     std::vector<std::string> namespaces;
     std::string simple_pipeline_name = extract_namespaces(pipeline_name, namespaces);
 
-    Module result_module(simple_pipeline_name, t);
+    Module result_module(simple_pipeline_name, t, const_unique_buffers);
 
     // Compute an environment
     map<string, Function> env;
@@ -619,7 +619,8 @@ Stmt lower_main_stmt(const std::vector<Function> &output_funcs,
         }
     }
 
-    Module module = lower(output_funcs, pipeline_name, t, args, LinkageType::External, requirements, trace_pipeline, custom_passes);
+    Module module = lower(output_funcs, pipeline_name, t, args, LinkageType::External, requirements, trace_pipeline, custom_passes,
+        false);
 
     return module.functions().front().body;
 }

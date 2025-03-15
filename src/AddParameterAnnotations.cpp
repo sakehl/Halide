@@ -204,6 +204,12 @@ class UpdateBufferAnnotations: public IRMutator {
         if(call->call_type == Call::CallType::Halide){
             // Ugly, but calls to images get inlined to some sort of function ending on _im, 
             // which are removed elsewhere in the pipeline, but not here yet
+            
+            // First remove the unique modifiers to name
+            size_t pos = name.find('$');
+            if (pos != std::string::npos) {
+                name = name.substr(0, pos);
+            }
             if(ends_with(name, "_im"))
                 name.erase(name.length()-3);
 
@@ -269,7 +275,7 @@ public:
     AnnotationMaker(BufferInfo &buffer_info) {
         is_perm = true;
         load = Load::make(buffer_info.type, buffer_info.name, 
-        buffer_info.index, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
+            buffer_info.index, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
         bound = buffer_info.bound;
         forall_vars = buffer_info.forall_vars;
     }
@@ -477,14 +483,28 @@ class AddParameterAnnotations : public IRMutator {
         get_buffer_annotations(par, par, top_level);
         BufferInfo info = process_dimensions(par);
 
-        AnnotationMaker pmaker(info);
+        
         if(!const_input_buffers){
+            // This adds read permission
+            AnnotationMaker pmaker(info);
             proven_annotations[par.name()].emplace_back(pmaker);
             
+            Expr load_internal = Load::make(info.type, info.name, 
+                info.index, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
+            Expr pure_call = Call::make(par.type(), "pure_" + par.name(), {info.index}, Call::Extern);
+            // This adds f(x,y) == pure_f(x,y)
+            // With pure_f we model that input f has a constant value as a pure func
+            Expr eq = Forall::make(info.forall_vars, info.bound, load_internal == pure_call);
+            AnnotationMaker is_pure(info, eq);
+            proven_annotations[par.name()].emplace_back(is_pure);
+
+            // We need to add the same top level
             Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(),
                 par,const_true(), ModulusRemainder(), Expr());
             Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, read(2)) );
             top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
+            top_level.emplace_back(AnnExpr::make(AnnotationType::Context, 
+                Forall::make(info.forall_vars, info.bound, load == pure_call)));
         }
 
         for(const auto& ann :par.annotations()){
@@ -495,8 +515,11 @@ class AddParameterAnnotations : public IRMutator {
             user_assert(ann_expr->ann_type == AnnotationType::Require || ann_expr->ann_type == AnnotationType::Context)
                 << "Annotation type should be require or context.";
 
-            Expr condition = forall(info.forall_vars, info.bound, ann_expr->condition);
-            proven_annotations[par.name()].emplace_back(AnnotationMaker(info, condition));
+            if(!const_input_buffers){
+                // Const input buffers stay.. constant, VerCors can infer this, so no need to repeat
+                Expr condition = forall(info.forall_vars, info.bound, ann_expr->condition);
+                proven_annotations[par.name()].emplace_back(AnnotationMaker(info, condition));
+            }
             Expr cond = ann_expr->condition;
             top_level.emplace_back(AnnExpr::make(annt, forall(info.forall_vars, info.bound, cond)));
         }
@@ -549,8 +572,7 @@ class UpdateInputBufferCallsToFunction: public IRMutator {
     }
 
     Expr visit(const Load *op) override {
-        // Disable for now
-        if(false && input.find(op->name) != input.end() && in_annotation){
+        if(input.find(op->name) != input.end() && in_annotation){
             internal_assert(!op->predicate.defined() || is_const_true(op->predicate)) << "Cannot have a predicate here.";
             Expr index = mutate(op->index);
             return Call::make(op->type, "pure_" + op->name, {index}, Call::Extern);
@@ -573,8 +595,11 @@ public:
 
 pair<Stmt, vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, vector<Parameter> input,
      vector<Function> output, vector<Annotation> pipeline_anns, bool const_input_buffers) {
-    UpdateInputBufferCallsToFunction uibctf(input);
-    Stmt s = uibctf.mutate(stmt);
+    Stmt s = stmt;
+    if(!const_input_buffers){
+        UpdateInputBufferCallsToFunction uibctf(input);
+        s = uibctf.mutate(s);
+    }
 
     AddParameterAnnotations apa(input, output, pipeline_anns, const_input_buffers);
     s = apa.mutate(s);

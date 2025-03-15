@@ -315,9 +315,9 @@ void Pipeline::compile_to_c(const string &filename,
                             bool check_only_memory_safety,
                             bool const_unique_buffers) {
     contents->invalidate_cache();                    
-    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, check_only_memory_safety, pipeline_anns,
-        const_unique_buffers);
-    m.compile(single_output(filename, m, Output::c_source), const_unique_buffers);
+    Module m = compile_to_module(args, fn_name, target, Halide::LinkageType::ExternalPlusMetadata, 
+        check_only_memory_safety, pipeline_anns, const_unique_buffers);
+    m.compile(single_output(filename, m, Output::c_source));
 }
 
 void Pipeline::compile_to_pvl(const string &filename,
@@ -606,6 +606,8 @@ Module Pipeline::compile_to_module(const vector<Argument> &args,
     // Linkage is the same.
     same_compile = same_compile && old_module.functions().front().linkage == linkage_type;
     // The outputs of a Pipeline cannot change, so no need to test them.
+
+    same_compile = same_compile && old_module.const_unique_buffers == const_unique_buffers;
 
     if (same_compile) {
         // We can avoid relowering and just reuse the existing module.
