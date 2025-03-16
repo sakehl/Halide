@@ -2302,7 +2302,8 @@ void CodeGen_C::compile(const LoweredFunc &f) {
             if (args[i].is_buffer() ) {
                 for( size_t j = 0; j<i; j++){
                     if(args[j].is_buffer()
-                        && compare_halide_type_codes(args[i].type.code(), args[j].type.code()) ){
+                        && args[i].type == args[j].type){
+                        //  compare_halide_type_codes(args[i].type.code(), args[j].type.code()) ){
                         stream << get_indent() << "context " 
                             << print_name(args[i].name) << "_buffer->host != "
                             << print_name(args[j].name) << "_buffer->host;\n";
