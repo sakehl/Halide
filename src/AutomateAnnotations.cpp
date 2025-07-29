@@ -247,7 +247,7 @@ class AutomaticAnnotations {
             const AnnExpr* ae = ann.as<AnnExpr>();
             internal_assert(ae);
 
-            Expr new_condition = add_trigger(ae->condition, func.name(), def_args, pure_args);
+            Expr new_condition = add_trigger(ae->condition, func.name(), def_args, pure_args, false);
             if(!forall_vars.empty()){
                 new_condition = substitute(replacement, new_condition);
                 new_condition = forall(forall_vars, bounds, new_condition);
@@ -293,7 +293,7 @@ class AutomaticAnnotations {
         // Now add our own ensure expression definitions to the function annotation
         for (auto &ann : def.annotations()){
             const AnnExpr* ae = ann.as<AnnExpr>();
-            Expr triggered_ae = add_trigger(ae->condition, func.name(), def_args, pure_args);
+            Expr triggered_ae = add_trigger(ae->condition, func.name(), def_args, pure_args, false);
             if(ae && ae->ann_type == AnnotationType::Ensure && ae->condition.type().is_bool()){
                 user_assert(!has_reduction_var(ae->condition)) << "Ensure annotation of reduction cannot mention reduction variable";
                 func.add_func_annotation(AnnExpr::make(AnnotationType::Ensure, triggered_ae));

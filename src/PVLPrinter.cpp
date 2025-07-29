@@ -11,14 +11,27 @@ namespace Halide {
 namespace Internal {
 
     class AddTrigger : public IRMutator {
-    const string &func;
+    string func;
     vector<Expr> &def_args;
     vector<Expr> &pure_args;
+    bool buffer_annotation;
 public:
     bool trigger_added;
 
-    AddTrigger(const string &func, vector<Expr> &def_args, vector<Expr> &pure_args)
-        : func(func), def_args(def_args), pure_args(pure_args), trigger_added(false) {}
+    AddTrigger(const string &func, vector<Expr> &def_args, vector<Expr> &pure_args, bool buffer_annotation)
+        : def_args(def_args), pure_args(pure_args),  buffer_annotation(buffer_annotation), trigger_added(false) {
+            // We remove any $ in the name of a buffer 
+            if(buffer_annotation){
+                size_t pos = func.find('$');
+                if (pos != std::string::npos) {
+                    this->func = func.substr(0, pos);
+                } else {
+                    this->func = func;
+                }
+            } else {
+                this->func = func;
+            }
+        }
     using IRMutator::visit;
 private:
     
@@ -26,7 +39,16 @@ private:
     Expr visit(const Call *op) override {
         Expr res = IRMutator::visit(op);
         // We only care if we call our selves.
-        if (op->name != func || op->call_type != Call::Halide) {
+        string name = op->name;
+        if(buffer_annotation){
+            size_t pos = name.find('$');
+            if (pos != std::string::npos) {
+                name = name.substr(0, pos);
+            }
+            if(ends_with(name, "_im"))
+                name.erase(name.length()-3);
+        }
+        if (name != func || op->call_type != Call::Halide) {
             return res;
         }
         if(op->args.size() != def_args.size()){
@@ -45,11 +67,12 @@ private:
     }
 };
 
-Expr add_trigger(Expr e, const string &func, vector<Expr> &def_args, vector<Expr> &pure_args) {
-    AddTrigger at(func, def_args, pure_args);
+Expr add_trigger(Expr e, const string &func, vector<Expr> &def_args, vector<Expr> &pure_args, bool buffer_annotation) {
+    AddTrigger at(func, def_args, pure_args, buffer_annotation);
     Expr res = at.mutate(e);
     if(!at.trigger_added){
-        user_error << "Each annotation of " << func << " must call that func, but it was not called in the definition: " << e;
+        string what = buffer_annotation ? "buffer" : "function";
+        user_error << "Each annotation of " << func << " must call that " << what << ", but it was not called in the annotation: " << e;
         // If we added a trigger, we return the new expression
         return res;
     }

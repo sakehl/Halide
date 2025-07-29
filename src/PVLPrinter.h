@@ -13,7 +13,7 @@ namespace Halide {
 
 namespace Internal {
 
-Expr add_trigger(Expr e, const std::string &func, std::vector<Expr> &def_args, std::vector<Expr> &pure_args);
+Expr add_trigger(Expr e, const std::string &func, std::vector<Expr> &def_args, std::vector<Expr> &pure_args, bool buffer_annotation);
 
 /** This class emits PVL code equivalent to the halide algorithm language (Front-End).
  * It's mostly the same as an IRPrinter, but we have the hande functions differently

@@ -457,6 +457,8 @@ public:
      * empty string if no debug symbols were found or the debug
      * symbols were not understood. Works on OS X and Linux only. */
     std::string source_location() const;
+
+    Stage &annotate(const Annotation &ann);
 };
 
 // For backwards compatibility, keep the ScheduleHandle name.
@@ -2472,6 +2474,9 @@ public:
 
     /** Add the condition to the as reduction invariant, needed when using reduction domains. */
     Func &invariant(const Expr &condition);
+
+    /** Add the annotation to the base function. */
+    Func &annotate(const Annotation &ann);
 };
 
 namespace Internal {

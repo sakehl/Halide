@@ -2665,6 +2665,16 @@ Func::operator Stage() const {
     return Stage(func, func.definition(), 0);
 }
 
+Stage &Stage::annotate(const Annotation &ann) {
+    definition.add_annotation(ann);
+    return *this;
+}
+
+Func &Func::annotate(const Annotation &ann) {
+    func.definition().add_annotation(ann);
+    return *this;
+}
+
 Func &Func::requires(const Expr &condition) {
     invalidate_cache();
     func.add_annotation(AnnotationType::Require, condition);

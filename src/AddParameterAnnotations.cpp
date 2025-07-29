@@ -4,6 +4,7 @@
 #include "Simplify.h"
 #include "Var.h"
 #include "VectorizeLoops.h"
+#include "PVLPrinter.h"
 
 #include "CodeGen_C.h"
 
@@ -35,6 +36,7 @@ struct BufferInfo {
     Expr index;
     vector<Expr> pred_args;
     vector<string> forall_vars;
+    vector<Expr> implicit_args;
     Type type;
 };
 
@@ -247,7 +249,10 @@ class UpdateBufferAnnotations: public IRMutator {
         index = mutate(index);
 
         if(top_level){
-            name = name + ".buffer.host";
+            string top_level_name = call->name;
+            if(ends_with(top_level_name, "_im"))
+                top_level_name.erase(top_level_name.length()-3);
+            name = top_level_name + ".buffer.host";
         }
         return Load::make(type, name, index, Buffer<>(), call->param, const_true(), ModulusRemainder(), Expr());
     }
@@ -396,6 +401,7 @@ class AddParameterAnnotations : public IRMutator {
     BufferInfo process_dimensions(const Parameter &par){
         vector<Expr> pred_args;
         vector<string> forall_vars;
+        vector<Expr> implicit_args;
         Expr bound;
         vector<tuple<Expr,Expr,Expr>> buffer_dims;
         Expr index;
@@ -408,15 +414,15 @@ class AddParameterAnnotations : public IRMutator {
             Expr stride = par.stride_constraint(i);
             buffer_dims.emplace_back(min, extent, stride);
             if(!min.defined()){
-                internal_error << "Buffers need to have constraints for HaliVer to work";
+                internal_error << "Buffers need to have constraints for HaliVer to work: No min for " << par.name() << ", dimension: " << i;
                 min = Variable::make(Int(32), par.name() + ".min." + std::to_string(i));
             }
             if(!extent.defined()){
-                internal_error << "Buffers need to have constraints for HaliVer to work";
+                internal_error << "Buffers need to have constraints for HaliVer to work: No extent for " << par.name() << ", dimension: " << i;
                 extent = Variable::make(Int(32), par.name() + ".extent." + std::to_string(i));
             }
             if(!stride.defined()){
-                internal_error << "Buffers need to have stride constraints for HaliVer to work";
+                internal_error << "Buffers need to have stride constraints for HaliVer to work: No stride for " << par.name() << ", dimension: " << i;
                 stride = Call::make(Int(32), Call::buffer_get_stride, {buffer, i}, Call::Extern);
                 stride = Variable::make(Int(32), par.name() + ".stride." + std::to_string(i));
             }
@@ -426,6 +432,7 @@ class AddParameterAnnotations : public IRMutator {
             pred_args.emplace_back(min);
             pred_args.emplace_back(extent);
             forall_vars.emplace_back(var.name());
+            implicit_args.emplace_back(Var(var.name()));
             Expr new_bound = min <= var && var < min + extent;
             Expr new_index = (var - min) * stride;
             if(i==0){
@@ -437,7 +444,13 @@ class AddParameterAnnotations : public IRMutator {
             }
         }
 
-        buffer_constraints[par.name()] = buffer_dims;
+        string name = par.name();
+        size_t pos = name.find('$');
+        if (pos != std::string::npos) {
+            name = name.substr(0, pos);
+        }
+
+        buffer_constraints[name] = buffer_dims;
 
         BufferInfo result;
         result.name = par.name();
@@ -445,6 +458,7 @@ class AddParameterAnnotations : public IRMutator {
         result.index = index;
         result.pred_args = pred_args;
         result.forall_vars = forall_vars;
+        result.implicit_args = implicit_args;
         result.type = par.type();
 
         return result;
@@ -517,6 +531,7 @@ class AddParameterAnnotations : public IRMutator {
                 proven_annotations[par.name()].emplace_back(AnnotationMaker(info, condition));
             }
             Expr cond = ann_expr->condition;
+            cond = add_trigger(ann_expr->condition, par.name(), info.implicit_args, info.implicit_args, true);
             top_level.emplace_back(AnnExpr::make(annt, forall(info.forall_vars, info.bound, cond)));
         }
     }
