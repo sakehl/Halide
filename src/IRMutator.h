@@ -99,8 +99,7 @@ protected:
     virtual Stmt visit(const Atomic *);
     virtual Stmt visit(const Ghost *);
 
-    virtual Annotation visit(const AnnExpr *);
-    virtual Annotation visit(const Permission *);    
+    virtual Annotation visit(const AnnExpr *);   
 };
 
 /** A mutator that caches and reapplies previously-done mutations, so

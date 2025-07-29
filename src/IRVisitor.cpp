@@ -302,11 +302,6 @@ void IRVisitor::visit(const AnnExpr *op) {
     op->condition.accept(this);
 }
 
-void IRVisitor::visit(const Permission *op) {
-    op->variable.accept(this);
-    op->permission.accept(this);
-}
-
 void IRGraphVisitor::include(const Expr &e) {
     auto r = visited.insert(e.get());
     if (r.second) {
@@ -609,11 +604,6 @@ void IRGraphVisitor::visit(const Ghost *op) {
 
 void IRGraphVisitor::visit(const AnnExpr *op) {
     include(op->condition);
-}
-
-void IRGraphVisitor::visit(const Permission *op) {
-    include(op->variable);
-    include(op->permission);
 }
 
 }  // namespace Internal

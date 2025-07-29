@@ -495,23 +495,6 @@ Annotation IRMutator::visit(const AnnExpr *op) {
     }
 }
 
-Annotation IRMutator::visit(const Permission *op) {
-    Expr variable = mutate(op->variable);
-    Expr antecedent = mutate(op->antecedent);
-    Expr permission = mutate(op->permission);
-    if (variable.same_as(op->variable) &&
-        antecedent.same_as(op->antecedent) &&
-        permission.same_as(op->permission)) {
-        return op;
-    } else {
-        return Permission::make(op->ann_type,
-                            std::move(antecedent),
-                            std::move(variable),
-                            std::move(permission),
-                            op->forall_vars);
-    }
-}
-
 Stmt IRGraphMutator::mutate(const Stmt &s) {
     auto p = stmt_replacements.emplace(s, Stmt());
     if (p.second) {

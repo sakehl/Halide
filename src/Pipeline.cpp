@@ -343,7 +343,9 @@ void get_pipeline_annotations(Function f, vector<Annotation> &pipeline_anns){
         Expr v = Variable::make(Int(32), f.args()[i]);
         Expr mine = Variable::make(Int(32), f.name() + "." + "min." + std::to_string(i));
         Expr maxe = Variable::make(Int(32), f.name() + "." + "max." + std::to_string(i));
-        bounds = bounds && (mine <= i && i < maxe);
+        Expr new_bounds = (mine <= v) && (v < maxe);
+        if(i==0) bounds = new_bounds;
+        else bounds = bounds && new_bounds;
     }
 
 
@@ -354,7 +356,8 @@ void get_pipeline_annotations(Function f, vector<Annotation> &pipeline_anns){
             continue;
         }
         user_assert(ae->ann_type == AnnotationType::Ensure) << "Only ensure annotations allowed";
-        pipeline_anns.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(f.args(), bounds, ae->condition)));
+        Expr new_ae = add_trigger(ae->condition, f.name(), last_def.args(), f.definition().args());
+        pipeline_anns.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(f.args(), bounds, new_ae)));
     }
 
 }

@@ -1381,33 +1381,5 @@ void IRPrinter::visit(const AnnExpr *op) {
     print_no_parens(op->condition);
 }
 
-
-void IRPrinter::visit(const Permission *op) {
-    stream << op->ann_type << " ";
-    if(!op->forall_vars.empty()){
-        stream << "(\\forall*";
-        for(auto & var: op->forall_vars)
-            stream << " int " << var;
-        stream << "; ";
-
-        print_no_parens(op->antecedent);
-        stream << "; ";
-    } else {
-        //Check if the right hand side is simply true
-        if( !is_const_true(op->antecedent) ){
-            print_no_parens(op->antecedent);
-            stream << " ==> ";
-        }
-    }
-    
-    stream << "Perm(";
-    print_no_parens(op->variable);
-    stream << ", ";
-    print_no_parens(op->permission);
-    stream << ")";
-
-    if(!op->forall_vars.empty()) stream << ")";
-}
-
 }  // namespace Internal
 }  // namespace Halide

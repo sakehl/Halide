@@ -155,9 +155,6 @@ protected:
     void visit(const AnnExpr *op) override {
         internal_error << "Encounter unexpected annotation \"AnnExpr\" when differentiating.";
     }
-    void visit(const Permission *op) override {
-        internal_error << "Encounter unexpected annotation \"Permission\" when differentiating.";
-    }
 
 private:
     void accumulate(const Expr &stub, Expr adjoint);

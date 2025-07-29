@@ -33,10 +33,6 @@ using std::tuple;
 
 namespace {
 
-Expr Perm(Expr array, Expr write){
-    return Call::make(Resource(), Call::perm, {array, write}, Call::Intrinsic);
-}
-
 // A structure representing a containing LetStmt, IfThenElse, or For
 // loop. Used in build_provide_loop_nest below. Both If and IfInner represent
 // IfThenElse stmts, however, IfInner should not be reordered to outside of
@@ -331,18 +327,15 @@ public:
         first_reduction_done = false;
         for(auto const &a: given_anns){
             const AnnExpr *ae = a.as<AnnExpr>();
-            const Permission *p = a.as<Permission>();
             if(ae && ae->ann_type == AnnotationType::LoopInvariant){
                 reduction_invariants.emplace_back(ae->condition);
             } else if(ae && ae->condition.type().is_bool()){
                 anns.emplace_back(a);
             } else if(ae){
                 perms.emplace_back(a);
-            } else if(p){
-                // TODO: Unsure about GPU blocks and redistribution of barriers
-                user_assert(p->ann_type == AnnotationType::Context) << "Permission annotations should always be context: " << a;
-                perms.emplace_back(a);
-            }
+            } else {
+                internal_error << "Annotation type not recognized: " << a;
+            }   
         }
     }
 
@@ -1598,10 +1591,6 @@ struct PlaceholderPrefetch {
           prefetch(prefetch) {
     }
 };
-
-Expr trigger(Expr e){
-    return Call::make(e.type(), Call::trigger, {e}, Call::Intrinsic);
-}
 
 /** This helps creating permissions to read or write for functions.
  * The write permission is distributed if the function is stored at a higher place than it is computed, in for-loops of other functions.

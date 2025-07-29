@@ -361,7 +361,6 @@ public:
     Stmt visit(const Atomic *op);
     Stmt visit(const Ghost *op);
     Annotation visit(const AnnExpr *op);
-    Annotation visit(const Permission *op);
 };
 
 class GetForallBounds {

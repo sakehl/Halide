@@ -788,50 +788,6 @@ private:
         stream << close_div();
     }
 
-    void visit(const Permission *op) override {
-        stream << open_div("Permission");
-
-        int id = unique_id();
-        stream << open_expand_button(id);
-        if (op->ann_type == AnnotationType::Require) {
-            stream << keyword("requires");
-        } else if (op->ann_type == AnnotationType::Ensure) {
-            stream << keyword("ensures");
-        } else if (op->ann_type == AnnotationType::Context) {
-            stream << keyword("context");
-        } else if (op->ann_type == AnnotationType::ContextEverywhere) {
-            stream << keyword("context_everywhere");
-        } else {
-            internal_error << "Unknown annotation type: " << ((int)op->ann_type) << "\n";
-        }
-        stream << " ";
-        if(!op->forall_vars.empty()){
-            stream << "(\\forall*";
-            for(auto & var: op->forall_vars)
-                stream << " int " << var;
-            stream << "; ";
-
-            print(op->antecedent);
-            stream << "; ";
-        } else {
-            //Check if the right hand side is simply true
-            if( !is_const_true(op->antecedent) ){
-                print(op->antecedent);
-                stream << " ==> ";
-            }
-        }
-
-        stream << "Perm(";
-        print(op->variable);
-        stream << ", ";
-        print(op->permission);
-        stream << ")";
-
-        if(!op->forall_vars.empty()) stream << ")";
-
-        stream << close_div();
-    }
-
 public:
     void print(const Expr &ir) {
         ir.accept(this);

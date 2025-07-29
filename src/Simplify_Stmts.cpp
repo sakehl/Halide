@@ -676,21 +676,5 @@ Annotation Simplify::visit(const AnnExpr *op) {
     }
 }
 
-
-Annotation Simplify::visit(const Permission *op) {
-    GetForallBounds gfb(op->forall_vars, this);
-    Expr antecedent = gfb.simplify_antecedent_and_push(op->antecedent);
-
-    Expr variable = mutate(op->variable, nullptr);
-    Expr permission = mutate(op->permission, nullptr);
-    gfb.pop();
-
-    if (antecedent.same_as(op->antecedent) && variable.same_as(op->variable) && permission.same_as(op->permission)) {
-        return op;
-    } else {
-        return Permission::make(op->ann_type, antecedent, variable, permission, op->forall_vars);
-    }
-}
-
 }  // namespace Internal
 }  // namespace Halide

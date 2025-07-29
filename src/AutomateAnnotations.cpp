@@ -14,6 +14,7 @@
 #include "Simplify.h"
 #include "Substitute.h"
 #include "CodeGen_C.h"
+#include "PVLPrinter.h"
 
 namespace Halide {
 namespace Internal {
@@ -31,14 +32,6 @@ Expr null(){
 
 Expr pointer_length(Expr e){
     return Call::make(Int(32), Call::pointer_length, {e}, Call::Intrinsic);
-}
-
-Expr Perm(Expr array, Expr write){
-    return Call::make(Resource(), Call::perm, {array, write}, Call::Intrinsic);
-}
-
-Expr trigger(Expr e){
-    return Call::make(e.type(), Call::trigger, {e}, Call::Intrinsic);
 }
 
 Annotation context_everywhere(Expr e){
@@ -88,56 +81,6 @@ public:
         : func(f), env(e) {
     }
 };
-
-// class AnnExprTo : public IRMutator {
-//     using IRMutator::visit;
-
-//     AnnotationType t;
-
-//     Annotation visit(const AnnExpr *op) override {
-//         return AnnExpr::make(t, op->condition);
-//     }
-
-// public:
-//     AnnExprTo(AnnotationType t = AnnotationType::Require) : t(t) {}
-// };
-
-// // Replace calls in annotations with 'func' to 'new_func'
-// class ReplaceEnsureFunctionCall : public IRMutator {
-//     const string &func;
-//     const string &new_func;
-
-//     using IRMutator::visit;
-
-//     Expr visit(const Call *op) override {
-//         //We found a call to the function!
-//         if (op->name == func) {
-//             return Call::make(op->type, new_func, op->args, op->call_type,
-//                             op->func, op->value_index, op->image, op->param);
-//         }
-
-//         return IRMutator::visit(op);
-//     }
-
-//     Annotation visit(const AnnExpr *op) override {
-//         // We are only interested if we have an ensure annotation
-//         if (op->ann_type != AnnotationType::Ensure) {
-//             return op;
-//         }
-//         return IRMutator::visit(op);
-//     }
-
-//     Annotation visit(const Permission *op) override {
-//         // We are only interested in annotatated expressions
-//         return op;
-//     }
-
-// public:
-
-//     ReplaceEnsureFunctionCall(const string &f, const string &new_f)
-//         : func(f), new_func(new_f) {
-//     }
-// };
 
 class FindReductionVars : public IRVisitor {
 public:
@@ -304,7 +247,7 @@ class AutomaticAnnotations {
             const AnnExpr* ae = ann.as<AnnExpr>();
             internal_assert(ae);
 
-            Expr new_condition = ae->condition;
+            Expr new_condition = add_trigger(ae->condition, func.name(), def_args, pure_args);
             if(!forall_vars.empty()){
                 new_condition = substitute(replacement, new_condition);
                 new_condition = forall(forall_vars, bounds, new_condition);
@@ -350,11 +293,12 @@ class AutomaticAnnotations {
         // Now add our own ensure expression definitions to the function annotation
         for (auto &ann : def.annotations()){
             const AnnExpr* ae = ann.as<AnnExpr>();
+            Expr triggered_ae = add_trigger(ae->condition, func.name(), def_args, pure_args);
             if(ae && ae->ann_type == AnnotationType::Ensure && ae->condition.type().is_bool()){
                 user_assert(!has_reduction_var(ae->condition)) << "Ensure annotation of reduction cannot mention reduction variable";
-                func.add_func_annotation(ann);
+                func.add_func_annotation(AnnExpr::make(AnnotationType::Ensure, triggered_ae));
             } else if(ae && ae->ann_type == AnnotationType::LoopInvariant && ae->condition.type().is_bool()){
-                func.add_func_annotation(AnnExpr::make(AnnotationType::Ensure, substitute(rvar_replacement, ae->condition)));
+                func.add_func_annotation(AnnExpr::make(AnnotationType::Ensure, substitute(rvar_replacement, triggered_ae)));
             }
         }
 
@@ -392,14 +336,12 @@ class AutomaticAnnotations {
                 // }
                 busy_processing.erase(name);
                 processed_functions.emplace(name);
-                // func.sort_annotations();
                 debug(2) << "Processed non-function " << func.name() << "\n"
                     << func << "\n";
                 return;
             } else if(wrapper->call_type != Call::CallType::Halide){
                 busy_processing.erase(name);
                 processed_functions.emplace(name);
-                // func.sort_annotations();
                 debug(2) << "Processed non-function " << func.name() << "\n"
                     << func << "\n";
                 return;
@@ -436,7 +378,6 @@ class AutomaticAnnotations {
             // We are done with this function
             busy_processing.erase(name);
             processed_functions.emplace(name);
-            func.sort_annotations();
             debug(2) << "Processed function " << func.name() << "\n"
               << func << "\n";
             return;
@@ -461,7 +402,6 @@ class AutomaticAnnotations {
 
         busy_processing.erase(name);
         processed_functions.emplace(name);
-        func.sort_annotations();
         debug(2) << "Processed function " << func.name() << "\n"
                  << func << "\n";
     }

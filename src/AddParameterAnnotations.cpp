@@ -29,10 +29,6 @@ Expr add(const Expr &original, const Expr &added){
     return result;
 }
 
-Expr Perm(Expr array, Expr write){
-    return Call::make(Resource(), Call::perm, {array, write}, Call::Intrinsic);
-}
-
 struct BufferInfo {
     string name;
     Expr bound;

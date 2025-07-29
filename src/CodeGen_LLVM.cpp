@@ -4599,8 +4599,6 @@ void CodeGen_LLVM::visit(const Atomic *op) {
 
 void CodeGen_LLVM::visit(const AnnExpr *op) { }
 
-void CodeGen_LLVM::visit(const Permission *op) { }
-
 Value *CodeGen_LLVM::create_alloca_at_entry(llvm::Type *t, int n, bool zero_initialize, const string &name) {
     IRBuilderBase::InsertPoint here = builder->saveIP();
     BasicBlock *entry = &builder->GetInsertBlock()->getParent()->getEntryBlock();

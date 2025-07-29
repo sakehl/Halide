@@ -82,8 +82,6 @@ enum class IRNodeType {
     Ghost,
     //Annotations
     AnnExpr,
-    // Forall
-    Permission
 };
 
 constexpr IRNodeType StrongestExprNodeType = IRNodeType::VectorReduce;

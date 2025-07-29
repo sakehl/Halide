@@ -1168,15 +1168,6 @@ Annotation add_antecedent(Expr const &left_hand_side, Annotation const &ann) {
     if (const AnnExpr *i = ann.as<AnnExpr>()) {
         Expr new_condition = implies(left_hand_side, i->condition);
         result = AnnExpr::make(i->ann_type, new_condition);
-    } else if (const Permission *i = ann.as<Permission>()) {
-        Expr new_antecedent;
-        if (is_const_true(i->antecedent)) {
-            new_antecedent = left_hand_side;
-        } else {
-            new_antecedent = And::make(left_hand_side, i->antecedent);
-        }
-
-        result = Permission::make(i->ann_type, new_antecedent, i->variable, i->permission, i->forall_vars);
     } else {
         user_assert(false) << "add_antecedent couldn't match the given annotation";
     }
@@ -1404,6 +1395,18 @@ Annotation implies(Expr a, Annotation b){
     user_assert(ann) << "Implies of undefined annotation.\n";
     Expr new_condition = implies(a, ann->condition);
     return Internal::AnnExpr::make(ann->ann_type, new_condition);
+}
+
+Expr forall(Var x, Expr select, Expr main){
+    std::vector<std::string> xs = {x.name()};
+    return forall(xs, select, main);
+}
+
+Expr forall(const std::vector<Var> &xs, Expr select, Expr main){
+    std::vector<std::string> res;
+    for(const Var &x : xs)
+        res.emplace_back(x.name());
+    return forall(res, select, main);
 }
 
 Expr forall(std::string x, Expr select, Expr main){
@@ -2625,6 +2628,14 @@ Expr read(int factor) {
 
 Expr write() {
     return Internal::Frac::make(Internal::make_one(Int(32)), Internal::make_one(Int(32)));
+}
+
+Expr Perm(Expr array, Expr write) {
+    return Internal::Call::make(Resource(), Internal::Call::perm, {trigger(array), write}, Internal::Call::Intrinsic);
+}
+
+Expr trigger(Expr e){
+    return Internal::Call::make(e.type(), Internal::Call::trigger, {e}, Internal::Call::Intrinsic);
 }
 
 

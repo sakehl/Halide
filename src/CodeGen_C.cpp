@@ -176,11 +176,11 @@ static inline /*@ pure @*/ double round_f64(double x) {return round(x);}
 
 //@ ghost const float NAN;
 
-inline float nan_f32() {return NAN;}
+inline float nan_f32() {return (float)NAN;}
 
 /*@
 inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) = 
- Perm(&dim[i], 1\2) **
+ Perm(dim[i], 1\2) **
  Perm(dim[i].min, 1\2) **
  Perm(dim[i].stride, 1\2) **
  Perm(dim[i].extent, 1\2) **
@@ -1938,10 +1938,10 @@ struct halide_shape {
 };
 
 /*@ 
-    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(*buf, 1\2);
     requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
     requires 0 <= d && d < \pointer_length(buf->dim);
-    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].min, 1\2);
 @*/
 inline /*@ pure @*/ int _halide_buffer_get_min(struct halide_shape *buf , int d) {
@@ -1949,10 +1949,10 @@ inline /*@ pure @*/ int _halide_buffer_get_min(struct halide_shape *buf , int d)
 }
 
 /*@ 
-    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(*buf, 1\2);
     requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
     requires 0 <= d && d < \pointer_length(buf->dim);
-    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].min, 1\2) ** Perm(buf->dim[d].extent, 1\2);
 @*/
 inline /*@ pure @*/ int _halide_buffer_get_max(struct halide_shape *buf , int d) {
@@ -1960,10 +1960,10 @@ inline /*@ pure @*/ int _halide_buffer_get_max(struct halide_shape *buf , int d)
 }
 
 /*@ 
-    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(*buf, 1\2);
     requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
     requires 0 <= d && d < \pointer_length(buf->dim);
-    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].extent, 1\2);
 @*/
 inline /*@ pure @*/ int _halide_buffer_get_extent(struct halide_shape *buf , int d) {
@@ -1971,10 +1971,10 @@ inline /*@ pure @*/ int _halide_buffer_get_extent(struct halide_shape *buf , int
 }
 
 /*@ 
-    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(buf, 1\2);
+    requires buf != NULL ** \pointer_length(buf) == 1 ** Perm(*buf, 1\2);
     requires Perm(buf->dim, 1\2) ** buf->dim != NULL;
     requires 0 <= d && d < \pointer_length(buf->dim);
-    requires Perm(&buf->dim[d], 1\2);
+    requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].stride, 1\2);
 @*/
 inline /*@ pure @*/ int _halide_buffer_get_stride(struct halide_shape *buf , int d) {
@@ -2008,10 +2008,7 @@ void CodeGen_C::emit_buffer(Type t, bool const_buffer) {
         << buffer_decl << "    " << type << " *host;\n"
         << "};\n\n"
         << "/*@ \n"
-        << " requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(buf, 1\\2);\n";
-    if(!const_buffer){
-        stream << " requires Perm(buf->host, 1\\2);\n";
-    }
+        << " requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(*buf, 1\\2);\n";
     stream
         << " @*/\n"
         << "inline /*@ pure @*/ " << type << " *_halide_buffer_get_host_" << type_name << "(struct halide_buffer_" << type_name << " *buf) {\n"
@@ -2022,12 +2019,9 @@ void CodeGen_C::emit_buffer(Type t, bool const_buffer) {
         << "inline resource buffer_"<< type_name <<"(struct halide_buffer_" << type_name << " *buf, rational p, int n_dims) = \n"
         << " buf != NULL **\n"
         << " \\pointer_length(buf) == 1 **\n"
-        << " Perm(buf, p) **\n"
-        << " Perm(&buf->shape, p) **\n"
-        << " Perm(&buf->shape.dim, p) **\n"
+        << " Perm(*buf, p) **\n"
         << " buf->shape.dim != NULL **\n"
         << " \\pointer_length(buf->shape.dim) == n_dims **\n"
-        << " Perm(&buf->host, p) **\n"
         << " buf->host != NULL;\n"
         << "@*/\n"
         << "#endif //HALIDE_BUFFER_TYPE_" << type_cap << "\n";
@@ -3740,8 +3734,10 @@ void CodeGen_C::visit(const Allocate *op) {
     string op_name = print_name(op->name);
     string op_type = print_type(op->type, AppendSpace);
     // Add unique type towards allocation
-    string unique_type = "/*@unique<"+to_string(unique_id)+">@*/ " + op_type;
-    unique_id++;
+    if(const_unique_buffers){
+        op_type = "/*@unique<"+to_string(unique_id)+">@*/ " + op_type;
+        unique_id++;
+    }
 
     if(is_pvl()){
         string size_id;
@@ -3859,7 +3855,7 @@ void CodeGen_C::visit(const Allocate *op) {
 
         string type_no_space = print_type(op->type);
 
-        stream << get_indent() << unique_type;
+        stream << get_indent() << op_type;
 
         if (on_stack) {
             stream << op_name << "[" << size_id << "];\n";
@@ -3867,7 +3863,7 @@ void CodeGen_C::visit(const Allocate *op) {
             stream << "*"
                    << op_name
                    << " = ("
-                   << unique_type
+                   << op_type
                 //    << " *)halide_malloc(_ucon, sizeof("
                    << " *)malloc(sizeof("
                    << op_type
@@ -4006,8 +4002,6 @@ void CodeGen_C::visit(const Shuffle *op) {
 }
 
 void CodeGen_C::visit(const AnnExpr *op) { }
-
-void CodeGen_C::visit(const Permission *op) { }
 
 vector<string> CodeGen_C::print_lemma(const Expr &lemma, const string& buf, const string &idx, string& result_idx){
     const Call *c = lemma.as<Call>();
@@ -4323,34 +4317,6 @@ void AnnotationPrinter::visit(const Exists *op) {
     stream << ")";
 }
 
-void AnnotationPrinter::visit(const Permission *op) {
-    stream << op->ann_type << " ";
-    if(!op->forall_vars.empty()){
-        stream << "(\\forall* ";
-        stream << add_forall_vars(op->forall_vars) << "; ";
-
-        print_no_parens(op->antecedent);
-        stream << "; ";
-    } else {
-        //Check if the right hand side is simply true
-        if( !is_const_true(op->antecedent) ){
-            print_no_parens(op->antecedent);
-            stream << " ==> ";
-        }
-    }
-    
-    stream << "Perm(";
-    if(!is_pvl){
-        stream << "&";
-    }
-    print_no_parens(op->variable);
-    stream << ", ";
-    print_no_parens(op->permission);
-    stream << ")";
-
-    if(!op->forall_vars.empty()) stream << ")";
-}
-
 void AnnotationPrinter::visit(const Let *op) {
     print(substitute(op->name, op->value, op->body));
 }
@@ -4463,7 +4429,7 @@ void AnnotationPrinter::visit(const Call *op) {
         stream << ")";
     } else if(op->is_intrinsic(Call::perm)){
         internal_assert(op->args.size() == 2);
-        stream << "Perm(&";
+        stream << "Perm(";
         print_list(op->args);
         stream << ")";
     } else if(op->name == Call::buffer_get_host){

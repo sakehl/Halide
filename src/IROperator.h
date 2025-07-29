@@ -12,7 +12,10 @@
 #include "Expr.h"
 #include "Tuple.h"
 
+
 namespace Halide {
+
+class Var;
 
 namespace Internal {
 /** Is the expression either an IntImm, a FloatImm, a StringImm, or a
@@ -808,11 +811,13 @@ Annotation implies(Expr a, Annotation b);
  * for the main part. Used in annotations
  */
 Expr forall(std::string x, Expr select, Expr main);
+Expr forall(Var x, Expr select, Expr main);
 
 /** A logical construct we quantify over variables xs, constrained by `cond`
  * for the main part. Used in annotations
  */
 Expr forall(const std::vector<std::string> &xs, Expr select, Expr main);
+Expr forall(const std::vector<Var> &xs, Expr select, Expr main);
 
 Expr no_simp(Expr e);
 
@@ -1377,6 +1382,9 @@ Expr read(int factor);
 
 Expr write();
 
+Expr Perm(Expr array, Expr write);
+
+Expr trigger(Expr e);
 
 /** Control the values used in the memoization cache key for memoize.
  * Normally parameters and other external dependencies are

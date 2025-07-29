@@ -1270,17 +1270,6 @@ class InjectThreadBarriers : public IRMutator {
             }
         }
 
-        Annotation visit(const Permission *e) override{
-            if(e->ann_type != new_type){
-                return Permission::make(new_type, e->antecedent,
-                     e->variable,
-                     e->permission,
-                     e->forall_vars);
-            } else {
-                return e;
-            }
-        }
-
     public:
         AnnotationChanger(AnnotationType t) : new_type(t) { };
     };

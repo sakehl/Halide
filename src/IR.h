@@ -926,21 +926,6 @@ struct AnnExpr : public AnnNode<AnnExpr> {
     static const IRNodeType _node_type = IRNodeType::AnnExpr;
 };
 
-struct Permission : public AnnNode<Permission> {
-    Expr antecedent; //The left hand side of an implication
-    Expr variable;
-    Expr permission;
-    std::vector<std::string> forall_vars;
-
-    static Annotation make(AnnotationType ann_type,
-                     Expr antecedent,
-                     Expr variable,
-                     Expr permission,
-                     const std::vector<std::string> &forall_vars);
-
-    static const IRNodeType _node_type = IRNodeType::Permission;
-};
-
 /** Horizontally reduce a vector to a scalar or narrower vector using
  * the given commutative and associative binary operator. The reduction
  * factor is dictated by the number of lanes in the input and output

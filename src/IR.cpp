@@ -1001,22 +1001,6 @@ Annotation AnnExpr::make(AnnotationType ann_type, Expr condition){
     return node;
 }
 
-Annotation Permission::make(AnnotationType ann_type, Expr antecedent, Expr variable, Expr permission, const std::vector<std::string> &forall_vars){
-    internal_assert(antecedent.defined()) << "Permission of undefined\n";
-    internal_assert(variable.defined()) << "Permission of undefined\n";
-    internal_assert(permission.defined()) << "Permission of undefined\n";
-    internal_assert(permission.node_type() == IRNodeType::ReadPerm || permission.node_type() == IRNodeType::Frac) 
-      << "Argument to Permission should be a fraction or a read permission";
-
-    Permission *node = new Permission;
-    node->ann_type = ann_type;
-    node->variable = std::move(variable);
-    node->antecedent = std::move(antecedent);
-    node->permission = std::move(permission);
-    node->forall_vars = std::move(forall_vars);
-    return node;
-}
-
 namespace {
 
 // Helper function to determine if a sequence of indices is a
@@ -1271,11 +1255,6 @@ void AnnNode<AnnExpr>::accept(IRVisitor *v) const {
     v->visit((const AnnExpr *)this);
 }
 template<>
-void AnnNode<Permission>::accept(IRVisitor *v) const {
-    v->visit((const Permission *)this);
-}
-
-template<>
 Expr ExprNode<IntImm>::mutate_expr(IRMutator *v) const {
     return v->visit((const IntImm *)this);
 }
@@ -1488,10 +1467,6 @@ Stmt StmtNode<Ghost>::mutate_stmt(IRMutator *v) const {
 template<>
 Annotation AnnNode<AnnExpr>::mutate_ann(IRMutator *v) const {
     return v->visit((const AnnExpr *)this);
-}
-template<>
-Annotation AnnNode<Permission>::mutate_ann(IRMutator *v) const {
-    return v->visit((const Permission *)this);
 }
 
 Call::ConstString Call::buffer_get_dimensions = "_halide_buffer_get_dimensions";

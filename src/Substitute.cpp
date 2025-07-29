@@ -121,26 +121,6 @@ public:
             return For::make(op->name, new_min, new_extent, op->for_type, op->device_api, new_body, new_annotations);
         }
     }
-
-    Annotation visit(const Permission *op) override {
-        for(auto & var: op->forall_vars) hidden.push(var);
-        Expr antecedent = mutate(op->antecedent);
-        Expr variable = mutate(op->variable);
-        Expr permission = mutate(op->permission);
-        for(auto & var: op->forall_vars) hidden.pop(var);
-        
-        if (variable.same_as(op->variable) &&
-            antecedent.same_as(op->antecedent) &&
-            permission.same_as(op->permission)) {
-            return op;
-        } else {
-            return Permission::make(op->ann_type,
-                                antecedent,
-                                variable,
-                                permission,
-                                op->forall_vars);
-        }
-    }
 };
 
 }  // namespace

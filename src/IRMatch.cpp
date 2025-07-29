@@ -539,7 +539,6 @@ bool equal_helper(const BaseExprNode &a, const BaseExprNode &b) noexcept {
     case IRNodeType::Atomic:
     case IRNodeType::Ghost:
     case IRNodeType::AnnExpr:
-    case IRNodeType::Permission:
         break;
     }
     return false;

@@ -1095,32 +1095,7 @@ void Function::clear_func_annotations(){
 }
 
 void Function::add_permission(AnnotationType type, const Expr &antecedent, const Expr &variable, const Expr &permission){
-    add_annotation(Permission::make(type, antecedent, variable, permission, {}));
-}
-
-// x < y
-bool compare_annotations(Annotation x, Annotation y){
-    //Check if x is a permission and y is not a permission, than x should always go before y.
-    const Permission *y_perm, *x_perm;
-    x_perm = x.as<Permission>();
-    y_perm = y.as<Permission>();
-    if(x_perm != nullptr && y_perm == nullptr){
-        return true;
-    } else if(x_perm == nullptr && y_perm != nullptr) {
-        return false;
-    }
-    //Otherwise the order is based on annotation type
-    return x.type() < y.type();
-}
-
-void Function::sort_annotations(){
-    std::stable_sort(contents->init_def.annotations().begin(), contents->init_def.annotations().end(), compare_annotations);
-
-    for (Definition &def : contents->updates) {
-        std::stable_sort(def.annotations().begin(), def.annotations().end(), compare_annotations);
-    }
-
-    std::stable_sort(contents->func_annotations.begin(), contents->func_annotations.end(), compare_annotations);
+    add_annotation(AnnExpr::make(type, implies(antecedent, Perm(variable, permission))));
 }
 
 namespace {

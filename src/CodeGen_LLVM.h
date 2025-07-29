@@ -368,7 +368,6 @@ protected:
     void visit(const Prefetch *) override;
     void visit(const Atomic *) override;
     void visit(const AnnExpr *) override;
-    void visit(const Permission *) override;
     // @}
 
     /** Generate code for an allocate node. It has no default

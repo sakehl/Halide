@@ -483,10 +483,6 @@ class MonotonicVisitor : public IRVisitor {
         internal_error << "Monotonic of annotation\n";
     }
 
-    void visit(const Permission *op) override {
-        internal_error << "Monotonic of annotation\n";
-    }
-
 public:
     Monotonic result;
 

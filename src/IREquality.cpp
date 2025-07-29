@@ -107,7 +107,6 @@ private:
     void visit(const VectorReduce *) override;
     void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
-    void visit(const Permission *) override;
 };
 
 template<typename T>
@@ -691,18 +690,6 @@ void IRComparer::visit(const AnnExpr *op) {
     const AnnExpr *a = ann.as<AnnExpr>();
     compare_scalar(a->ann_type, op->ann_type);
     compare_expr(a->condition, op->condition);
-}
-
-void IRComparer::visit(const Permission *op) {
-    const Permission *a = ann.as<Permission>();
-    compare_scalar(a->ann_type, op->ann_type);
-    compare_expr(a->variable, op->variable);
-    compare_expr(a->permission, op->permission);
-
-    compare_scalar(a->forall_vars.size(), op->forall_vars.size());
-    for (size_t i = 0; (i < a->forall_vars.size()) && result == Equal; i++) {
-        compare_names(a->forall_vars[i], op->forall_vars[i]);
-    }
 }
 
 void IRComparer::visit(const VectorReduce *op) {

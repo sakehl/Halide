@@ -313,9 +313,6 @@ public:
 
     /** Add the permission to the annotations of the function. */
     void add_permission(AnnotationType type, const Expr &antecedent, const Expr &variable, const Expr &permission);
-
-    /** Make sure that permissions are first in the vector*/
-    void sort_annotations();
 };
 
 /** Deep copy an entire Function DAG. */

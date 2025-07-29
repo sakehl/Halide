@@ -85,7 +85,6 @@ protected:
     virtual void visit(const Atomic *);
     virtual void visit(const Ghost *);
     virtual void visit(const AnnExpr *);
-    virtual void visit(const Permission *);
 };
 
 /** A base class for algorithms that walk recursively over the IR
@@ -164,7 +163,6 @@ protected:
     void visit(const Atomic *) override;
     void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
-    void visit(const Permission *) override;
     // @}
 };
 
@@ -273,7 +271,6 @@ private:
         case IRNodeType::Atomic:
         case IRNodeType::Ghost:
         case IRNodeType::AnnExpr:
-        case IRNodeType::Permission:
             internal_error << "Unreachable";
         }
         return ExprRet{};
@@ -321,7 +318,6 @@ private:
         case IRNodeType::Shuffle:
         case IRNodeType::VectorReduce:
         case IRNodeType::AnnExpr:
-        case IRNodeType::Permission:
             internal_error << "Unreachable";
             break;
         case IRNodeType::LetStmt:
@@ -426,8 +422,6 @@ private:
             break;
         case IRNodeType::AnnExpr:
             return ((T *)this)->visit((const AnnExpr *)node, std::forward<Args>(args)...);
-        case IRNodeType::Permission:
-            return ((T *)this)->visit((const Permission *)node, std::forward<Args>(args)...);
         }
         return AnnRet{};
     }

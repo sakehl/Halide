@@ -106,10 +106,6 @@ private:
         return op;
     }
 
-    Annotation visit(const Permission *op) override {
-        return op;
-    }
-
     Expr visit(const Call *op) override {
         Expr expr = IRMutator::visit(op);
         op = expr.as<Call>();

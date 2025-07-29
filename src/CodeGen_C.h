@@ -269,7 +269,6 @@ protected:
     void visit(const Atomic *) override;
     void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
-    void visit(const Permission *) override;
 
     void visit_binop(Type t, const Expr &a, const Expr &b, const char *op);
     void visit_relop(Type t, const Expr &a, const Expr &b, const char *scalar_op, const char *vector_op);
@@ -326,8 +325,6 @@ protected:
     void visit(const Forall *op) override;
 
     void visit(const Exists *op) override;
-
-    void visit(const Permission *op) override;
 
     void visit(const Let *op) override;
 

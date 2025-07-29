@@ -83,7 +83,6 @@ public:
     void visit(const Atomic *) override;
     void visit(const Ghost *) override;
     void visit(const AnnExpr *) override;
-    void visit(const Permission *) override;
 };
 
 void ComputeModulusRemainder::visit(const IntImm *op) {
@@ -311,10 +310,6 @@ void ComputeModulusRemainder::visit(const Ghost *) {
 
 
 void ComputeModulusRemainder::visit(const AnnExpr *) {
-    internal_error << "modulus_remainder of annotation\n";
-}
-
-void ComputeModulusRemainder::visit(const Permission *) {
     internal_error << "modulus_remainder of annotation\n";
 }
 
