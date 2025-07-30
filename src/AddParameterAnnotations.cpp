@@ -249,19 +249,24 @@ class UpdateBufferAnnotations: public IRMutator {
         index = mutate(index);
 
         if(top_level){
-            string top_level_name = call->name;
-            if(ends_with(top_level_name, "_im"))
-                top_level_name.erase(top_level_name.length()-3);
-            name = top_level_name + ".buffer.host";
+            if(is_output){
+                string top_level_name = call->name;
+                if(ends_with(top_level_name, "_im"))
+                    top_level_name.erase(top_level_name.length()-3);
+                name = top_level_name + ".buffer.host";
+            } else {
+                name = name + ".buffer.host";
+            }
         }
         return Load::make(type, name, index, Buffer<>(), call->param, const_true(), ModulusRemainder(), Expr());
     }
 
 public:
     UpdateBufferAnnotations(const map<string, vector<tuple<Expr,Expr,Expr>>> &buffer_constraints, bool top_level) 
-      : buffer_constraints(buffer_constraints), top_level(top_level) {}
+      : buffer_constraints(buffer_constraints), top_level(top_level), is_output(false) {}
 
     bool top_level;
+    bool is_output;
 };
 
 class AnnotationMaker {
@@ -481,7 +486,9 @@ class AddParameterAnnotations : public IRMutator {
                 const auto *ann_expr = ann.as<AnnExpr>();
                 user_assert(ann_expr) << "No permission annotations allowed";
                 user_assert(ann_expr->ann_type == AnnotationType::Ensure) << "Only ensure annotations allowed concerning top level";
-                top_level.emplace_back(AnnExpr::make(AnnotationType::Ensure, forall(info.forall_vars, info.bound, ann_expr->condition)));
+                Expr cond = ann_expr->condition;
+                cond = simplify(uba->mutate(cond));
+                top_level.emplace_back(AnnExpr::make(AnnotationType::Ensure, forall(info.forall_vars, info.bound, cond)));
             }
         }
     }
@@ -532,38 +539,35 @@ class AddParameterAnnotations : public IRMutator {
             }
             Expr cond = ann_expr->condition;
             cond = add_trigger(ann_expr->condition, par.name(), info.implicit_args, info.implicit_args, true);
+            cond = simplify(uba->mutate(cond));
             top_level.emplace_back(AnnExpr::make(annt, forall(info.forall_vars, info.bound, cond)));
         }
     }
 
 public:
     vector<Annotation> top_level;
+    UpdateBufferAnnotations* uba;
 
     AddParameterAnnotations(vector<Parameter> input, vector<Function> output
         , vector<Annotation> pipeline_annotations, bool const_input_buffers): const_input_buffers(const_input_buffers) {
+        uba = new UpdateBufferAnnotations(buffer_constraints, true);
+
         for(auto &i: input){
             get_input_annotations(i);
         }
+
+        uba->is_output = true;
 
         for(auto &o: output){
             get_output_annotations(o);
         }
 
-        UpdateBufferAnnotations uba(buffer_constraints, true);
-
-        for(size_t i=0; i<top_level.size(); i++)
-            top_level[i] = simplify(uba.mutate(top_level[i]));
-
-        for(auto &p: pipeline_annotations){
-            top_level.emplace_back(simplify(uba.mutate(p)));
-        }
-
-        uba.top_level = false;
+        uba->top_level = false;
 
 
         for(auto &it: proven_annotations){
             for(size_t i=0; i<it.second.size(); i++){
-                it.second[i].update(uba);
+                it.second[i].update(*uba);
             }
         }
     }
