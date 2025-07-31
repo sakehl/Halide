@@ -460,7 +460,7 @@ class AddParameterAnnotations : public IRMutator {
         BufferInfo result;
         result.name = par.name();
         result.bound = bound;
-        result.index = index;
+        result.index = simplify(index);
         result.pred_args = pred_args;
         result.forall_vars = forall_vars;
         result.implicit_args = implicit_args;
@@ -560,6 +560,10 @@ public:
 
         for(auto &o: output){
             get_output_annotations(o);
+        }
+
+        for(auto &p: pipeline_annotations){
+            top_level.emplace_back(simplify(uba->mutate(p)));
         }
 
         uba->top_level = false;
