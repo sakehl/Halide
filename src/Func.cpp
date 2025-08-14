@@ -3190,6 +3190,11 @@ void Func::compile_to_pvl(const string &filename, const vector<Argument> &args, 
     pipeline().compile_to_pvl(filename, args, fn_name, pipeline_anns, target, check_only_memory_safety);
 }
 
+void Func::front_end_verification(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns) {
+    Func::translate_to_pvl(filename, args, pipeline_anns);
+}
+
+
 void Func::translate_to_pvl(const string &filename, const vector<Argument> &args, const vector<Annotation> &pipeline_anns) {
     pipeline().translate_to_pvl(filename, args, pipeline_anns);
 }

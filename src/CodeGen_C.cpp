@@ -87,12 +87,7 @@ const string globals = R"INLINE_CODE(
 #ifndef HALIVER_GLOBALS
 #define HALIVER_GLOBALS
 
-struct halide_dimension_t {
-    int32_t min, extent, stride;
-    uint32_t flags;
-};
-
-inline void halide_unused(bool e){};
+void halide_unused(bool e){};
 
 /*@
 pure int max(int x, int y) = x > y ? x : y;
@@ -176,7 +171,7 @@ static inline /*@ pure @*/ double round_f64(double x) {return round(x);}
 
 //@ ghost const float NAN;
 
-inline float nan_f32() {return (float)NAN;}
+static inline float nan_f32() {return (float)NAN;}
 
 /*@
 inline resource dim_perm(struct halide_dimension_t *dim, rational p, int i) = 
@@ -1927,6 +1922,11 @@ void CodeGen_C::emit_shape_struct() {
     const char *shape_decl = R"INLINE_CODE(
 #ifndef HALIDE_BUFFER_SHAPE
 #define HALIDE_BUFFER_SHAPE
+struct halide_dimension_t {
+    int32_t min, extent, stride;
+    uint32_t flags;
+};
+
 struct halide_shape {
 
     /** The dimensionality of the buffer. */
@@ -1944,7 +1944,7 @@ struct halide_shape {
     requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].min, 1\2);
 @*/
-inline /*@ pure @*/ int _halide_buffer_get_min(struct halide_shape *buf , int d) {
+static inline /*@ pure @*/ int _halide_buffer_get_min(struct halide_shape *buf , int d) {
     return buf->dim[d].min;
 }
 
@@ -1955,7 +1955,7 @@ inline /*@ pure @*/ int _halide_buffer_get_min(struct halide_shape *buf , int d)
     requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].min, 1\2) ** Perm(buf->dim[d].extent, 1\2);
 @*/
-inline /*@ pure @*/ int _halide_buffer_get_max(struct halide_shape *buf , int d) {
+static inline /*@ pure @*/ int _halide_buffer_get_max(struct halide_shape *buf , int d) {
     return buf->dim[d].min + buf->dim[d].extent - 1;
 }
 
@@ -1966,7 +1966,7 @@ inline /*@ pure @*/ int _halide_buffer_get_max(struct halide_shape *buf , int d)
     requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].extent, 1\2);
 @*/
-inline /*@ pure @*/ int _halide_buffer_get_extent(struct halide_shape *buf , int d) {
+static inline /*@ pure @*/ int _halide_buffer_get_extent(struct halide_shape *buf , int d) {
     return buf->dim[d].extent;
 }
 
@@ -1977,7 +1977,7 @@ inline /*@ pure @*/ int _halide_buffer_get_extent(struct halide_shape *buf , int
     requires Perm(buf->dim[d], 1\2);
     requires Perm(buf->dim[d].stride, 1\2);
 @*/
-inline /*@ pure @*/ int _halide_buffer_get_stride(struct halide_shape *buf , int d) {
+static inline /*@ pure @*/ int _halide_buffer_get_stride(struct halide_shape *buf , int d) {
     return buf->dim[d].stride;
 }
 #endif // HALIDE_BUFFER_SHAPE
@@ -2011,7 +2011,7 @@ void CodeGen_C::emit_buffer(Type t, bool const_buffer) {
         << " requires buf != NULL ** \\pointer_length(buf) == 1 ** Perm(*buf, 1\\2);\n";
     stream
         << " @*/\n"
-        << "inline /*@ pure @*/ " << type << " *_halide_buffer_get_host_" << type_name << "(struct halide_buffer_" << type_name << " *buf) {\n"
+        << "static inline /*@ pure @*/ " << type << " *_halide_buffer_get_host_" << type_name << "(struct halide_buffer_" << type_name << " *buf) {\n"
         << "    return buf->host;\n"
         << "}\n"
         << "\n"

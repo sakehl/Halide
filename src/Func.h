@@ -947,6 +947,11 @@ public:
                       const std::vector<Argument> &args,
                       const std::vector<Annotation> &pipeline_anns);
 
+
+    void front_end_verification(const std::string &filename,
+                                 const std::vector<Argument> &args,
+                                 const std::vector<Annotation> &pipeline_anns);
+
     void compile_to_pvl(const std::string &filename,
                       const std::vector<Argument> &args,
                       const std::vector<Annotation> &pipeline_anns,

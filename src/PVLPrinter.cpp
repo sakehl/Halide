@@ -260,7 +260,7 @@ bool PVLPrinter::ends_on_dimension(string name){
 
     string extent_s = begin + "extent_" + std::to_string(dim) + "()";
     string min_s = begin + "min_" + std::to_string(dim) + "()";
-    string stride_s = begin + "min_" + std::to_string(dim) + "()";
+    string stride_s = begin + "stride_" + std::to_string(dim) + "()";
 
     if(split[split.size()-2] == "max"){
         stream << "(";
@@ -311,7 +311,9 @@ bool PVLPrinter::ends_on_dimension(string name){
 }
 
 void PVLPrinter::visit(const Variable *op) {
-    if((op->reduction_domain.defined() || reduction_vars.contains(op->name)) && !in_annotations){
+    if(op->param.defined() && !op->param.is_buffer()){
+        stream << c_print_name_pvl(op->name) << "()";
+    } else if((op->reduction_domain.defined() || reduction_vars.contains(op->name)) && !in_annotations){
         // Reduction domains variable in definitions should be called with -1
         stream << "(" << c_print_name_pvl(op->name) << " - 1)";
     } else if(ends_on_dimension(op->name)) {
@@ -516,6 +518,13 @@ void PVLPrinter::print_buffer_members(Parameter p){
         stream << ";\n";
     }
     stream << "\n";
+}
+
+void PVLPrinter::print_scalar_param(string name, Type t){
+    stream << " decreases;\n";
+    print_lhs_def({}, {t}, name);
+    stream << ";\n\n";
+    
 }
 
 void PVLPrinter::print_buffer(Parameter p, bool is_input){

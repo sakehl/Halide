@@ -29,7 +29,10 @@ public:
 
     void print_func(Function f);
 
+    void print_scalar_param(std::string name, Type t);
+
     void print_buffer(Parameter p, bool is_input);
+    
 private:
     bool in_annotations;
     bool in_reduction;

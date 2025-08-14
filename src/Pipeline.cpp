@@ -391,6 +391,11 @@ void Pipeline::translate_to_pvl(const string &filename,
     debug(1) << "Translating input buffers to PVL...\n";
     std::ofstream file(filename);
     PVLPrinter printer(file);
+    for (auto &a : args) {
+        if(a.is_scalar()){
+            printer.print_scalar_param(a.name, a.type);
+        }
+    }
     for (auto &iter : par_env) {
         if(iter.second.is_buffer()){
             printer.print_buffer(iter.second, true);
