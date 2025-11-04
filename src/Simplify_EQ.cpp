@@ -10,7 +10,7 @@ Expr Simplify::visit(const EQ *op, ExprInfo *bounds) {
         return const_false(op->type.lanes());
     }
 
-    if (!may_simplify(op->a.type())) {
+    if (in_annotation || !may_simplify(op->a.type())) {
         Expr a = mutate(op->a, nullptr);
         Expr b = mutate(op->b, nullptr);
         if (a.same_as(op->a) && b.same_as(op->b)) {
@@ -130,7 +130,7 @@ Expr Simplify::visit(const EQ *op, ExprInfo *bounds) {
 
 // ne redirects to not eq
 Expr Simplify::visit(const NE *op, ExprInfo *bounds) {
-    if (!may_simplify(op->a.type())) {
+    if (in_annotation || !may_simplify(op->a.type())) {
         Expr a = mutate(op->a, nullptr);
         Expr b = mutate(op->b, nullptr);
         if (a.same_as(op->a) && b.same_as(op->b)) {

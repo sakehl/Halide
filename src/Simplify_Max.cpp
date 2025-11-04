@@ -43,7 +43,7 @@ Expr Simplify::visit(const Max *op, ExprInfo *bounds) {
         return a;
     }
 
-    if (may_simplify(op->type)) {
+    if (!in_annotation && may_simplify(op->type)) {
 
         // Order commutative operations by node type
         if (should_commute(a, b)) {

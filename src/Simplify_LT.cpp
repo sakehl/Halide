@@ -17,7 +17,7 @@ Expr Simplify::visit(const LT *op, ExprInfo *bounds) {
         return const_false(lanes);
     }
 
-    if (may_simplify(ty)) {
+    if (!in_annotation && may_simplify(ty)) {
 
         // Prove or disprove using bounds analysis
         if (a_bounds.max_defined && b_bounds.min_defined && a_bounds.max < b_bounds.min) {
@@ -441,7 +441,7 @@ Expr Simplify::visit(const LT *op, ExprInfo *bounds) {
 
 // The other comparison operators redirect to the less-than operator
 Expr Simplify::visit(const LE *op, ExprInfo *bounds) {
-    if (!may_simplify(op->a.type())) {
+    if (in_annotation || !may_simplify(op->a.type())) {
         Expr a = mutate(op->a, nullptr);
         Expr b = mutate(op->b, nullptr);
         if (a.same_as(op->a) && b.same_as(op->b)) {
@@ -461,7 +461,7 @@ Expr Simplify::visit(const LE *op, ExprInfo *bounds) {
 }
 
 Expr Simplify::visit(const GT *op, ExprInfo *bounds) {
-    if (!may_simplify(op->a.type())) {
+    if (in_annotation || !may_simplify(op->a.type())) {
         Expr a = mutate(op->a, nullptr);
         Expr b = mutate(op->b, nullptr);
         if (a.same_as(op->a) && b.same_as(op->b)) {
@@ -475,7 +475,7 @@ Expr Simplify::visit(const GT *op, ExprInfo *bounds) {
 }
 
 Expr Simplify::visit(const GE *op, ExprInfo *bounds) {
-    if (!may_simplify(op->a.type())) {
+    if (in_annotation || !may_simplify(op->a.type())) {
         Expr a = mutate(op->a, nullptr);
         Expr b = mutate(op->b, nullptr);
         if (a.same_as(op->a) && b.same_as(op->b)) {

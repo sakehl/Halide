@@ -518,8 +518,9 @@ void PVLPrinter::print_buffer_members(Parameter p){
     }
 
     for(int i = 0; i < p.dimensions(); i++){
-        stream << " decreases;\n";
-        stream << "pure int " << c_print_name_pvl(p.name()) << "_extent_" << i << "()";
+        stream << " ensures \\result>=0;\n"
+            << " decreases;\n"
+            << "pure int " << c_print_name_pvl(p.name()) << "_extent_" << i << "()";
         if(p.extent_constraint(i).defined()){
             stream << " = ";
             print(p.extent_constraint(i));

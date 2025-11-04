@@ -493,9 +493,13 @@ string buffer_annotations(string buffer_name, Type t, int dimensions, Indentatio
         for(int i =0; i< dimensions; i++){
             o << indent << "context dim_perm(" << buffer_name << "->shape.dim, 1\\2, "<< i <<");\n";
         } 
-        o << indent << "context \\pointer_length(" << buffer_name << "->host) == "
-        << buffer_name << "->shape.dim[" << dimensions-1 <<"].extent"
-        << " * " << buffer_name << "->shape.dim[" << dimensions-1 <<"].stride";
+        o << indent << "context \\pointer_length(" << buffer_name << "->host) == ";
+        if(dimensions>0){
+            o << buffer_name << "->shape.dim[" << dimensions-1 <<"].extent"
+              << " * " << buffer_name << "->shape.dim[" << dimensions-1 <<"].stride";
+        } else {
+            o << "1";
+        }
         // for(int i =0; i< dimensions; i++){
         //     o << " + abs(" << buffer_name << "->shape.dim[" << i <<"].stride"  ") * (" << buffer_name << "->shape.dim[" << i <<"].extent"  " - 1)";
         // }
@@ -2020,8 +2024,11 @@ void CodeGen_C::emit_buffer(Type t, bool const_buffer) {
         << " buf != NULL **\n"
         << " \\pointer_length(buf) == 1 **\n"
         << " Perm(*buf, p) **\n"
-        << " buf->shape.dim != NULL **\n"
-        << " \\pointer_length(buf->shape.dim) == n_dims **\n"
+        << " (n_dims == 0 ? \n"
+        << "     buf->shape.dim == NULL :\n"
+        << "     buf->shape.dim != NULL **\n"
+        << "     \\pointer_length(buf->shape.dim) == n_dims   \n"
+        << " ) **\n"
         << " buf->host != NULL;\n"
         << "@*/\n"
         << "#endif //HALIDE_BUFFER_TYPE_" << type_cap << "\n";
