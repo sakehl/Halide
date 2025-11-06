@@ -386,17 +386,48 @@ Stmt simplify(const Stmt &s, bool remove_dead_let_stmts,
     return Simplify(remove_dead_let_stmts, &bounds, &alignment).mutate(s);
 }
 
+Expr simplify_ann(const Expr &e, bool remove_dead_let_stmts,
+              const Scope<Interval> &bounds,
+              const Scope<ModulusRemainder> &alignment) {
+    Simplify simp = Simplify(remove_dead_let_stmts, &bounds, &alignment);
+    simp.in_annotation = true;
+    return simp.mutate(e, nullptr);
+}
+
+Stmt simplify_ann(const Stmt &s, bool remove_dead_let_stmts,
+              const Scope<Interval> &bounds,
+              const Scope<ModulusRemainder> &alignment) {
+    Simplify simp = Simplify(remove_dead_let_stmts, &bounds, &alignment);
+    simp.in_annotation = true;
+    return simp.mutate(s);
+}
+
 Annotation simplify(const Annotation &a, bool remove_dead_let_stmts,
               const Scope<Interval> &bounds,
               const Scope<ModulusRemainder> &alignment) {
-    return Simplify(remove_dead_let_stmts, &bounds, &alignment).mutate(a);
+    Simplify simp = Simplify(remove_dead_let_stmts, &bounds, &alignment);
+    simp.in_annotation = true;
+    return simp.mutate(a);
 }
 
 class SimplifyExprs : public IRMutator {
 public:
     using IRMutator::mutate;
+    bool in_annotation = false;
+
+    Annotation mutate(const Annotation &a) override {
+        in_annotation = true;
+        Annotation result = a.defined() ? a.get()->mutate_ann(this) : Annotation();
+        in_annotation = false;
+        return result;
+    }
+
     Expr mutate(const Expr &e) override {
-        return simplify(e);
+        if (in_annotation) {
+            return simplify_ann(e);
+        } else {
+            return simplify(e);
+        }
     }
 };
 

@@ -245,6 +245,9 @@ class UpdateBufferAnnotations: public IRMutator {
             else
                 index = Add::make(index, added_dimension);
         }
+        if(dimensions==0){
+            index = 0;
+        }
 
         index = mutate(index);
 
@@ -303,9 +306,9 @@ public:
     }
 
     void update(UpdateBufferAnnotations &uba) {
-        condition = simplify(uba.mutate(condition));
-        bound = simplify(uba.mutate(bound));
-        load = simplify(uba.mutate(load));
+        condition = simplify_ann(uba.mutate(condition));
+        bound = simplify_ann(uba.mutate(bound));
+        load = simplify_ann(uba.mutate(load));
     }
 };
 
@@ -413,6 +416,9 @@ class AddParameterAnnotations : public IRMutator {
         Expr buffer = Variable::make(type_of<struct halide_buffer_t *>(), par.name() + ".buffer");
         // Expr buffer_in = Variable::make(par.type(), par.name());
         Expr host = Call::make(Handle(), Call::buffer_get_host, {buffer}, Call::Extern);
+        if(par.dimensions() == 0){
+            index = 0;
+        }
         for (int i = 0; i < par.dimensions(); i++) {
             Expr min = par.min_constraint(i);
             Expr extent = par.extent_constraint(i);
@@ -460,7 +466,7 @@ class AddParameterAnnotations : public IRMutator {
         BufferInfo result;
         result.name = par.name();
         result.bound = bound;
-        result.index = simplify(index);
+        result.index = simplify_ann(index);
         result.pred_args = pred_args;
         result.forall_vars = forall_vars;
         result.implicit_args = implicit_args;
@@ -479,7 +485,12 @@ class AddParameterAnnotations : public IRMutator {
             get_buffer_annotations(dim_0, par, top_level);
             
             Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(), par,const_true(), ModulusRemainder(), Expr());
-            Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, write() ));
+            Expr perm_top_level;
+            if(dim_0.dimensions() == 0){
+                perm_top_level = Perm(load, write() );
+            } else {
+                perm_top_level = forall(info.forall_vars, info.bound, Perm(load, write() ));
+            }
             top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
 
             for(const auto& ann :par.annotations()){
@@ -487,8 +498,12 @@ class AddParameterAnnotations : public IRMutator {
                 user_assert(ann_expr) << "No permission annotations allowed";
                 user_assert(ann_expr->ann_type == AnnotationType::Ensure) << "Only ensure annotations allowed concerning top level";
                 Expr cond = ann_expr->condition;
-                cond = simplify(uba->mutate(cond));
-                top_level.emplace_back(AnnExpr::make(AnnotationType::Ensure, forall(info.forall_vars, info.bound, cond)));
+                cond = simplify_ann(uba->mutate(cond));
+                if(dim_0.dimensions() > 0){
+                    cond = forall(info.forall_vars, info.bound, cond);
+                }
+
+                top_level.emplace_back(AnnExpr::make(AnnotationType::Ensure, cond));
             }
         }
     }
@@ -539,7 +554,7 @@ class AddParameterAnnotations : public IRMutator {
             }
             Expr cond = ann_expr->condition;
             cond = add_trigger(ann_expr->condition, par.name(), info.implicit_args, info.implicit_args, true);
-            cond = simplify(uba->mutate(cond));
+            cond = simplify_ann(uba->mutate(cond));
             top_level.emplace_back(AnnExpr::make(annt, forall(info.forall_vars, info.bound, cond)));
         }
     }

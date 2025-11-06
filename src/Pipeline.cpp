@@ -356,8 +356,13 @@ void get_pipeline_annotations(Function f, vector<Annotation> &pipeline_anns){
             continue;
         }
         user_assert(ae->ann_type == AnnotationType::Ensure) << "Only ensure annotations allowed";
-        Expr new_ae = add_trigger(ae->condition, f.name(), last_def.args(), f.definition().args(), false);
-        pipeline_anns.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(f.args(), bounds, new_ae)));
+        if(f.args().size() > 0){
+            Expr new_ae = add_trigger(ae->condition, f.name(), last_def.args(), f.definition().args(), false);
+            pipeline_anns.emplace_back(AnnExpr::make(AnnotationType::Ensure, Forall::make(f.args(), bounds, new_ae)));
+        } else {
+            pipeline_anns.emplace_back(AnnExpr::make(AnnotationType::Ensure, ae->condition));
+        }
+        
     }
 
 }
