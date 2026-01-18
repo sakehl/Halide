@@ -177,27 +177,49 @@ public:
                 
             return res;
         }
-            
-        
-        vector<string> vars;
-        Expr bounds;
-        for(size_t i = 0; i<dims.size(); i++){
-            VarDim vd = dims[i];
-            vars.emplace_back(vd.var);
-            Expr v = Variable::make(Int(32), vd.var);
-            Expr min = vd.min;
-            Expr max = vd.max;
 
-            Expr new_bound = And::make(LE::make(min, v), LE::make(v, max));
-            if(i == 0)
-                bounds = antecedent.defined() ? And::make(antecedent, new_bound) : new_bound;
-            else
-                bounds = And::make(bounds, new_bound);
-        }
         for(const auto & assertion: assertions){
+            FindFreeVars finder = FindFreeVars();
+            assertion.accept(&finder);
+
+            Expr bounds;
+            vector<string> vars;
+            bool first = true;
+
+            for(size_t i = 0; i<dims.size(); i++){
+                VarDim vd = dims[i];
+                if(!finder.free_vars.contains(vd.var))
+                    continue;
+                
+                vars.emplace_back(vd.var);
+                Expr v = Variable::make(Int(32), vd.var);
+                Expr min = vd.min;
+                Expr max = vd.max;
+
+                Expr new_bound = And::make(LE::make(min, v), LE::make(v, max));
+                if(first){
+                    bounds = antecedent.defined() ? And::make(antecedent, new_bound) : new_bound;
+                    first = false;
+                }
+                else
+                    bounds = And::make(bounds, new_bound);
+            }
+            if(first){
+                // No free vars in this assertion
+                Expr e = assertion;
+                if(antecedent.defined())
+                    e = implies(antecedent, e);
+                res.emplace_back(AnnExpr::make(atype, e));
+                continue;
+            }
+            
             Expr f = forall(vars, bounds, assertion);
             res.emplace_back(AnnExpr::make(atype, f));
         }
+
+        
+        
+        
         return res;
     }
 

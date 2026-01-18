@@ -2057,13 +2057,13 @@ void CodeGen_C::emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitt
         }
     }
 
-    if(!const_unique_buffers){
+    // if(!const_unique_buffers){
         for(const auto &a: f.args){
             if(a.is_buffer()){
                 stream << "//@ pure " << get_simple_type(a.type) << " pure" << print_name(a.name) << "(int x);\n";
             }
         }
-    }  
+    // }  
 }
 
 

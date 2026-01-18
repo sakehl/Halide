@@ -516,28 +516,33 @@ class AddParameterAnnotations : public IRMutator {
         BufferInfo info = process_dimensions(par);
 
         
+        // We model input buffers with pure functions, since this has less costs for checking annotations.
+        Expr pure_call = Call::make(par.type(), "pure_" + par.name(), {info.index}, Call::Extern);
+
+        // When non constant, we need to add this info together with read permission to each loop
         if(!const_input_buffers){
-            // This adds read permission
             AnnotationMaker pmaker(info);
             proven_annotations[par.name()].emplace_back(pmaker);
-            
+
             Expr load_internal = Load::make(info.type, info.name, 
-                info.index, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
-            Expr pure_call = Call::make(par.type(), "pure_" + par.name(), {info.index}, Call::Extern);
+            info.index, Buffer<>(), Parameter(), const_true(), ModulusRemainder(), Expr());
             // This adds f(x,y) == pure_f(x,y)
-            // With pure_f we model that input f has a constant value as a pure func
-            Expr eq = Forall::make(info.forall_vars, info.bound, load_internal == pure_call);
+            Expr eq = Forall::make(info.forall_vars, info.bound, trigger(load_internal) == pure_call);
             AnnotationMaker is_pure(info, eq);
             proven_annotations[par.name()].emplace_back(is_pure);
-
-            // We need to add the same top level
-            Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(),
-                par,const_true(), ModulusRemainder(), Expr());
+        }       
+        
+        // We need to add the same top level
+        Expr load = Load::make(par.type(), par.name()+".buffer.host", info.index, Buffer<>(),
+            par,const_true(), ModulusRemainder(), Expr());
+            
+        if(!const_input_buffers){
+            // This adds read permission
             Expr perm_top_level = forall(info.forall_vars, info.bound, Perm(load, read(2)) );
             top_level.emplace_back(AnnExpr::make(AnnotationType::Context, perm_top_level));
-            top_level.emplace_back(AnnExpr::make(AnnotationType::Context, 
-                Forall::make(info.forall_vars, info.bound, load == pure_call)));
         }
+        top_level.emplace_back(AnnExpr::make(AnnotationType::Context, 
+            Forall::make(info.forall_vars, info.bound, trigger(load) == pure_call)));
 
         for(const auto& ann :par.annotations()){
             const auto *ann_expr = ann.as<AnnExpr>();
@@ -546,16 +551,14 @@ class AddParameterAnnotations : public IRMutator {
             AnnotationType annt = ann_expr->ann_type == AnnotationType::ContextEverywhere ? AnnotationType::Context : ann_expr->ann_type;
             user_assert(ann_expr->ann_type == AnnotationType::Require || ann_expr->ann_type == AnnotationType::Context)
                 << "Annotation type should be require or context.";
-
+            Expr cond = add_trigger(ann_expr->condition, par.name(), info.implicit_args, info.implicit_args, true);
             if(!const_input_buffers){
                 // Const input buffers stay.. constant, VerCors can infer this, so no need to repeat
-                Expr condition = forall(info.forall_vars, info.bound, ann_expr->condition);
+                Expr condition = simplify(cond);
+                condition = forall(info.forall_vars, info.bound, condition);
                 proven_annotations[par.name()].emplace_back(AnnotationMaker(info, condition));
             }
-            Expr cond = ann_expr->condition;
-            cond = add_trigger(ann_expr->condition, par.name(), info.implicit_args, info.implicit_args, true);
-            cond = simplify_ann(uba->mutate(cond));
-            top_level.emplace_back(AnnExpr::make(annt, forall(info.forall_vars, info.bound, cond)));
+            top_level.emplace_back(AnnExpr::make(annt, forall(info.forall_vars, info.bound, simplify_ann(uba->mutate(cond)))));
         }
     }
 
@@ -630,10 +633,10 @@ public:
 pair<Stmt, vector<Annotation>> add_pipeline_annotations(const Stmt &stmt, vector<Parameter> input,
      vector<Function> output, vector<Annotation> pipeline_anns, bool const_input_buffers) {
     Stmt s = stmt;
-    if(!const_input_buffers){
+    // if(!const_input_buffers){
         UpdateInputBufferCallsToFunction uibctf(input);
         s = uibctf.mutate(s);
-    }
+    // }
 
     AddParameterAnnotations apa(input, output, pipeline_anns, const_input_buffers);
     s = apa.mutate(s);
