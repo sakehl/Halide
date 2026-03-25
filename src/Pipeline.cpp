@@ -16,6 +16,7 @@
 #include "ParamMap.h"
 #include "Pipeline.h"
 #include "PrintLoopNest.h"
+#include "Purefunc.h"
 #include "RealizationOrder.h"
 #include "WasmExecutor.h"
 #include "WrapCalls.h"
@@ -415,6 +416,14 @@ void Pipeline::translate_to_pvl(const string &filename,
     debug(1) << "Translating functions to PVL...\n";
     for (auto &iter : env) {
         printer.print_func(iter.second);
+    }
+
+    //print user-defined pure functions(Purefuncs).
+    for (const auto &iterpure : purefunc_registry()) {
+        const Purefunc *pf = iterpure.second;
+        if (pf && pf->defined()) {
+            printer.print_purefunc(*pf);
+        }
     }
 
     printer.print_pipeline(new_pipeline_anns);

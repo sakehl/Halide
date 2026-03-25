@@ -115,6 +115,7 @@ set(HEADER_FILES
     Pipeline.h
     Prefetch.h
     Profiling.h
+    Purefunc.h
     PurifyIndexMath.h
     PVLPrinter.h
     PythonExtensionGen.h
@@ -134,6 +135,7 @@ set(HEADER_FILES
     ScheduleFunctions.h
     Scope.h
     SelectGPUAPI.h
+    Seq.h
     Simplify.h
     SimplifyCorrelatedDifferences.h
     SimplifySpecializations.h
@@ -274,6 +276,7 @@ set(SOURCE_FILES
     Prefetch.cpp
     PrintLoopNest.cpp
     Profiling.cpp
+    Purefunc.cpp
     PurifyIndexMath.cpp
     PVLPrinter.cpp
     PythonExtensionGen.cpp

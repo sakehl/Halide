@@ -8,6 +8,7 @@
 
 #include "IRPrinter.h"
 #include "OutputImageParam.h"
+#include "Purefunc.h"
 
 namespace Halide {
 
@@ -28,6 +29,8 @@ public:
     void print_pipeline(const std::vector<Annotation> &anns);
 
     void print_func(Function f);
+
+    void print_purefunc(const Halide::Purefunc &pf);
 
     void print_scalar_param(std::string name, Type t);
 

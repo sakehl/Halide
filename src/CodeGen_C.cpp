@@ -8,6 +8,7 @@
 #include "IROperator.h"
 #include "Lerp.h"
 #include "Param.h"
+#include "Purefunc.h"
 #include "Simplify.h"
 #include "Substitute.h"
 #include "Type.h"
@@ -1851,6 +1852,9 @@ public:
                 }
             }
         }
+        for (const auto &it : Halide::purefunc_registry()) {
+            processed.insert(it.first); //insert purefuncs
+        }
     }
 
     void set_internal_linkage(const std::string &name) {
@@ -2071,8 +2075,70 @@ void CodeGen_C::emit_buffers(LoweredFunc const &f, std::set<Type> *buffers_emitt
 void CodeGen_C::compile(const Module &input) {
     TypeInfoGatherer type_info;
 
+    auto emit_purefuncs = [&]() -> std::string {
+        std::ostringstream oss;
+        bool emitted_any = false; //tracks whether at least one pure function was emitted
+
+        auto print_expr = [&](const Expr &e) -> std::string { //print a halide expr as annotation
+            std::ostringstream expr_stream;
+            AnnotationPrinter ap(expr_stream, is_pvl(), false, buffer_types);
+            ap.print(e);
+            return expr_stream.str();
+        };
+
+        for (const auto &it : Halide::purefunc_registry()) { //for every pure function in the registry
+            const Halide::Purefunc *pf = it.second;
+            if (!pf || !pf->defined() || pf->name().empty()) { //checks
+                continue;
+            }
+
+            for (const Annotation &ann : pf->annotations()) {
+                oss << "  ";
+                AnnotationPrinter ap(oss, is_pvl(), false, buffer_types);
+                ap.print(ann); //print annotation of the purefunc
+                oss << ";\n";
+            }
+            if (pf->has_decreases()) {
+                oss << "  decreases " << print_expr(pf->decreases_measure()) << ";\n"; //print "decreases"
+            }
+
+            oss << "  pure " << print_type(pf->return_type()) << " " << pf->name() << "(";
+
+            std::vector<std::pair<Type, std::string>> params; //parameter list
+            if (pf->has_explicit_signature()) { //if the purefunc has an explicit signature, use that
+                for (const auto &sig : pf->signature()) {
+                    if (sig.kind == Halide::Purefunc::SigKind::Scalar) {
+                        params.emplace_back(sig.scalar_type, sig.name);
+                    }
+                }
+            } else {
+                for (const Expr &arg : pf->args()) {
+                    if (const Variable *v = arg.as<Variable>()) {
+                        params.emplace_back(v->type, v->name);
+                    }
+                }
+            }
+            for (size_t i = 0; i < params.size(); i++) {
+                if (i != 0) {
+                    oss << ", "; //print the comma between parameters
+                }
+                oss << print_type(params[i].first) << " " << c_print_name(params[i].second);
+            }
+            oss << ") = " << print_expr(pf->body()) << ";\n"; //print RHS of the pure function
+            emitted_any = true;
+        }
+
+        if (emitted_any) {
+            oss << "\n";
+        }
+        return oss.str();
+    };
+
     stream << "/*@\n";
     stream << input.get_annotation_header();
+    if (!is_pvl()) {
+        stream << emit_purefuncs();
+    }
     stream << "\n@*/\n";
 
     if(!is_pvl()){

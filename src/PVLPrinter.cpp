@@ -3,6 +3,7 @@
 #include "IROperator.h"
 #include "Substitute.h"
 #include "IRMutator.h"
+#include "Purefunc.h"
 
 using std::string;
 using std::vector;
@@ -165,6 +166,41 @@ PVLPrinter::PVLPrinter(std::ostream &s) : IRPrinter(s), in_annotations(false), i
 void PVLPrinter::visit(const Call *op) {
     string name = op->name;
     vector<Expr> args = op->args;
+
+    //sequence (generated via Seq.h)
+    if (op->is_extern()) {
+        if (name == Halide::k_pvl_image_seq) {
+            internal_assert(args.size() == 1);
+            const Variable *v = args[0].as<Variable>();
+            internal_assert(v) << "__pvl_image_seq expects a Variable image handle.\n";
+            stream << c_print_name_pvl(v->name) << "_seq()";
+            return;
+        }
+        if (name == Halide::k_pvl_img_extent) {
+            internal_assert(args.size() == 2);
+            stream << "extent(";
+            print(args[0]);
+            stream << ", ";
+            print(args[1]);
+            stream << ")";
+            return;
+        }
+        if (name == Halide::k_pvl_seq_len) {
+            internal_assert(args.size() == 1);
+            stream << "|";
+            print(args[0]);
+            stream << "|";
+            return;
+        }
+        if (name == Halide::k_pvl_seq_at) {
+            internal_assert(args.size() == 2);
+            print(args[0]);
+            stream << "[";
+            print(args[1]);
+            stream << "]";
+            return;
+        }
+    }
 
     if(name == func_name){
         if(in_annotations){
@@ -504,6 +540,81 @@ void PVLPrinter::print_func(Function f){
     // stream << ");\n \n";
 }
 
+void PVLPrinter::print_purefunc(const Halide::Purefunc &pf) {
+    //only print defined pure functions
+    if (!pf.defined()) {
+        return;
+    }
+    
+    //print user-provided annotations
+    in_annotations = true;
+    print_ann(pf.annotations());
+    in_annotations = false;
+
+    //print decreases annotation
+    if (pf.has_decreases()) {
+        stream << " decreases ";
+        print(pf.decreases_measure());
+        stream << ";\n";
+    }
+    else{
+        stream << " decreases;\n";
+    }
+
+    //"pure" keyword
+    stream << " pure ";
+
+    //result type
+    print_type(pf.body().type());
+    stream << " " << c_print_name_pvl(pf.name()) << "(";
+
+    // If an explicit signature is provided, print it (supports seq<T>).
+    // Otherwise, fall back to scalar LHS args.
+    if (pf.has_explicit_signature()) {
+        const auto &sig = pf.signature();
+        for (size_t i = 0; i < sig.size(); i++) {
+            if (i > 0) stream << ", ";
+            if (sig[i].kind == Halide::Purefunc::SigKind::Scalar) { //if it is a scalar
+                print_type(sig[i].scalar_type);
+                stream << " " << c_print_name_pvl(sig[i].name);
+            } else { //if it is a sequence
+                stream << "seq<";
+                print_type(sig[i].elem_type);
+                stream << "> ";
+                stream << c_print_name_pvl(sig[i].name);
+            }
+        }
+    } else {
+        const std::vector<Expr> &args = pf.args();
+        for (size_t i = 0; i < args.size(); i++) { //loop over all arguments
+            if (i > 0) {
+                stream << ", "; //comma between arguments
+            }
+            // Allow either:
+            //   1) Variable
+            //   2) Cast(Variable)  (e.g., cast<float>(x))
+            const Variable *v = args[i].as<Variable>();
+            Type arg_type = args[i].type();
+
+            if (!v) {
+                if (const Cast *c = args[i].as<Cast>()) {
+                    arg_type = c->type;
+                    v = c->value.as<Variable>();
+                }
+            }
+
+            internal_assert(v) << "Purefunc arguments must be variables (or casted variables).\n";
+
+            print_type(arg_type);
+            stream << " " << c_print_name_pvl(v->name);
+        }
+    }
+
+    stream << ") = ";
+    print(pf.body()); //RHS of the pure function
+    stream << ";\n\n";
+}
+
 void PVLPrinter::print_buffer_members(Parameter p){
     parameter_map[p.name()] = p;
 
@@ -577,6 +688,17 @@ void PVLPrinter::print_buffer(Parameter p, bool is_input){
     stream << " decreases;\n";
     print_lhs_def(implicit_args, {p.type()}, p.name());
     stream << ";\n\n";
+
+    //bridge from 1D ImageParam to sequence (needs to be updated to support multidimentional ImageParams)
+    if (is_input && p.dimensions() == 1) {
+        stream << " ensures |\\result| == " << c_print_name_pvl(p.name()) << "_extent_0();\n";
+        stream << " ensures (\\forall int i; 0 <= i && i < |\\result|; \\result[i] == "
+               << c_print_name_pvl(p.name()) << "(i));\n";
+        stream << " decreases;\n";
+        stream << "pure seq<";
+        print_type(p.type());
+        stream << "> " << c_print_name_pvl(p.name()) << "_seq();\n\n";
+    }
 }
 
 void PVLPrinter::print_ann(const vector<Annotation> &anns, bool has_reduction){
@@ -860,6 +982,10 @@ void PVLPrinter::print_red_func(Definition def, vector<string> original_args, ve
 }
 
 void PVLPrinter::print_type(const Type &type) {
+    if (type.is_bool()) {
+        stream << "bool";
+        return;
+    }
     switch (type.code()) {
     case Type::Int:
         stream << "int";
@@ -872,7 +998,7 @@ void PVLPrinter::print_type(const Type &type) {
         break;
     default:
         user_error << "Unsupported type " << type << " for PVL translation";
-}
+    }
 }
 
 }
