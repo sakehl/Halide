@@ -1,5 +1,6 @@
 #include <iostream>
 #include <limits>
+#include <regex>
 
 #include "CodeGen_C.h"
 #include "CodeGen_Internal.h"
@@ -2104,26 +2105,33 @@ void CodeGen_C::compile(const Module &input) {
 
             oss << "  pure " << print_type(pf->return_type()) << " " << pf->name() << "(";
 
-            std::vector<std::pair<Type, std::string>> params; //parameter list
-            if (pf->has_explicit_signature()) { //if the purefunc has an explicit signature, use that
+            if (pf->has_explicit_signature()) {
+                bool first = true;
                 for (const auto &sig : pf->signature()) {
-                    if (sig.kind == Halide::Purefunc::SigKind::Scalar) {
-                        params.emplace_back(sig.scalar_type, sig.name);
+                    if (!first) {
+                        oss << ", "; //comma between arguments
+                    }
+                    first = false;
+
+                    if (sig.kind == Halide::Purefunc::SigKind::Scalar) { //non-sequence argument
+                        oss << print_type(sig.scalar_type) << " " << c_print_name(sig.name);
+                    } else if (sig.kind == Halide::Purefunc::SigKind::Seq) { //sequence argument
+                        oss << "seq<" << print_type(sig.elem_type) << "> "<< c_print_name(sig.name);
                     }
                 }
             } else {
+                bool first = true;
                 for (const Expr &arg : pf->args()) {
                     if (const Variable *v = arg.as<Variable>()) {
-                        params.emplace_back(v->type, v->name);
+                        if (!first) {
+                            oss << ", "; //comma between arguments
+                        }
+                        first = false;
+                        oss << print_type(v->type) << " " << c_print_name(v->name);
                     }
                 }
             }
-            for (size_t i = 0; i < params.size(); i++) {
-                if (i != 0) {
-                    oss << ", "; //print the comma between parameters
-                }
-                oss << print_type(params[i].first) << " " << c_print_name(params[i].second);
-            }
+
             oss << ") = " << print_expr(pf->body()) << ";\n"; //print RHS of the pure function
             emitted_any = true;
         }
@@ -2134,10 +2142,23 @@ void CodeGen_C::compile(const Module &input) {
         return oss.str();
     };
 
+    
     stream << "/*@\n";
     stream << input.get_annotation_header();
     if (!is_pvl()) {
         stream << emit_purefuncs();
+        // Emit pure sequence declarations for 1D input buffers (image sequences)
+        std::set<std::string> seqs_emitted;
+        for (const auto &f : input.functions()) {
+            for (const auto &a : f.args) {
+                if (a.is_input() && a.is_buffer() && a.dimensions == 1
+                    && seqs_emitted.count(a.name) == 0) {
+                    seqs_emitted.insert(a.name);
+                    stream << "  decreases;\n";
+                    stream << "  pure seq<" << print_type(a.type) << "> " << c_print_name(a.name) << "_seq();\n\n";
+                }
+            }
+        }
     }
     stream << "\n@*/\n";
 
@@ -2376,6 +2397,19 @@ void CodeGen_C::compile(const LoweredFunc &f) {
                             << print_name(args[j].name) << "_buffer->host;\n";
                     }
                 }
+            }
+        }
+    }
+    
+    //bridge from 1D ImageParam to sequence (needs to be updated to support multidimentional ImageParams)
+    if (!is_pvl()) {
+        for (size_t i = 0; i < args.size(); i++) {
+            if (args[i].is_buffer() && args[i].is_input() && args[i].dimensions == 1) {
+                string buf_param = print_name(args[i].name) + "_buffer";
+                string seq_fn = c_print_name(args[i].name) + "_seq";
+                stream << get_indent() << "context |" << seq_fn << "()| == " << buf_param << "->shape.dim[0].extent;\n";
+                stream << get_indent() << "context (\\forall int _i; 0 <= _i && _i < |"
+                       << seq_fn << "()|; " << seq_fn << "()[_i] == " << buf_param << "->host[_i]);\n";
             }
         }
     }
@@ -4543,6 +4577,44 @@ void AnnotationPrinter::visit(const Call *op) {
         stream << ")";
     } else if(op->is_intrinsic(Call::no_simp)){
         print(op->args[0]);
+
+    } else if (op->name == Halide::k_pvl_seq_len) { //sequence stuff
+        internal_assert(op->args.size() == 1);
+        stream << "|";
+        print(op->args[0]);
+            stream << "|";
+    } else if (op->name == Halide::k_pvl_seq_at) { //sequence stuff
+        internal_assert(op->args.size() == 2);
+        print(op->args[0]);
+        stream << "[";
+        print(op->args[1]);
+        stream << "]";
+    } else if (op->name == Halide::k_pvl_image_seq) { //sequence stuff
+        internal_assert(op->args.size() == 1);
+        const Variable *v = op->args[0].as<Variable>();
+        internal_assert(v);
+        string buf_name = v->name;
+        for (auto it = buffer_types.cbegin(); it != buffer_types.cend(); ++it) {
+            const string &key = it.name(); // e.g. "inp.buffer"
+            if (endsWith(key, ".buffer")) { // this part is a bit ugly, but it tries to match the buffer name in the sequence call with the buffer name in the buffer_types map.
+                string base = key.substr(0, key.size() - 7); // strip ".buffer"
+                // Match if v->name == base (direct match) or ends with a separator + base (scoped name)
+                // check both '.' and '_'.
+                if (buf_name == base || endsWith(buf_name, "_" + base) || endsWith(buf_name, "." + base)) {
+                    buf_name = base;
+                    break;
+                }
+            }
+        }
+        stream << c_print_name(buf_name) << "_seq()";
+    } else if (op->name == Halide::k_pvl_img_extent) { //sequence stuff
+        internal_assert(op->args.size() == 2);
+        stream << "extent(";
+        print(op->args[0]);
+        stream << ", ";
+        print(op->args[1]);
+        stream << ")";
+
     } else {
         stream << op->name << "(";
         print_list(op->args);
