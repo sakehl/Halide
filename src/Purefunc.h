@@ -74,7 +74,7 @@ public:
         std::string name;
         Type scalar_type;
         Type elem_type;
-        std::string len_name; // backend hint for seq length parameter
+        std::string len_name;
     };
 
     Purefunc &scalar_arg(Type t, const std::string &name);

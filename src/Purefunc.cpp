@@ -180,9 +180,9 @@ PurefuncRef Purefunc::operator()(const std::vector<Expr> &args) {
     return PurefuncRef(this, args);
 }
 
-// ---- PVL signature helpers ----
+// ---- signature helpers ----
 
-//add a scalar parameter to the purefunc signature.
+//add a scalar parameter to the purefunc argument list.
 Purefunc &Purefunc::scalar_arg(Type t, const std::string &name) {
     sig_explicit_ = true;
     SigArg a;
@@ -193,7 +193,7 @@ Purefunc &Purefunc::scalar_arg(Type t, const std::string &name) {
     return *this;
 }
 
-//add a sequence parameter to the purefunc signature.
+//add a sequence parameter to the purefunc argument list.
 Purefunc &Purefunc::seq_arg(Type elem_type, const std::string &name, const std::string &len_name) {
     sig_explicit_ = true;
     SigArg a;

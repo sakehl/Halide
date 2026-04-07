@@ -167,12 +167,12 @@ void PVLPrinter::visit(const Call *op) {
     string name = op->name;
     vector<Expr> args = op->args;
 
-    //sequence (generated via Seq.h)
+    //sequence (Seq.h)
     if (op->is_extern()) {
         if (name == Halide::k_pvl_image_seq) {
             internal_assert(args.size() == 1);
             const Variable *v = args[0].as<Variable>();
-            internal_assert(v) << "__pvl_image_seq expects a Variable image handle.\n";
+            internal_assert(v) << "__image_seq expects a Variable image handle.\n";
             stream << c_print_name_pvl(v->name) << "_seq()";
             return;
         }
