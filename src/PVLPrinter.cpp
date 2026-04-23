@@ -551,6 +551,43 @@ void PVLPrinter::print_purefunc(const Halide::Purefunc &pf) {
     print_ann(pf.annotations());
     in_annotations = false;
 
+    // For multidimensional seq args, add rectangular property(all inner sequences at each nesting level have equal length)
+    if (pf.has_explicit_signature()) {
+        for (const auto &sig : pf.signature()) {
+            if (sig.kind != Halide::Purefunc::SigKind::Seq || sig.dims < 2) continue;
+            std::string name = c_print_name_pvl(sig.name);
+            for (int d = 1; d < sig.dims; d++) { // For each inner dimension
+                stream << " requires ";
+                // Guard: outer dimensions must be non-empty
+                for (int g = 0; g < d; g++) {
+                    std::string guard_access = name;
+                    for (int m = 0; m < g; m++) guard_access += "[0]";
+                    stream << "|" << guard_access << "| > 0";
+                    if (g < d - 1) stream << " && ";
+                }
+                stream << " ==> (";
+                // Nested foralls
+                for (int k = 0; k < d; k++) {
+                    std::string idx = "_k" + std::to_string(k);
+                    std::string access = name;
+                    for (int m = 0; m < k; m++) access += "[_k" + std::to_string(m) + "]";
+                    stream << "\\forall int " << idx << "; 0 <= " << idx
+                           << " && " << idx << " < |" << access << "|; ";
+                    if (k < d - 1) stream << "(";
+                }
+                // |name[_k0]...[_k_{d-1}]| == |name[0]...[0]|
+                std::string lhs = name, rhs = name;
+                for (int m = 0; m < d; m++) {
+                    lhs += "[_k" + std::to_string(m) + "]";
+                    rhs += "[0]";
+                }
+                stream << "|" << lhs << "| == |" << rhs << "|";
+                for (int k = 0; k < d; k++) stream << ")";
+                stream << ";\n";
+            }
+        }
+    }
+
     //print decreases annotation
     if (pf.has_decreases()) {
         stream << " decreases ";
@@ -577,10 +614,15 @@ void PVLPrinter::print_purefunc(const Halide::Purefunc &pf) {
             if (sig[i].kind == Halide::Purefunc::SigKind::Scalar) { //if it is a scalar
                 print_type(sig[i].scalar_type);
                 stream << " " << c_print_name_pvl(sig[i].name);
-            } else { //if it is a sequence
-                stream << "seq<";
+            } else { //if it is a sequence (possibly multidimensional)
+                for (int d = 0; d < sig[i].dims; d++) {
+                    stream << "seq<";
+                }
                 print_type(sig[i].elem_type);
-                stream << "> ";
+                for (int d = sig[i].dims - 1; d >= 0; d--) {
+                    stream << (d < sig[i].dims - 1 ? " >" : ">");
+                }
+                stream << " ";
                 stream << c_print_name_pvl(sig[i].name);
             }
         }
@@ -689,15 +731,93 @@ void PVLPrinter::print_buffer(Parameter p, bool is_input){
     print_lhs_def(implicit_args, {p.type()}, p.name());
     stream << ";\n\n";
 
-    //bridge from 1D ImageParam to sequence (needs to be updated to support multidimentional ImageParams)
-    if (is_input && p.dimensions() == 1) {
-        stream << " ensures |\\result| == " << c_print_name_pvl(p.name()) << "_extent_0();\n";
-        stream << " ensures (\\forall int i; 0 <= i && i < |\\result|; \\result[i] == "
-               << c_print_name_pvl(p.name()) << "(i));\n";
+    //bridge from ImageParam to sequence (supports multidimensional ImageParams)
+    if (is_input && p.dimensions() >= 1) {
+        int ndims = p.dimensions();
+        string pname = c_print_name_pvl(p.name());
+
+        // Outermost dimension length: ensures |\\result| == name_extent_0();
+        stream << " ensures |\\result| == " << pname << "_extent_0();\n";
+
+        // Inner dimension lengths (for multidimensional):
+        // ensures (\\forall int i0; 0 <= i0 && i0 < |\\result|; |\\result[i0]| == name_extent_1());
+        // etc.
+        for (int d = 1; d < ndims; d++) {
+            // Quantified version (general)
+            stream << " ensures (";
+            for (int k = 0; k < d; k++) {
+                string idx = "i" + to_string(k);
+                string access = "\\result";
+                for (int m = 0; m < k; m++) {
+                    access += "[i" + to_string(m) + "]";
+                }
+                stream << "\\forall int " << idx << "; 0 <= " << idx << " && " << idx << " < |" << access << "|; ";
+                if (k < d - 1) stream << "(";
+            }
+            // The nested access for this dimension
+            string access = "\\result";
+            for (int m = 0; m < d; m++) {
+                access += "[i" + to_string(m) + "]";
+            }
+            stream << "|" << access << "| == " << pname << "_extent_" << d << "()";
+            for (int k = 0; k < d; k++) {
+                stream << ")";
+            }
+            stream << ";\n";
+
+            // ensures |\\result| > 0 [&& |\\result[0]| > 0 ...] ==> |\\result[0]...[0]| == name_extent_d();
+            stream << " ensures ";
+            for (int g = 0; g < d; g++) {
+                string guard_access = "\\result";
+                for (int m = 0; m < g; m++) guard_access += "[0]";
+                stream << "|" << guard_access << "| > 0";
+                if (g < d - 1) stream << " && ";
+            }
+            string zero_access = "\\result";
+            for (int m = 0; m < d; m++) zero_access += "[0]";
+            stream << " ==> |" << zero_access << "| == " << pname << "_extent_" << d << "();\n";
+        }
+
+        // Element equality:
+        // ensures (\\forall int i0; ...; (\\forall int i_{n-1}; ...;
+        //     \\result[i0]...[i_{n-1}] == name(i0, ..., i_{n-1})));
+        stream << " ensures (";
+        for (int d = 0; d < ndims; d++) {
+            string idx = "i" + to_string(d);
+            string access = "\\result";
+            for (int m = 0; m < d; m++) {
+                access += "[i" + to_string(m) + "]";
+            }
+            stream << "\\forall int " << idx << "; 0 <= " << idx << " && " << idx << " < |" << access << "|; ";
+            if (d < ndims - 1) stream << "(";
+        }
+        // \\result[i0][i1]...[i_{n-1}] == name(i0, i1, ..., i_{n-1})
+        string full_access = "\\result";
+        for (int d = 0; d < ndims; d++) {
+            full_access += "[i" + to_string(d) + "]";
+        }
+        stream << full_access << " == " << pname << "(";
+        for (int d = 0; d < ndims; d++) {
+            if (d > 0) stream << ", ";
+            stream << "i" << d;
+        }
+        stream << ")";
+        for (int d = 0; d < ndims; d++) {
+            stream << ")";
+        }
+        stream << ";\n";
+
+        // Type: pure seq<seq<...<T> ...> > name_seq();
         stream << " decreases;\n";
-        stream << "pure seq<";
+        stream << "pure ";
+        for (int d = 0; d < ndims; d++) {
+            stream << "seq<";
+        }
         print_type(p.type());
-        stream << "> " << c_print_name_pvl(p.name()) << "_seq();\n\n";
+        for (int d = ndims - 1; d >= 0; d--) {
+            stream << (d < ndims - 1 ? " >" : ">");
+        }
+        stream << " " << pname << "_seq();\n\n";
     }
 }
 

@@ -194,12 +194,13 @@ Purefunc &Purefunc::scalar_arg(Type t, const std::string &name) {
 }
 
 //add a sequence parameter to the purefunc argument list.
-Purefunc &Purefunc::seq_arg(Type elem_type, const std::string &name, const std::string &len_name) {
+Purefunc &Purefunc::seq_arg(Type elem_type, const std::string &name, int dims, const std::string &len_name) {
     sig_explicit_ = true;
     SigArg a;
     a.kind = SigKind::Seq;
     a.name = name;
     a.elem_type = elem_type;
+    a.dims = dims;
     a.len_name = len_name;
     sig_args_.push_back(a);
     return *this;
@@ -208,7 +209,7 @@ Purefunc &Purefunc::seq_arg(Type elem_type, const std::string &name, const std::
 //add a sequence parameter using metadata from an existing Seq.
 Purefunc &Purefunc::seq_arg(const Seq &s, const std::string &param_name) {
     const std::string &nm = param_name.empty() ? s.name() : param_name;
-    return seq_arg(s.elem_type(), nm, s.len_name());
+    return seq_arg(s.elem_type(), nm, s.dimensions(), s.len_name());
 }
 
 // ---- annotations ----

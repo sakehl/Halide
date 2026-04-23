@@ -2099,6 +2099,41 @@ void CodeGen_C::compile(const Module &input) {
                 ap.print(ann); //print annotation of the purefunc
                 oss << ";\n";
             }
+
+            // For multidimensional seq arguments all inner sequences at each nesting level have equal length.
+            if (pf->has_explicit_signature()) {
+                for (const auto &sig : pf->signature()) {
+                    if (sig.kind != Halide::Purefunc::SigKind::Seq || sig.dims < 2) continue;
+                    std::string name = c_print_name(sig.name);
+                    for (int d = 1; d < sig.dims; d++) {
+                        oss << "  requires ";
+                        for (int g = 0; g < d; g++) {
+                            std::string guard_access = name;
+                            for (int m = 0; m < g; m++) guard_access += "[0]";
+                            oss << "|" << guard_access << "| > 0";
+                            if (g < d - 1) oss << " && ";
+                        }
+                        oss << " ==> (";
+                        for (int k = 0; k < d; k++) {
+                            std::string idx = "_k" + std::to_string(k);
+                            std::string access = name;
+                            for (int m = 0; m < k; m++) access += "[_k" + std::to_string(m) + "]";
+                            oss << "\\forall int " << idx << "; 0 <= " << idx
+                                << " && " << idx << " < |" << access << "|; ";
+                            if (k < d - 1) oss << "(";
+                        }
+                        std::string lhs = name, rhs = name;
+                        for (int m = 0; m < d; m++) {
+                            lhs += "[_k" + std::to_string(m) + "]";
+                            rhs += "[0]";
+                        }
+                        oss << "|" << lhs << "| == |" << rhs << "|";
+                        for (int k = 0; k < d; k++) oss << ")";
+                        oss << ";\n";
+                    }
+                }
+            }
+
             if (pf->has_decreases()) {
                 oss << "  decreases " << print_expr(pf->decreases_measure()) << ";\n"; //print "decreases"
             }
@@ -2115,8 +2150,15 @@ void CodeGen_C::compile(const Module &input) {
 
                     if (sig.kind == Halide::Purefunc::SigKind::Scalar) { //non-sequence argument
                         oss << print_type(sig.scalar_type) << " " << c_print_name(sig.name);
-                    } else if (sig.kind == Halide::Purefunc::SigKind::Seq) { //sequence argument
-                        oss << "seq<" << print_type(sig.elem_type) << "> "<< c_print_name(sig.name);
+                    } else if (sig.kind == Halide::Purefunc::SigKind::Seq) { //sequence argument (possibly multidimensional)
+                        for (int d = 0; d < sig.dims; d++) {
+                            oss << "seq<";
+                        }
+                        oss << print_type(sig.elem_type);
+                        for (int d = sig.dims - 1; d >= 0; d--) {
+                            oss << (d < sig.dims - 1 ? " >" : ">");
+                        }
+                        oss << " " << c_print_name(sig.name);
                     }
                 }
             } else {
@@ -2147,15 +2189,23 @@ void CodeGen_C::compile(const Module &input) {
     stream << input.get_annotation_header();
     if (!is_pvl()) {
         stream << emit_purefuncs();
-        // Emit pure sequence declarations for 1D input buffers (image sequences)
+        // Emit pure sequence declarations for input buffers (image sequences, any dimensionality)
         std::set<std::string> seqs_emitted;
         for (const auto &f : input.functions()) {
             for (const auto &a : f.args) {
-                if (a.is_input() && a.is_buffer() && a.dimensions == 1
+                if (a.is_input() && a.is_buffer() && a.dimensions >= 1
                     && seqs_emitted.count(a.name) == 0) {
                     seqs_emitted.insert(a.name);
                     stream << "  decreases;\n";
-                    stream << "  pure seq<" << print_type(a.type) << "> " << c_print_name(a.name) << "_seq();\n\n";
+                    stream << "  pure ";
+                    for (int d = 0; d < a.dimensions; d++) {
+                        stream << "seq<";
+                    }
+                    stream << print_type(a.type);
+                    for (int d = a.dimensions - 1; d >= 0; d--) {
+                        stream << (d < a.dimensions - 1 ? " >" : ">");
+                    }
+                    stream << " " << c_print_name(a.name) << "_seq();\n\n";
                 }
             }
         }
@@ -2401,15 +2451,97 @@ void CodeGen_C::compile(const LoweredFunc &f) {
         }
     }
     
-    //bridge from 1D ImageParam to sequence (needs to be updated to support multidimentional ImageParams)
+    //bridge from ImageParam to sequence (supports multidimensional ImageParams hopefully)
     if (!is_pvl()) {
         for (size_t i = 0; i < args.size(); i++) {
-            if (args[i].is_buffer() && args[i].is_input() && args[i].dimensions == 1) {
+            if (args[i].is_buffer() && args[i].is_input() && args[i].dimensions >= 1) {
+                int ndims = args[i].dimensions;
                 string buf_param = print_name(args[i].name) + "_buffer";
                 string seq_fn = c_print_name(args[i].name) + "_seq";
-                stream << get_indent() << "context |" << seq_fn << "()| == " << buf_param << "->shape.dim[0].extent;\n";
-                stream << get_indent() << "context (\\forall int _i; 0 <= _i && _i < |"
-                       << seq_fn << "()|; " << seq_fn << "()[_i] == " << buf_param << "->host[_i]);\n";
+
+                // Outermost dimension length
+                stream << get_indent() << "context |" << seq_fn << "()| == "
+                       << buf_param << "->shape.dim[0].extent;\n";
+
+                // Inner dimension lengths (for multidimensional)
+                for (int d = 1; d < ndims; d++) {
+                    stream << get_indent() << "context (";
+                    for (int k = 0; k < d; k++) {
+                        string idx = "_i" + std::to_string(k);
+                        string access = seq_fn + "()";
+                        for (int m = 0; m < k; m++) {
+                            access += "[_i" + std::to_string(m) + "]";
+                        }
+                        stream << "\\forall int " << idx << "; 0 <= " << idx
+                               << " && " << idx << " < |" << access << "|; ";
+                        if (k < d - 1) stream << "(";
+                    }
+                    string access = seq_fn + "()";
+                    for (int m = 0; m < d; m++) {
+                        access += "[_i" + std::to_string(m) + "]";
+                    }
+                    stream << "|" << access << "| == " << buf_param << "->shape.dim[" << d << "].extent";
+                    for (int k = 0; k < d; k++) {
+                        stream << ")";
+                    }
+                    stream << ";\n";
+
+                    // context |seq()| > 0 [&& |seq()[0]| > 0 ...] ==> |seq()[0]...[0]| == dim[d].extent;
+                    stream << get_indent() << "context ";
+                    for (int g = 0; g < d; g++) {
+                        std::string guard_access = seq_fn + "()";
+                        for (int m = 0; m < g; m++) guard_access += "[0]";
+                        stream << "|" << guard_access << "| > 0";
+                        if (g < d - 1) stream << " && ";
+                    }
+                    std::string zero_access = seq_fn + "()";
+                    for (int m = 0; m < d; m++) zero_access += "[0]";
+                    stream << " ==> |" << zero_access << "| == "
+                           << buf_param << "->shape.dim[" << d << "].extent;\n";
+                }
+
+                // For multidimensional buffers, guard the host[offset] access
+                // with a bounds implication so VerCors can verify pointer safety.
+                stream << get_indent() << "context (";
+                for (int d = 0; d < ndims; d++) {
+                    string idx = "_i" + std::to_string(d);
+                    string access = seq_fn + "()";
+                    for (int m = 0; m < d; m++) {
+                        access += "[_i" + std::to_string(m) + "]";
+                    }
+                    stream << "\\forall int " << idx << "; 0 <= " << idx
+                           << " && " << idx << " < |" << access << "|; ";
+                    if (d < ndims - 1) stream << "(";
+                }
+
+                // Build the offset expression string
+                std::string offset_expr;
+                for (int d = 0; d < ndims; d++) {
+                    if (d > 0) offset_expr += " + ";
+                    offset_expr += "_i" + std::to_string(d) + " * " + buf_param + "->shape.dim[" + std::to_string(d) + "].stride";
+                }
+
+                // seq_fn()[_i0][_i1]...[_i_{n-1}]
+                string full_access = seq_fn + "()";
+                for (int d = 0; d < ndims; d++) {
+                    full_access += "[_i" + std::to_string(d) + "]";
+                }
+
+                if (ndims > 1) {
+                    // (0 <= offset && offset < \pointer_length(host)) ==> (seq[i0][i1] == host[offset])
+                    stream << "(0 <= " << offset_expr
+                           << " && " << offset_expr
+                           << " < \\pointer_length(" << buf_param << "->host)) ==> ("
+                           << full_access << " == " << buf_param << "->host[" << offset_expr << "])";
+                } else {
+                    // 1D: direct access
+                    stream << full_access << " == " << buf_param << "->host[" << offset_expr << "]";
+                }
+
+                for (int d = 0; d < ndims; d++) {
+                    stream << ")";
+                }
+                stream << ";\n";
             }
         }
     }

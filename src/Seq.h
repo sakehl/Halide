@@ -3,10 +3,11 @@
 
 /** \file
  *
- * immutable sequence.
+ * immutable sequence
  */
 
 #include <string>
+#include <vector>
 
 #include "Expr.h"
 #include "Type.h"
@@ -25,18 +26,23 @@ class Seq {
 public:
     Seq() = default; //empty constructor
 
-    // example: Seq x("x", Int(32));
+    // 1D named sequence: Seq x("x", Int(32));
     Seq(const std::string &name, Type elem_type, const std::string &len_name = "")
-        : kind_(Kind::Named), name_(name), elem_type_(elem_type), len_(len_name) {}
+        : kind_(Kind::Named), name_(name), elem_type_(elem_type), dims_(1), len_(len_name) {}
 
-    // example: Seq xs(imgprm);
+    // multidimensional named sequence: Seq x("x", Int(32), 2);
+    Seq(const std::string &name, Type elem_type, int dims, const std::string &len_name = "")
+        : kind_(Kind::Named), name_(name), elem_type_(elem_type), dims_(dims), len_(len_name) {}
+
+    // Sequence from ImageParam: Seq xs(imgprm);
     explicit Seq(const ImageParam &im, const std::string &len_name = "")
-        : kind_(Kind::ImageView), name_(im.name()), elem_type_(im.type()), len_(len_name) {}
+        : kind_(Kind::ImageView), name_(im.name()), elem_type_(im.type()), dims_(im.dimensions()), len_(len_name) {}
 
     //getters
     const std::string &name() const { return name_; }
     Type elem_type() const { return elem_type_; }
     const std::string &len_name() const { return len_; }
+    int dimensions() const { return dims_; }
 
     //Returns true if constructed from ImageParam, false if it is a normal named sequence
     bool is_image_view() const { return kind_ == Kind::ImageView; }
@@ -56,14 +62,58 @@ public:
         }
     }
 
-    // PVL and C: |xs| or |inp_seq()|
+    // Length of the outermost dimension: PVL and C: |xs| or |inp_seq()|
     Expr len() const {
         return Internal::Call::make(Int(32), k_pvl_seq_len, {handle()}, Internal::Call::Extern);
     }
 
+    // Length of a specific dimension.
+    // dim=0: |handle|, dim=1: |handle[0]|, dim=2: |handle[0][0]|, etc.
+    Expr len(int dim) const {
+        Expr h = handle();
+        for (int d = 0; d < dim; d++) {
+            h = Internal::Call::make(Handle(), k_pvl_seq_at, {h, Expr(0)}, Internal::Call::Extern);
+        }
+        return Internal::Call::make(Int(32), k_pvl_seq_len, {h}, Internal::Call::Extern);
+    }
+
+    // Single-index access
     // PVL and C: xs[i] or inp_seq()[i]
     Expr operator[](const Expr &i) const {
-        return Internal::Call::make(elem_type_, k_pvl_seq_at, {handle(), i}, Internal::Call::Extern);
+        Type result_type = (dims_ > 1) ? Handle() : elem_type_;
+        return Internal::Call::make(result_type, k_pvl_seq_at, {handle(), i}, Internal::Call::Extern);
+    }
+
+    // Multi-index access for multidimensional sequences.
+    // seq(i, j) builds __seq_at(__seq_at(handle, i), j) with correct types.
+    Expr operator()(const std::vector<Expr> &indices) const {
+        user_assert(!indices.empty())
+            << "Seq::operator() requires at least one index.\n";
+        user_assert((int)indices.size() <= dims_)
+            << "Seq::operator() got " << indices.size() << " indices but sequence \""
+            << name_ << "\" has only " << dims_ << " dimension(s).\n";
+
+        Expr h = handle();
+        for (size_t d = 0; d < indices.size(); d++) {
+            int remaining = dims_ - (int)d - 1;
+            Type result_type = (remaining > 0) ? Handle() : elem_type_;
+            h = Internal::Call::make(result_type, k_pvl_seq_at, {h, indices[d]}, Internal::Call::Extern);
+        }
+        return h;
+    }
+
+    // Convenience overloads for multi-index access.
+    Expr operator()(const Expr &i) const {
+        return (*this)(std::vector<Expr>{i});
+    }
+    template<typename... Args>
+    Expr operator()(const Expr &i0, const Expr &i1, Args &&...rest) const {
+        std::vector<Expr> indices;
+        indices.reserve(2 + sizeof...(rest));
+        indices.push_back(i0);
+        indices.push_back(i1);
+        (indices.push_back(Expr(std::forward<Args>(rest))), ...);
+        return (*this)(indices);
     }
 
     // PVL and C: extent(inp, d)  (only for Seq(ImageParam))
@@ -79,6 +129,7 @@ private:
 
     std::string name_;
     Type elem_type_;
+    int dims_{1};
     std::string len_; //not being used rn
 };
 

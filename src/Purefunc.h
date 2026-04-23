@@ -74,11 +74,12 @@ public:
         std::string name;
         Type scalar_type;
         Type elem_type;
+        int dims{1};       // number of dimensions (1 = seq<T>, 2 = seq<seq<T> >, ...)
         std::string len_name;
     };
 
     Purefunc &scalar_arg(Type t, const std::string &name);
-    Purefunc &seq_arg(Type elem_type, const std::string &name, const std::string &len_name = "");
+    Purefunc &seq_arg(Type elem_type, const std::string &name, int dims = 1, const std::string &len_name = "");
     Purefunc &seq_arg(const Seq &s, const std::string &param_name = "");
     bool has_explicit_signature() const { return sig_explicit_; }
     const std::vector<SigArg> &signature() const { return sig_args_; }
