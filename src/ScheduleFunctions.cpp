@@ -460,18 +460,18 @@ public:
         }
     }
 
-    void add_antecedent(Expr ant, bool is_predicate=false){
-        
-        if(!is_predicate){
-            for(auto &a: anns){
-                a = Halide::Internal::add_antecedent(ant, a);
-            }
-            for(auto &p: perms){
-                p = Halide::Internal::add_antecedent(ant, p);
-            }
-            for(auto &i: reduction_invariants){
-                i = Halide::implies(ant, i);
-            }
+    void add_antecedent(Expr ant, bool skip = false){
+        if(skip){
+            return;
+        }
+        for(auto &a: anns){
+            a = Halide::Internal::add_antecedent(ant, a);
+        }
+        for(auto &p: perms){
+            p = Halide::Internal::add_antecedent(ant, p);
+        }
+        for(auto &i: reduction_invariants){
+            i = Halide::implies(ant, i);
         }
     }
 };
@@ -772,6 +772,13 @@ Stmt build_loop_nest(
         }
     }
 
+    Scope<> rvar_guard_vars;
+    for (const Split &split : splits) {
+        if (split.is_split() && split.exact) {
+            rvar_guard_vars.push(prefix + split.old_var);
+        }
+    }
+
     // Rewrap the statement in the containing lets and fors.
     for (int i = (int)nest.size() - 1; i >= 0; i--) {
         if (nest[i].type == Container::Let) {
@@ -783,7 +790,11 @@ Stmt build_loop_nest(
             internal_assert(nest[i].value.defined());
             stmt = IfThenElse::make(nest[i].value, stmt, Stmt());
 
-            nest_annotation_maker.add_antecedent(nest[i].value, nest[i].type == Container::IfPredicate);
+            //skip the antecedent in some cases
+            bool skip_antecedent =
+                nest[i].type == Container::IfPredicate ||
+                (nest[i].type == Container::If && expr_uses_vars(nest[i].value, rvar_guard_vars));
+            nest_annotation_maker.add_antecedent(nest[i].value, skip_antecedent);
         } else {
             internal_assert(nest[i].type == Container::For);
             const Dim &dim = stage_s.dims()[nest[i].dim_idx];
