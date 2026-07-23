@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <type_traits>
+#include <utility>
 
 #include "Expr.h"
 #include "Type.h"
@@ -114,32 +116,29 @@ public:
     PurefuncRef operator()(const std::vector<Expr> &args);
 
     // Zero-argument call, e.g. pf()
-    PurefuncRef operator()() { return (*this)(std::vector<Expr>()); }
+    PurefuncRef operator()() { return PurefuncRef(this, std::vector<Expr>()); }
 
-    // Convenience overloads for spec-only sequences.
-    // Allows writing pf(xs, i) where xs is a Seq.
-    PurefuncRef operator()(const Seq &s) { return (*this)(std::vector<Expr>{s.handle()}); }
-    template<typename... Args>
-    PurefuncRef operator()(const Seq &s, const Expr &x0, Args &&...rest) {
-        std::vector<Expr> args;
-        args.reserve(2 + sizeof...(rest));
-        args.push_back(s.handle());
-        args.push_back(x0);
-        (args.push_back(Expr(std::forward<Args>(rest))), ...);
-        return (*this)(args);
-    }
-
-    //for multiple Expr argument calls
-    template<typename... Args>
-    PurefuncRef operator()(const Expr &x0, Args &&...rest) {
+    // Convenience call: accepts any mix of Seq and Expr-constructible
+    // arguments in any position. Seq arguments are passed via their handle().
+    template<typename First, typename... Rest,
+             typename = typename std::enable_if<
+                 !std::is_same<typename std::decay<First>::type,
+                               std::vector<Expr>>::value>::type>
+    PurefuncRef operator()(First &&first, Rest &&...rest) {
         std::vector<Expr> args;
         args.reserve(1 + sizeof...(rest));
-        args.push_back(x0);
-        (args.push_back(Expr(std::forward<Args>(rest))), ...);
-        return (*this)(args);
+        args.push_back(to_pf_arg(std::forward<First>(first)));
+        (args.push_back(to_pf_arg(std::forward<Rest>(rest))), ...);
+        return PurefuncRef(this, args);
     }
 
 private:
+    static Expr to_pf_arg(const Seq &s) { return s.handle(); }
+    template<typename T,
+             typename = typename std::enable_if<
+                 !std::is_same<typename std::decay<T>::type, Seq>::value>::type>
+    static Expr to_pf_arg(T &&x) { return Expr(std::forward<T>(x)); }
+
     std::string name_;
     bool defined_;
     bool recursive_{false};
